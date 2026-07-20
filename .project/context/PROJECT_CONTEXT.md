@@ -3,202 +3,252 @@
 # Auto Login TO
 
 > Documento mestre do projeto.
-
-Versão: 0.1
-Status: Em desenvolvimento
-
----
-
-# 1. Visão do Produto
-
-## O que é?
-
-Auto Login TO é um software desktop desenvolvido para automatizar processos repetitivos no cliente do jogo TO.
-
-O primeiro módulo disponibilizado é o Login Automático, porém o software foi concebido para evoluir para uma plataforma completa de automação, oferecendo recursos gratuitos e funcionalidades Premium.
-
-O objetivo é entregar uma experiência simples, segura, rápida e confiável.
+>
+> Este documento define a visão, objetivos, arquitetura, princípios e diretrizes do desenvolvimento do Auto Login TO.
+>
+> Todas as decisões técnicas e funcionais devem estar alinhadas com este documento.
 
 ---
 
-# 2. Missão
+# Informações Gerais
 
-Eliminar tarefas repetitivas executadas pelo jogador através de uma automação robusta e fácil de utilizar.
+**Projeto:** Auto Login TO
 
----
+**Versão Atual:** 0.1.0
 
-# 3. Visão de Longo Prazo
+**Status:** Em Desenvolvimento
 
-Transformar o Auto Login TO na principal plataforma de automação para TO, oferecendo módulos independentes, atualizações constantes e um ecossistema escalável.
+**Linguagem Principal:** Python
 
----
+**Arquitetura:** Modular
 
-# 4. Público-Alvo
-
-Jogadores de TO que desejam automatizar tarefas repetitivas com segurança e praticidade.
+**Modelo de Distribuição:** Free + Premium (Assinatura)
 
 ---
 
-# 5. Objetivos
+# Visão do Produto
+
+## O que é o Auto Login TO?
+
+O Auto Login TO é um software desktop desenvolvido para automatizar tarefas repetitivas executadas pelos jogadores de TO.
+
+Seu primeiro módulo é o Login Automático, permitindo que o usuário realize o acesso ao jogo de forma rápida, prática e segura.
+
+Entretanto, o projeto não se limita ao login automático.
+
+O software foi concebido para evoluir continuamente, tornando-se uma plataforma completa de automação composta por módulos independentes que poderão ser disponibilizados gratuitamente ou através de assinatura Premium.
+
+---
+
+# Missão
+
+Eliminar tarefas repetitivas executadas pelo usuário, proporcionando uma experiência simples, confiável e intuitiva.
+
+---
+
+# Visão de Longo Prazo
+
+Ser a principal plataforma de automação para TO, oferecendo ferramentas úteis, arquitetura moderna e evolução constante.
+
+---
+
+# Valores
+
+O desenvolvimento do Auto Login TO seguirá os seguintes princípios:
+
+- Simplicidade
+- Organização
+- Escalabilidade
+- Segurança
+- Performance
+- Legibilidade
+- Manutenibilidade
+- Documentação
+- Evolução contínua
+
+---
+
+# Objetivos
 
 ## Curto Prazo
 
 - Login Automático
-- Interface gráfica
-- Configuração simples
-- Instalação fácil
+- Interface Gráfica
+- Configuração simplificada
+- Melhor tratamento de erros
 
 ## Médio Prazo
 
-- Sistema de atualização
-- Sistema de licenças
-- Configuração de perfis
+- Sistema de Atualização
+- Sistema de Licenciamento
+- Configuração de Perfis
+- Melhorias na Interface
 
 ## Longo Prazo
 
-- Plataforma completa
-- Plugins
+- Plataforma completa de automação
+- Sistema de Plugins
 - Dashboard
-- Múltiplos módulos
+- Estatísticas
+- Ferramentas avançadas
 
 ---
 
-# 6. Modelo de Negócio
+# Público-Alvo
 
-## Free
-
-Login Automático
-
-Atualizações básicas
-
-Suporte da comunidade
-
-## Premium
-
-Múltiplas contas
-
-Perfis
-
-Atualizações prioritárias
-
-Ferramentas avançadas
-
-Novos módulos
-
-Suporte Premium
+Jogadores de TO que desejam automatizar tarefas repetitivas de maneira simples, segura e confiável.
 
 ---
 
-# 7. Arquitetura
+# Modelo de Negócio
 
-Arquitetura modular.
+## Versão Gratuita
 
-Cada responsabilidade deve possuir seu próprio módulo.
+A versão gratuita deverá fornecer uma experiência suficiente para que qualquer jogador possa utilizar o Login Automático sem limitações artificiais.
 
-Nenhum módulo deve depender diretamente de outro quando puder utilizar interfaces bem definidas.
+Recursos previstos:
 
----
-
-# 8. Tecnologias
-
-Python
-
-OpenCV
-
-PyWin32
-
-CTypes
-
-JSON
-
-Tkinter (ou futura interface)
+- Login Automático
+- Configurações básicas
+- Atualizações essenciais
 
 ---
 
-# 9. Estrutura do Projeto
+## Versão Premium
 
-Documentação
+A assinatura Premium oferecerá recursos avançados destinados aos usuários que desejam maior produtividade.
 
-Código
+Exemplos:
 
-Assets
-
-Ferramentas
-
-Testes
-
----
-
-# 10. Princípios
-
-Código simples.
-
-Código reutilizável.
-
-Código documentado.
-
-Baixo acoplamento.
-
-Alta coesão.
-
-Modularização.
-
-Escalabilidade.
+- Gerenciamento de múltiplas contas
+- Perfis personalizados
+- Configurações avançadas
+- Novos módulos de automação
+- Atualizações prioritárias
+- Recursos exclusivos
 
 ---
 
-# 11. Roadmap
+# Arquitetura
 
-v0.1
+O software deverá possuir arquitetura modular.
 
-Login automático
+Cada módulo será responsável por apenas uma responsabilidade.
 
-v0.2
+Os módulos deverão possuir baixo acoplamento e alta coesão.
 
-Interface gráfica
-
-v0.3
-
-Configurações avançadas
-
-v0.4
-
-Sistema de atualização
-
-v0.5
-
-Sistema de licença
-
-v1.0
-
-Primeira versão comercial
+Sempre que possível, funcionalidades deverão ser reutilizáveis.
 
 ---
 
-# 12. Padrão de Desenvolvimento
+# Tecnologias
 
-Toda funcionalidade nova deve possuir documentação.
+Linguagem:
 
-Nenhuma implementação deve quebrar versões anteriores.
+- Python
 
-Refatorações devem preservar comportamento.
+Bibliotecas atualmente utilizadas:
 
-Sempre priorizar legibilidade.
+- OpenCV
+- PyWin32
+- ctypes
+- Pillow
+- NumPy
 
----
-
-# 13. Decisões Técnicas
-
-Esta seção armazenará todas as decisões importantes tomadas durante o desenvolvimento.
-
----
-
-# 14. Backlog
-
-Lista de ideias futuras.
+Novas tecnologias poderão ser incorporadas conforme a evolução do projeto.
 
 ---
 
-# 15. Changelog
+# Estrutura Geral
 
-Histórico de alterações do projeto.
+O projeto será dividido em:
+
+- Código-fonte
+- Documentação
+- Assets
+- Ferramentas de desenvolvimento
+- Testes
+- Configurações
+
+---
+
+# Filosofia de Desenvolvimento
+
+Antes de implementar qualquer funcionalidade, deverão ser respondidas quatro perguntas:
+
+1. Qual problema ela resolve?
+
+2. Em qual módulo ela pertence?
+
+3. Ela faz parte da versão Free ou Premium?
+
+4. Ela mantém a arquitetura organizada?
+
+Caso alguma dessas perguntas não possua resposta clara, a implementação deverá ser reavaliada.
+
+---
+
+# Padrões de Desenvolvimento
+
+Todo código novo deverá:
+
+- Ser modular
+- Ser documentado
+- Possuir nomes claros
+- Evitar duplicação
+- Ser fácil de testar
+- Ser fácil de manter
+
+---
+
+# Roadmap
+
+Versão 0.1
+
+- Login Automático
+
+Versão 0.2
+
+- Interface gráfica
+
+Versão 0.3
+
+- Sistema de Configuração
+
+Versão 0.4
+
+- Atualizador
+
+Versão 0.5
+
+- Sistema de Licenciamento
+
+Versão 1.0
+
+Primeira versão oficial do software.
+
+---
+
+# Registro de Decisões
+
+As decisões técnicas importantes não serão registradas neste documento.
+
+Elas deverão ser documentadas em:
+
+.project/decisions/DECISIONS.md
+
+---
+
+# Backlog
+
+Ideias futuras deverão ser registradas em:
+
+.project/roadmap/BACKLOG.md
+
+---
+
+# Considerações Finais
+
+Este documento representa a visão oficial do projeto.
+
+Toda evolução do Auto Login TO deverá respeitar os princípios aqui definidos, garantindo que o software permaneça organizado, escalável e preparado para crescimento contínuo.
