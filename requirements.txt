@@ -1,0 +1,4 @@
+pywin32>=306
+opencv-python>=4.9.0
+numpy>=1.26.0
+python-dotenv>=1.0.0
