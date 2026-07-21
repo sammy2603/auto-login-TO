@@ -16,6 +16,25 @@ class GameClient:
             timeout=self.settings.window_timeout,
     )   
     
+    def wait_template(
+        self,
+        template,
+        timeout=30,
+        threshold=0.9,
+    ):
+        return self.vision.wait_template(
+            hwnd=self.hwnd,
+            template=template,
+            timeout=timeout,
+            threshold=threshold,
+    )
+
+    def capture(self):
+        return self.window.capture()
+    
+    def client_size(self):
+        return self.window.client_size()
+    
     @property
     def hwnd(self):
         return self.window.hwnd

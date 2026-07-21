@@ -1,0 +1,13 @@
+class InputService:
+
+    def click(self, hwnd, x, y):
+        ...
+
+    def type(self, hwnd, text):
+        ...
+
+    def clear(self, hwnd):
+        ...
+
+    def press_key(self, hwnd, key):
+        ...

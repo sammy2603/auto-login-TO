@@ -10,7 +10,8 @@ class LoginWorkflow(BaseWorkflow):
     def execute(self):
 
         self.client.connect()
-        print(self.client.hwnd)
+        print(self.client.client_size())
+
 
 
         self.client.login()
@@ -18,3 +19,14 @@ class LoginWorkflow(BaseWorkflow):
         self.client.select_server()
 
         self.client.wait_game_loaded()
+    
+    def wait_template(
+        self,
+        template,
+        timeout=30,
+):
+        return self.vision.wait_template(
+            hwnd=self.hwnd,
+            template=template,
+            timeout=timeout,
+    )
