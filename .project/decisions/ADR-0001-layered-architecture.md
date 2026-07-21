@@ -1,15 +1,67 @@
 # ADR-0001
 
-## O produto será desenvolvido utilizando Arquitetura em Camadas.
+## Status
 
-### Motivo
+Aceito
 
-Separar regras de negócio da implementação técnica.
+---
 
-### Consequências
+## Contexto
 
-As funcionalidades não dependerão diretamente de bibliotecas como OpenCV ou PyWin32.
+O projeto começou como um script simples de automação.
 
-Toda comunicação ocorrerá através de serviços especializados.
+Com a evolução para um produto comercial tornou-se necessário definir uma arquitetura escalável.
 
-Isso permitirá substituir implementações no futuro sem alterar as regras de negócio.
+---
+
+## Problema
+
+Evitar alto acoplamento entre módulos.
+
+Permitir evolução do software.
+
+Facilitar manutenção.
+
+---
+
+## Alternativas
+
+### Script único
+
+Muito simples.
+
+Pouco escalável.
+
+---
+
+### Arquitetura Modular
+
+Boa organização.
+
+Boa manutenção.
+
+---
+
+### Arquitetura em Camadas
+
+Separação clara entre domínio, aplicação e infraestrutura.
+
+Maior facilidade para evolução.
+
+---
+
+## Decisão
+
+Adotar Arquitetura em Camadas utilizando módulos especializados.
+
+---
+
+## Consequências
+
+Melhor manutenção.
+
+Maior escalabilidade.
+
+Facilidade para testes.
+
+Código mais organizado.
