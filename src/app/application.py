@@ -1,17 +1,16 @@
+from src.app.container import ServiceContainer
 from src.app.automation_engine import AutomationEngine
 
 
 class Application:
 
     def __init__(self):
-        self.engine = AutomationEngine()
-
-    def initialize(self):
-        print("Initializing application...")
+        self.container = ServiceContainer()
+        self.engine = AutomationEngine(self.container)
 
     def start(self):
-        self.initialize()
+        print("Inicializando aplicação...")
         self.engine.run()
 
     def shutdown(self):
-        print("Application closed.")
+        print("Finalizando aplicação...")
