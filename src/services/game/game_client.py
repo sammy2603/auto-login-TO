@@ -33,7 +33,6 @@ class GameClient:
             title_substring=title_substring,
             timeout=timeout,
         )
-        return self
 
     @property
     def hwnd(self):
@@ -83,11 +82,14 @@ class GameClient:
     def click(self, x: int, y: int):
         return self.input.click(self.hwnd, x, y)
 
-    def type(self, text: str):
+    def type_text(self, text: str):
         return self.input.type(self.hwnd, text)
 
-    def clear(self):
-        return self.input.clear(self.hwnd)
+    def clear(self, x: int, y: int):
+        return self.input.clear(self.hwnd, x, y)
 
     def press_key(self, key):
         return self.input.press_key(self.hwnd, key)
+
+    def is_connected(self):
+        return self.window.is_connected()

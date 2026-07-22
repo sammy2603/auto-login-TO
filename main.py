@@ -49,8 +49,6 @@ def ensure_resolution_warning(hwnd):
 
 def login(self):
 
-    self.logger.info("Aguardando tela de login...")
-
     template = self.client.load_template(
         "campo_usuario"
     )
