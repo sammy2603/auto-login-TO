@@ -33,8 +33,8 @@ class LoginWorkflow:
         print("Conectando à janela do jogo...")
 
         self.client.connect(
-            title_substring=self.settings.WINDOW_TITLE,
-            timeout=self.settings.TIMEOUT_LOGIN_SCREEN,
+            title_substring=self.settings.window_title,
+            timeout=self.settings.timeout_login_screen,
         )
 
     def wait_login_screen(self):
@@ -46,8 +46,8 @@ class LoginWorkflow:
 
         pos = self.client.wait_template(
             self.username_field,
-            timeout=self.settings.TIMEOUT_LOGIN_SCREEN,
-            threshold=self.settings.MATCH_THRESHOLD,
+            timeout=self.settings.timeout_login_screen,
+            threshold=self.settings.match_threshold,
         )
 
         if pos is None:
@@ -60,7 +60,7 @@ class LoginWorkflow:
 
         pos = self.client.find_template(
             self.username_field,
-            threshold=self.settings.MATCH_THRESHOLD,
+            threshold=self.settings.match_threshold,
         )
 
         if pos is None:
@@ -72,7 +72,7 @@ class LoginWorkflow:
 
         self.client.clear(x, y)
         self.client.type_text(
-            self.settings.USERNAME
+            self.settings.username
         )
 
     def fill_password(self):
@@ -84,7 +84,7 @@ class LoginWorkflow:
 
         pos = self.client.find_template(
             template,
-            threshold=self.settings.MATCH_THRESHOLD,
+            threshold=self.settings.match_threshold,
         )
 
         if pos is None:
@@ -96,7 +96,7 @@ class LoginWorkflow:
 
         self.client.clear(x, y)
         self.client.type_text(
-            self.settings.PASSWORD
+            self.settings.password
         )
 
     def click_login(self):
@@ -108,7 +108,7 @@ class LoginWorkflow:
 
         pos = self.client.find_template(
             template,
-            threshold=self.settings.MATCH_THRESHOLD,
+            threshold=self.settings.match_threshold,
         )
 
         if pos is None:
