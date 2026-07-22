@@ -47,34 +47,24 @@ def ensure_resolution_warning(hwnd):
             f"Os templates podem não bater corretamente.")
 
 
-def do_login(hwnd):
-    log("Aguardando tela de login...")
-    pos = wait_for_template(hwnd, "campo_usuario.png", config.TEMPLATES_DIR,
-                             threshold=config.MATCH_THRESHOLD,
-                             timeout=config.TIMEOUT_LOGIN_SCREEN)
-    if not pos:
-        raise TimeoutError("Tela de login não apareceu a tempo (campo_usuario.png não encontrado).")
+def login(self):
 
-    x, y = pos
-    log(f"Campo de usuário encontrado em ({x}, {y})")
-    clear_field(hwnd, x, y)
-    type_text(hwnd, config.USERNAME)
+    self.logger.info("Aguardando tela de login...")
 
-    pos_senha = locate_template_in_window(hwnd, "campo_senha.png", config.TEMPLATES_DIR,
-                                           threshold=config.MATCH_THRESHOLD)
-    if not pos_senha:
-        raise RuntimeError("Campo de senha não encontrado (campo_senha.png).")
-    x, y = pos_senha
-    log(f"Campo de senha encontrado em ({x}, {y})")
-    clear_field(hwnd, x, y)
-    type_text(hwnd, config.PASSWORD)
+    template = self.client.load_template(
+        "campo_usuario"
+    )
 
-    pos_botao = locate_template_in_window(hwnd, "botao_entrar.png", config.TEMPLATES_DIR,
-                                           threshold=config.MATCH_THRESHOLD)
-    if not pos_botao:
-        raise RuntimeError("Botão de login não encontrado (botao_entrar.png).")
-    log("Clicando em Entrar...")
-    click_at(hwnd, *pos_botao)
+    pos = self.client.wait_template(
+        template,
+        timeout=self.settings.TIMEOUT_LOGIN_SCREEN,
+        threshold=self.settings.MATCH_THRESHOLD,
+    )
+
+    if pos is None:
+        raise TimeoutError(
+            "Tela de login não apareceu."
+        )
 
 
 def select_server(hwnd):
@@ -122,7 +112,7 @@ def main():
     ensure_resolution_warning(hwnd)
 
     try:
-        do_login(hwnd)
+        login(hwnd)
         time.sleep(1.5)  # margem para transição de tela
         select_server(hwnd)
         wait_enter_game(hwnd)

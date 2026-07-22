@@ -1,4 +1,14 @@
+from __future__ import annotations
+
+
 class GameClient:
+    """
+    Fachada responsável por expor operações de alto nível para interação
+    com o cliente do jogo.
+
+    O GameClient não implementa regras de negócio. Ele apenas coordena
+    WindowService, VisionService e InputService.
+    """
 
     def __init__(
         self,
@@ -10,31 +20,74 @@ class GameClient:
         self.vision = vision_service
         self.input = input_service
 
-    def connect(self):
+    # =====================================================
+    # Window
+    # =====================================================
+
+    def connect(
+        self,
+        title_substring: str,
+        timeout: float = 30.0,
+    ):
         self.window.connect(
-            title_substring=self.settings.window_title,
-            timeout=self.settings.window_timeout,
-    )   
-    
+            title_substring=title_substring,
+            timeout=timeout,
+        )
+        return self
+
+    @property
+    def hwnd(self):
+        return self.window.hwnd
+
+    def capture(self):
+        return self.window.capture()
+
+    def client_size(self):
+        return self.window.client_size()
+
+    # =====================================================
+    # Vision
+    # =====================================================
+
+    def load_template(self, name: str):
+        return self.vision.load_template(name)
+
+    def find_template(
+        self,
+        template,
+        threshold: float = 0.90,
+    ):
+        return self.vision.find_template(
+            hwnd=self.hwnd,
+            template=template,
+            threshold=threshold,
+        )
+
     def wait_template(
         self,
         template,
-        timeout=30,
-        threshold=0.9,
+        timeout: float = 30.0,
+        threshold: float = 0.90,
     ):
         return self.vision.wait_template(
             hwnd=self.hwnd,
             template=template,
             timeout=timeout,
             threshold=threshold,
-    )
+        )
 
-    def capture(self):
-        return self.window.capture()
-    
-    def client_size(self):
-        return self.window.client_size()
-    
-    @property
-    def hwnd(self):
-        return self.window.hwnd
+    # =====================================================
+    # Input
+    # =====================================================
+
+    def click(self, x: int, y: int):
+        return self.input.click(self.hwnd, x, y)
+
+    def type(self, text: str):
+        return self.input.type(self.hwnd, text)
+
+    def clear(self):
+        return self.input.clear(self.hwnd)
+
+    def press_key(self, key):
+        return self.input.press_key(self.hwnd, key)
