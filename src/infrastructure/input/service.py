@@ -9,11 +9,11 @@ from input_utils import (
 
 class InputService:
     """
-    Serviço responsável por enviar entradas de mouse e teclado
-    para a janela do jogo.
+        Adaptador responsável por enviar entradas de mouse e teclado
+        para a janela do jogo.
 
-    Atualmente atua como um adaptador para o módulo legado
-    `input_utils.py`.
+        Encapsula o módulo legado input_utils.py até que ele seja
+        substituído por uma implementação própria.
     """
 
     def click(

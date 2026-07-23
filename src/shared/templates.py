@@ -1,18 +1,27 @@
-from enum import StrEnum
+"""
+Templates utilizados pelo sistema de visão.
+
+Os nomes NÃO possuem extensão ".png".
+A responsabilidade de localizar o arquivo é do VisionService.
+"""
 
 
-class Templates(StrEnum):
+class LoginTemplates:
+    USERNAME = "campo_usuario"
+    PASSWORD = "campo_senha"
+    LOGIN_BUTTON = "botao_entrar"
 
-    LOGIN = "login"
 
-    CAMPO_USUARIO = "campo_usuario"
+class ServerTemplates:
+    SERVER_LIST = "lista_servidores"
+    SERVER_CONFIRM = "botao_confirmar_servidor"
 
-    CAMPO_SENHA = "campo_senha"
 
-    BOTAO_ENTRAR = "botao_entrar"
+class CharacterTemplates:
+    CHARACTER_LIST = "lista_personagens"
+    ENTER_GAME = "botao_entrar_jogo"
 
-    SERVIDOR = "servidor"
 
-    SERVIDOR_CONFIRMAR = "botao_confirmar_servidor"
-
-    TELA_JOGO = "tela_jogo_carregada"
+class HudTemplates:
+    HP_BAR = "hud_hp"
+    MP_BAR = "hud_mp"
