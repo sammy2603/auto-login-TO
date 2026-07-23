@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from input_utils import (
     click_at,
     type_text,
@@ -7,10 +9,11 @@ from input_utils import (
 
 class InputService:
     """
-    Adaptador para o módulo legado input_utils.py.
+    Serviço responsável por enviar entradas de mouse e teclado
+    para a janela do jogo.
 
-    Responsável exclusivamente por enviar entradas
-    de mouse e teclado para a janela do jogo.
+    Atualmente atua como um adaptador para o módulo legado
+    `input_utils.py`.
     """
 
     def click(
@@ -18,17 +21,17 @@ class InputService:
         hwnd,
         x: int,
         y: int,
-    ):
+    ) -> None:
         """
-        Clica em uma posição da janela.
+        Realiza um clique na posição informada.
         """
         click_at(hwnd, x, y)
 
-    def type(
+    def type_text(
         self,
         hwnd,
         text: str,
-    ):
+    ) -> None:
         """
         Digita um texto utilizando mensagens do Windows.
         """
@@ -39,9 +42,9 @@ class InputService:
         hwnd,
         x: int,
         y: int,
-    ):
+    ) -> None:
         """
-        Limpa um campo de texto.
+        Limpa o conteúdo de um campo de texto.
         """
         clear_field(hwnd, x, y)
 
@@ -49,11 +52,11 @@ class InputService:
         self,
         hwnd,
         key,
-    ):
+    ) -> None:
         """
         Pressiona uma tecla.
 
-        Ainda será implementado.
+        Implementação futura.
         """
         raise NotImplementedError(
             "press_key ainda não implementado."

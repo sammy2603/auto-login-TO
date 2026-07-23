@@ -1,119 +1,121 @@
-from __future__ import annotations
+import time
 
 
 class LoginWorkflow:
-    """
-    Workflow responsável pelo processo completo de login.
-
-    Este workflow descreve apenas as regras de negócio.
-    Toda interação com o jogo é realizada através do GameClient.
-    """
 
     def __init__(self, client, settings, logger=None):
         self.client = client
         self.settings = settings
         self.logger = logger
 
-    # ------------------------------------------------------------------
-    # Fluxo principal
-    # ------------------------------------------------------------------
+    def log(self, message: str):
+        if self.logger:
+            self.logger.info(message)
+        else:
+            print(f"[LoginWorkflow] {message}")
 
     def execute(self):
         self.connect()
-        self.wait_login_screen()
-        self.fill_username()
-        self.fill_password()
-        self.click_login()
-
-    # ------------------------------------------------------------------
-    # Etapas
-    # ------------------------------------------------------------------
+        self.login()
 
     def connect(self):
-        print("Conectando à janela do jogo...")
+
+        self.log("Abrindo cliente do jogo...")
+
+        self.client.launch(
+            self.settings.client_path
+        )
+
+        self.log("Aguardando janela...")
 
         self.client.connect(
             title_substring=self.settings.window_title,
             timeout=self.settings.timeout_login_screen,
         )
 
-    def wait_login_screen(self):
-        print("Aguardando tela de login...")
+        self.log("Janela encontrada.")
 
-        self.username_field = self.client.load_template(
+    def login(self):
+
+        self.log("Aguardando tela de login...")
+
+        usuario = self.client.load_template(
             "campo_usuario"
         )
 
         pos = self.client.wait_template(
-            self.username_field,
+            usuario,
             timeout=self.settings.timeout_login_screen,
             threshold=self.settings.match_threshold,
         )
 
-        if pos is None:
+        if not pos:
             raise TimeoutError(
                 "Tela de login não apareceu."
             )
 
-    def fill_username(self):
-        print("Preenchendo usuário...")
+        self.log(f"Campo usuário localizado em {pos}")
 
-        pos = self.client.find_template(
-            self.username_field,
-            threshold=self.settings.match_threshold,
+        self.log("Preenchendo usuário...")
+
+        self.client.fill_text(
+            position=pos,
+            text=self.settings.username,
         )
 
-        if pos is None:
-            raise RuntimeError(
-                "Campo de usuário não encontrado."
-            )
+        self.log("Usuário preenchido.")
 
-        x, y = pos
+        time.sleep(0.5)
 
-        self.client.clear(x, y)
-        self.client.type_text(
-            self.settings.username
-        )
-
-    def fill_password(self):
-        print("Preenchendo senha...")
-
-        template = self.client.load_template(
+        senha = self.client.load_template(
             "campo_senha"
         )
 
         pos = self.client.find_template(
-            template,
+            senha,
             threshold=self.settings.match_threshold,
         )
 
-        if pos is None:
+        if not pos:
             raise RuntimeError(
                 "Campo de senha não encontrado."
             )
 
-        x, y = pos
+        self.log(f"Campo senha localizado em {pos}")
 
-        self.client.clear(x, y)
-        self.client.type_text(
-            self.settings.password
+        self.log("Limpando campo senha...")
+        
+        self.log("Preenchendo senha...")
+
+        self.client.fill_text(
+            position=pos,
+            text=self.settings.password,
         )
 
-    def click_login(self):
-        print("Clicando em Entrar...")
+        self.log("Senha preenchida.")
 
-        template = self.client.load_template(
+        time.sleep(0.5)
+
+        entrar = self.client.load_template(
             "botao_entrar"
         )
 
         pos = self.client.find_template(
-            template,
+            entrar,
             threshold=self.settings.match_threshold,
         )
 
-        if pos is None:
+        if not pos:
             raise RuntimeError(
                 "Botão Entrar não encontrado."
             )
 
+        self.log(f"Botão Entrar localizado em {pos}")
+
+        self.log("Clicando em Entrar...")
+
         self.client.click(*pos)
+
+        time.sleep(0.25)
+
+        self.log("Login enviado.")

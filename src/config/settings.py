@@ -13,6 +13,7 @@ class Settings:
     """
 
     def __init__(self):
+        self.client_path = config.CLIENT_PATH
         self.window_title = config.WINDOW_TITLE
 
         self.username = config.USERNAME
@@ -21,7 +22,7 @@ class Settings:
         self.match_threshold = config.MATCH_THRESHOLD
 
         self.timeout_login_screen = config.TIMEOUT_LOGIN_SCREEN
-        self.timeout_server_selection = config.TIMEOUT_SERVER_SELECTION
+        self.timeout_server_selection = config.TIMEOUT_SERVER_SCREEN
         self.timeout_game_load = config.TIMEOUT_ENTER_GAME
 
         self.server_name = config.SERVER_NAME

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from vision import (
@@ -9,53 +11,48 @@ from vision import (
 
 class VisionService:
     """
-    Adaptador para o módulo legado vision.py.
+    Serviço responsável pelas operações de visão computacional.
 
-    Esta classe não implementa algoritmos de visão computacional.
-    Ela apenas fornece uma interface orientada a objetos para o restante
-    da aplicação.
+    Atualmente adapta o módulo legado `vision.py`.
     """
 
     TEMPLATES_DIR = Path("templates")
 
-    def load_template(self, name: str):
+    def load_template(self, name: str) -> str:
         """
-        Carrega um template pelo nome.
+        Retorna apenas o nome do template.
 
-        Exemplo:
-            load_template("campo_usuario")
+        O carregamento real continua sendo feito pelo código legado.
         """
-        path = self.TEMPLATES_DIR / f"{name}.png"
-        return load_template(str(path))
+
+        return f"{name}.png"
 
     def find_template(
         self,
         hwnd,
-        template,
+        template: str,
         threshold: float = 0.90,
     ):
-        """
-        Localiza um template na janela.
-        """
+
         return locate_template_in_window(
-            hwnd=hwnd,
-            template=template,
-            threshold=threshold,
+            hwnd,
+            template,
+            str(self.TEMPLATES_DIR),
+            threshold,
         )
 
     def wait_template(
         self,
         hwnd,
-        template,
+        template: str,
         timeout: float = 30.0,
         threshold: float = 0.90,
     ):
-        """
-        Aguarda até que um template apareça.
-        """
+
         return wait_for_template(
-            hwnd=hwnd,
-            template=template,
-            timeout=timeout,
-            threshold=threshold,
+            hwnd,
+            template,
+            str(self.TEMPLATES_DIR),
+            threshold,
+            timeout,
         )

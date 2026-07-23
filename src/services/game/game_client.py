@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 
 class GameClient:
     """
@@ -15,15 +16,54 @@ class GameClient:
         window_service,
         vision_service,
         input_service,
+        launcher,
     ):
         self.window = window_service
         self.vision = vision_service
         self.input = input_service
+        self.launcher = launcher
 
     # =====================================================
     # Window
     # =====================================================
+    def launch(self, client_path: str):
+        self.launcher.launch(client_path)
 
+    def fill_text(
+            self,
+            position,
+            text: str,
+            click_delay: float = 0.25,
+            clear_delay: float = 0.15,
+        ):
+            """
+            Preenche um campo de texto.
+    
+            Fluxo:
+    
+                clique
+                    ↓
+                espera
+                    ↓
+                limpa
+                    ↓
+                espera
+                    ↓
+                digita
+            """
+    
+            x, y = position
+    
+            self.click(x, y)
+    
+            time.sleep(click_delay)
+    
+            self.clear(x, y)
+    
+            time.sleep(clear_delay)
+    
+            self.type_text(text)
+            
     def connect(
         self,
         title_substring: str,
@@ -78,18 +118,73 @@ class GameClient:
     # =====================================================
     # Input
     # =====================================================
+    # =====================================================
+# Input
+# =====================================================
 
-    def click(self, x: int, y: int):
-        return self.input.click(self.hwnd, x, y)
+import time
 
-    def type_text(self, text: str):
-        return self.input.type(self.hwnd, text)
 
-    def clear(self, x: int, y: int):
-        return self.input.clear(self.hwnd, x, y)
+def click(
+    self,
+    x: int,
+    y: int,
+):
+    self.input.click(
+        self.hwnd,
+        x,
+        y,
+    )
 
-    def press_key(self, key):
-        return self.input.press_key(self.hwnd, key)
 
-    def is_connected(self):
-        return self.window.is_connected()
+def type_text(
+    self,
+    text: str,
+):
+    self.input.type_text(
+        self.hwnd,
+        text,
+    )
+
+
+def clear(
+    self,
+    x: int,
+    y: int,
+):
+    self.input.clear(
+        self.hwnd,
+        x,
+        y,
+    )
+
+
+def fill_field(
+    self,
+    position,
+    text: str,
+    click_delay: float = 0.25,
+    clear_delay: float = 0.15,
+):
+
+    x, y = position
+
+    self.click(x, y)
+
+    time.sleep(click_delay)
+
+    self.clear(x, y)
+
+    time.sleep(clear_delay)
+
+    self.type_text(text)
+
+
+def press_key(
+    self,
+    key,
+):
+    self.input.press_key(
+        self.hwnd,
+        key,
+    )
