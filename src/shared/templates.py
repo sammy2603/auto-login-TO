@@ -1,27 +1,48 @@
-"""
-Templates utilizados pelo sistema de visão.
-
-Os nomes NÃO possuem extensão ".png".
-A responsabilidade de localizar o arquivo é do VisionService.
-"""
-
-
 class LoginTemplates:
+    """
+    Templates utilizados durante o login.
+    """
+
     USERNAME = "campo_usuario"
     PASSWORD = "campo_senha"
     LOGIN_BUTTON = "botao_entrar"
 
 
 class ServerTemplates:
-    SERVER_LIST = "lista_servidores"
-    SERVER_CONFIRM = "botao_confirmar_servidor"
+    """
+    Templates utilizados na seleção de servidor.
+    """
+
+    CONFIRM_BUTTON = "botao_confirmar_servidor"
+
+    @staticmethod
+    def server(server_name: str) -> str:
+        """
+        Retorna o template correspondente ao servidor configurado.
+
+        Exemplo:
+            servidor_360
+            servidor_pvp
+            servidor_test
+        """
+        return f"servidor_{server_name}"
 
 
 class CharacterTemplates:
-    CHARACTER_LIST = "lista_personagens"
-    ENTER_GAME = "botao_entrar_jogo"
+    """
+    Templates da tela de seleção de personagem.
+
+    (Será utilizado na próxima etapa.)
+    """
+
+    ENTER_GAME_BUTTON = "botao_entrar_jogo"
 
 
-class HudTemplates:
-    HP_BAR = "hud_hp"
-    MP_BAR = "hud_mp"
+class GameTemplates:
+    """
+    Templates utilizados para confirmar que o jogo carregou.
+
+    (Será utilizado posteriormente.)
+    """
+
+    HUD = "tela_jogo_carregada"

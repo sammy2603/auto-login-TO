@@ -1,41 +1,33 @@
-import time
+from src.domain.workflows.base_workflow import BaseWorkflow
+
+from src.shared.templates import LoginTemplates
+from src.shared.delays import Delays
 
 
-class LoginWorkflow:
+class LoginWorkflow(BaseWorkflow):
     """
-    Workflow responsável pelo login no jogo.
+    Workflow responsável por realizar o login no cliente do jogo.
 
-    Ele orquestra o fluxo de autenticação utilizando apenas
-    a API pública do GameClient.
+    Este workflow apenas descreve o fluxo.
+    Toda interação com o jogo acontece através do GameClient.
     """
-
-    def __init__(self, client, settings, logger=None):
-        self.client = client
-        self.settings = settings
-        self.logger = logger
-
-        self.username_position = None
-
-    # =====================================================
-    # Util
-    # =====================================================
-
-    def log(self, message: str):
-        if self.logger:
-            self.logger.info(message)
-        else:
-            print(f"[LoginWorkflow] {message}")
 
     # =====================================================
     # Fluxo principal
     # =====================================================
 
     def execute(self):
+
         self.launch_client()
+
         self.connect()
+
         self.wait_login_screen()
+
         self.fill_username()
+
         self.fill_password()
+
         self.click_login()
 
     # =====================================================
@@ -73,21 +65,18 @@ class LoginWorkflow:
 
         self.log("Aguardando tela de login...")
 
-        pos = self.client.wait_template(
-            "campo_usuario",
+        self.username_field = self.wait_template(
+            LoginTemplates.USERNAME,
             timeout=self.settings.timeout_login_screen,
-            threshold=self.settings.match_threshold,
         )
 
-        if not pos:
+        if not self.username_field:
             raise TimeoutError(
                 "Tela de login não apareceu."
             )
 
-        self.username_position = pos
-
         self.log(
-            f"Campo usuário localizado em {pos}"
+            f"Campo usuário localizado em {self.username_field}"
         )
 
     # =====================================================
@@ -99,13 +88,15 @@ class LoginWorkflow:
         self.log("Preenchendo usuário...")
 
         self.client.fill_field(
-            self.username_position,
+            self.username_field,
             self.settings.username,
         )
 
-        self.log("Usuário preenchido.")
+        self.client.wait(
+            Delays.AFTER_FILL
+        )
 
-        time.sleep(0.5)
+        self.log("Usuário preenchido.")
 
     # =====================================================
     # Senha
@@ -113,30 +104,32 @@ class LoginWorkflow:
 
     def fill_password(self):
 
-        pos = self.client.find_template(
-            "campo_senha",
-            threshold=self.settings.match_threshold,
+        password = self.find_template(
+            LoginTemplates.PASSWORD,
+            
         )
 
-        if not pos:
+        if not password:
             raise RuntimeError(
-                "Campo de senha não encontrado."
+                "Campo senha não encontrado."
             )
 
         self.log(
-            f"Campo senha localizado em {pos}"
+            f"Campo senha localizado em {password}"
         )
 
         self.log("Preenchendo senha...")
 
-        self.client.fill_field(
-            pos,
+        self.fill(
+            password,
             self.settings.password,
         )
 
-        self.log("Senha preenchida.")
+        self.client.wait(
+            Delays.AFTER_FILL
+        )
 
-        time.sleep(0.5)
+        self.log("Senha preenchida.")
 
     # =====================================================
     # Entrar
@@ -144,24 +137,28 @@ class LoginWorkflow:
 
     def click_login(self):
 
-        pos = self.client.find_template(
-            "botao_entrar",
-            threshold=self.settings.match_threshold,
+        login_button = self.find_template(
+            LoginTemplates.LOGIN_BUTTON,
+            
         )
 
-        if not pos:
+        if not login_button:
             raise RuntimeError(
                 "Botão Entrar não encontrado."
             )
 
         self.log(
-            f"Botão Entrar localizado em {pos}"
+            f"Botão Entrar localizado em {login_button}"
         )
 
         self.log("Clicando em Entrar...")
 
-        self.client.click(*pos)
+        self.click(
+            login_button
+        )
 
-        time.sleep(0.3)
+        self.wait(
+            Delays.AFTER_LOGIN
+        )
 
         self.log("Login enviado.")

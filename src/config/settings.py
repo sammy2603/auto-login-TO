@@ -1,28 +1,30 @@
-from __future__ import annotations
+from dataclasses import dataclass
 
 import config
 
 
+@dataclass(frozen=True)
 class Settings:
     """
-    Centraliza todas as configurações utilizadas pela aplicação.
+    Configurações da aplicação.
 
-    Atualmente utiliza o módulo legado config.py como fonte dos valores.
-    No futuro, poderá carregar configurações de arquivos, banco de dados
-    ou variáveis de ambiente sem impactar o restante da aplicação.
+    Atualmente utiliza o módulo legado config.py
+    como fonte dos valores.
     """
 
-    def __init__(self):
-        self.client_path = config.CLIENT_PATH
-        self.window_title = config.WINDOW_TITLE
+    client_path: str = config.CLIENT_PATH
 
-        self.username = config.USERNAME
-        self.password = config.PASSWORD
+    window_title: str = config.WINDOW_TITLE
 
-        self.match_threshold = config.MATCH_THRESHOLD
+    username: str = config.USERNAME
+    password: str = config.PASSWORD
 
-        self.timeout_login_screen = config.TIMEOUT_LOGIN_SCREEN
-        self.timeout_server_selection = config.TIMEOUT_SERVER_SCREEN
-        self.timeout_game_load = config.TIMEOUT_ENTER_GAME
+    match_threshold: float = config.MATCH_THRESHOLD
 
-        self.server_name = config.SERVER_NAME
+    timeout_login_screen: float = config.TIMEOUT_LOGIN_SCREEN
+
+    timeout_server_selection: float = config.TIMEOUT_SERVER_SCREEN
+
+    timeout_game_load: float = config.TIMEOUT_ENTER_GAME
+
+    server_name: str = config.SERVER_NAME

@@ -5,11 +5,12 @@ import time
 
 class GameClient:
     """
-    Fachada responsável por expor operações de alto nível para interação
-    com o cliente do jogo.
+    Fachada responsável pela interação com o cliente do jogo.
 
-    O GameClient não implementa regras de negócio.
-    Ele apenas coordena os serviços de infraestrutura.
+    Os workflows nunca devem acessar diretamente
+    WindowService, VisionService, InputService ou GameLauncher.
+
+    Toda interação deve acontecer através desta classe.
     """
 
     def __init__(
@@ -56,9 +57,15 @@ class GameClient:
         return self.window.hwnd
 
     def capture(self):
+        """
+        Captura a imagem atual da janela.
+        """
         return self.window.capture()
 
     def client_size(self):
+        """
+        Retorna o tamanho da área útil da janela.
+        """
         return self.window.client_size()
 
     # =====================================================
@@ -72,7 +79,7 @@ class GameClient:
         threshold: float = 0.90,
     ):
         """
-        Aguarda um template aparecer na janela.
+        Aguarda um template aparecer.
         """
 
         return self.vision.wait_template(
@@ -88,7 +95,7 @@ class GameClient:
         threshold: float = 0.90,
     ):
         """
-        Procura um template na janela.
+        Procura um template na tela.
         """
 
         return self.vision.find_template(
@@ -97,15 +104,34 @@ class GameClient:
             threshold=threshold,
         )
 
+    def template_exists(
+        self,
+        template_name: str,
+        threshold: float = 0.90,
+    ) -> bool:
+        """
+        Verifica se um template está presente.
+        """
+
+        return (
+            self.find_template(
+                template_name,
+                threshold,
+            )
+            is not None
+        )
+
     # =====================================================
     # Mouse
     # =====================================================
 
-    def click(
-        self,
-        x: int,
-        y: int,
-    ):
+    def click_position(self, position):
+        """
+        Clica em uma posição da tela.
+        """
+
+        x, y = position
+
         self.input.click(
             self.hwnd,
             x,
@@ -116,25 +142,49 @@ class GameClient:
     # Keyboard
     # =====================================================
 
-    def type_text(
-        self,
-        text: str,
-    ):
+    def write(self, text: str):
+        """
+        Digita um texto.
+        """
+
         self.input.type_text(
             self.hwnd,
             text,
         )
 
-    def clear(
-        self,
-        x: int,
-        y: int,
-    ):
+    def clear_field(self, position):
+        """
+        Limpa um campo de texto.
+        """
+
+        x, y = position
+
         self.input.clear(
             self.hwnd,
             x,
             y,
         )
+
+    def press_key(self, key):
+        """
+        Pressiona uma tecla.
+        """
+
+        self.input.press_key(
+            self.hwnd,
+            key,
+        )
+
+    # =====================================================
+    # Helpers
+    # =====================================================
+
+    def wait(self, seconds: float):
+        """
+        Aguarda um intervalo.
+        """
+
+        time.sleep(seconds)
 
     def fill_field(
         self,
@@ -144,26 +194,15 @@ class GameClient:
         clear_delay: float = 0.15,
     ):
         """
-        Realiza todo o fluxo necessário para preencher um campo.
+        Fluxo completo para preencher um campo.
         """
 
-        x, y = position
+        self.click_position(position)
 
-        self.click(x, y)
+        self.wait(click_delay)
 
-        time.sleep(click_delay)
+        self.clear_field(position)
 
-        self.clear(x, y)
+        self.wait(clear_delay)
 
-        time.sleep(clear_delay)
-
-        self.type_text(text)
-
-    def press_key(
-        self,
-        key,
-    ):
-        self.input.press_key(
-            self.hwnd,
-            key,
-        )
+        self.write(text)

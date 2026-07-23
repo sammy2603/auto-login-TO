@@ -9,10 +9,12 @@ client.is_screen(Screens.LOGIN)
 
 class Screens:
 
-    LOGIN = "login"
+    LOGIN = "Login"
 
-    SERVER_SELECTION = "server_selection"
+    SERVER_SELECTION = "Server Selection"
 
-    CHARACTER_SELECTION = "character_selection"
+    CHARACTER_SELECTION = "Character Selection"
 
-    GAME = "game"
+    GAME = "Game"
+
+    DISCONNECTED = "Disconnected"
