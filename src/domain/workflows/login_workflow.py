@@ -2,6 +2,7 @@ from src.domain.workflows.base_workflow import BaseWorkflow
 
 from src.shared.templates import LoginTemplates
 from src.shared.delays import Delays
+from src.shared.keys import Keys
 
 
 class LoginWorkflow(BaseWorkflow):
@@ -105,26 +106,19 @@ class LoginWorkflow(BaseWorkflow):
 
     def fill_password(self):
 
-        password = self.find_template(
-            LoginTemplates.PASSWORD,
-            
-        )
+        self.log("Avançando para o campo de senha (TAB)...")
 
-        if not password:
-            raise RuntimeError(
-                "Campo senha não encontrado."
-            )
+        self.press_key(Keys.TAB)
 
-        self.log(
-            f"Campo senha localizado em {password}"
-        )
+        self.wait(Delays.AFTER_CLICK)
+
+        self.clear_current()
+
+        self.wait(Delays.AFTER_CLEAR)
 
         self.log("Preenchendo senha...")
 
-        self.fill(
-            password,
-            self.settings.password,
-        )
+        self.write(self.settings.password)
 
         self.client.wait(
             Delays.AFTER_FILL

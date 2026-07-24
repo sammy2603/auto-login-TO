@@ -105,6 +105,18 @@ class BaseWorkflow:
             text,
         )
 
+    def clear_current(
+        self,
+        max_chars: int = 30,
+    ):
+        """
+        Limpa o campo que já está com foco, sem clicar (útil após TAB).
+        """
+
+        self.client.clear_current_field(
+            max_chars=max_chars,
+        )
+
     def click(
         self,
         position,

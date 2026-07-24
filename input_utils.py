@@ -54,6 +54,16 @@ def press_key(hwnd, vk_code: int, delay: float = 0.05):
     win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, 0)
 
 
+def clear_current_field(hwnd, max_chars: int = 30, delay: float = 0.01):
+    """
+    Limpa o campo que já está com foco (via BACKSPACE), sem clicar em
+    nenhuma posição. Útil depois de navegar entre campos com TAB, onde
+    clicar de novo poderia tirar o foco do campo certo.
+    """
+    for _ in range(max_chars):
+        press_key(hwnd, win32con.VK_BACK, delay=delay)
+
+
 def clear_field(hwnd, x: int, y: int, max_chars: int = 30):
     """
     Clica no campo e envia BACKSPACE várias vezes para limpar texto

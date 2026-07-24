@@ -230,6 +230,17 @@ class GameClient:
             y,
         )
 
+    def clear_current_field(self, max_chars: int = 30):
+        """
+        Limpa o campo que já está com foco (sem clicar em nenhuma
+        posição). Útil depois de navegar entre campos com TAB.
+        """
+
+        self.input.clear_current(
+            self.hwnd,
+            max_chars=max_chars,
+        )
+
     def press_key(self, key):
         """
         Pressiona uma tecla.
