@@ -18,7 +18,6 @@ class Application:
         """
         Inicia a aplicação.
         """
-        print("Inicializando aplicação...")
 
         self.container.engine.run()
 
@@ -28,7 +27,7 @@ class Application:
         """
 
         print("Finalizando aplicação...")
-
+        pass
         # Futuramente:
         #
         # self.container.window_service.disconnect()
