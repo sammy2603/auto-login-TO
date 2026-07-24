@@ -5,6 +5,7 @@ from src.config.settings import Settings
 from src.infrastructure.window.service import WindowService
 from src.infrastructure.vision.service import VisionService
 from src.infrastructure.input.service import InputService
+from src.services.game.game_session import GameSession
 from src.infrastructure.game.launcher import GameLauncher
 
 from src.services.game.game_client import GameClient
@@ -31,6 +32,12 @@ class ServiceContainer:
         self.settings = Settings()
 
         # ------------------------------------------------------------------
+        # Sessão do jogo
+        #-----------------------------------------------------------------
+      
+        self.session = GameSession()
+
+        # ------------------------------------------------------------------
         # Infraestrutura
         # ------------------------------------------------------------------
 
@@ -45,10 +52,11 @@ class ServiceContainer:
 
 
         self.game_client = GameClient(
+            session=self.session,
+            launcher=self.launcher,
             window_service=self.window,
             vision_service=self.vision,
             input_service=self.input,
-            launcher=self.launcher,
         )
 
         # ------------------------------------------------------------------

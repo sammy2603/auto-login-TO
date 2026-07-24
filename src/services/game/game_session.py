@@ -9,21 +9,27 @@ class GameSession:
     """
     Representa uma instância do cliente do jogo.
 
-    Esta classe armazena o estado da sessão atual.
-    Não possui regras de negócio.
+    Esta classe apenas armazena o estado da sessão.
+    Não contém regras de negócio.
     """
 
+    # =====================================================
     # Processo
+    # =====================================================
 
     pid: Optional[int] = None
 
     process = None
 
+    # =====================================================
     # Janela
+    # =====================================================
 
     hwnd: Optional[int] = None
 
-    # Dados da conta
+    # =====================================================
+    # Informações da conta
+    # =====================================================
 
     account: Optional[str] = None
 
@@ -31,11 +37,15 @@ class GameSession:
 
     character: Optional[str] = None
 
-    # Identificação
+    # =====================================================
+    # Identificação da instância
+    # =====================================================
 
     instance_name: Optional[str] = None
 
+    # =====================================================
     # Estado
+    # =====================================================
 
     launched: bool = False
 
@@ -43,24 +53,23 @@ class GameSession:
 
     in_game: bool = False
 
+    # =====================================================
+    # Utilidades
+    # =====================================================
+
     def reset(self):
 
         self.pid = None
-
         self.process = None
 
         self.hwnd = None
 
         self.account = None
-
         self.server = None
-
         self.character = None
 
         self.instance_name = None
 
         self.launched = False
-
         self.connected = False
-
         self.in_game = False

@@ -4,19 +4,16 @@ from typing import Optional
 
 from .exceptions import WindowNotFoundError
 
-# -------------------------------------------------------------------------
-# Camada de compatibilidade com o código legado.
-#
-# Enquanto a migração não é concluída, o WindowService delega as operações
-# para window_utils.py. Futuramente esse arquivo poderá ser removido sem que
-# o restante da aplicação precise ser alterado.
-# -------------------------------------------------------------------------
-
 from window_utils import (
     capture_window,
     find_window,
+    find_window_by_pid,
     get_client_size,
+    get_window_pid,
+    list_windows,
+    wait_for_new_window,
     wait_for_window,
+    wait_for_window_by_pid,
 )
 
 
@@ -24,86 +21,140 @@ class WindowService:
     """
     Serviço responsável pela comunicação com a janela do jogo.
 
-    Esta classe encapsula toda interação relacionada ao HWND da aplicação.
-    Nenhuma outra parte do sistema deve acessar diretamente window_utils.py.
+    Toda a aplicação deve conversar apenas com esta classe.
     """
 
     def __init__(self):
         self._hwnd: Optional[int] = None
 
+    # =====================================================
+    # Propriedades
+    # =====================================================
+
     @property
     def hwnd(self) -> int:
-        """
-        Retorna o HWND atualmente conectado.
 
-        Raises:
-            RuntimeError: Caso nenhuma janela tenha sido conectada.
-        """
         if self._hwnd is None:
-            raise RuntimeError("Nenhuma janela conectada.")
+            raise RuntimeError(
+                "Nenhuma janela conectada."
+            )
 
         return self._hwnd
 
-    def connect(
+    # =====================================================
+    # Conexão
+    # =====================================================
+
+    def connect_new_window(
         self,
-        title_substring: str,
         timeout: float = 30.0,
-    ) -> int:
+    ) -> tuple[int, int]:
         """
-        Aguarda a janela do jogo aparecer e realiza a conexão.
+        Aguarda o surgimento de uma nova janela.
 
-        Args:
-            title_substring: Parte do título da janela.
-            timeout: Tempo máximo de espera.
-
-        Returns:
-            HWND da janela encontrada.
-
-        Raises:
-            WindowNotFoundError:
-                Caso a janela não seja localizada.
+        Retorna:
+            (hwnd, pid)
         """
 
-        hwnd = wait_for_window(
-            title_substring,
+        previous_windows = list_windows()
+
+        hwnd = wait_for_new_window(
+            previous_windows,
             timeout=timeout,
         )
 
         if hwnd is None:
             raise WindowNotFoundError(
-                f"Não foi possível localizar a janela '{title_substring}'."
+                "Nenhuma nova janela foi encontrada."
             )
+
+        self._hwnd = hwnd
+
+        pid = get_window_pid(hwnd)
+
+        return hwnd, pid
+
+    def connect(
+        self,
+        title_substring: str | None = None,
+        pid: int | None = None,
+        timeout: float = 30.0,
+    ) -> int:
+        """
+        Conecta a uma janela.
+
+        Pode localizar por:
+            - título (compatibilidade)
+            - PID (novo modelo)
+        """
+
+        if pid is not None:
+
+            hwnd = wait_for_window_by_pid(
+                pid=pid,
+                timeout=timeout,
+            )
+
+            if hwnd is None:
+                raise WindowNotFoundError(
+                    f"Não foi possível localizar uma janela para o PID {pid}."
+                )
+
+        else:
+
+            if title_substring is None:
+                raise ValueError(
+                    "title_substring ou pid devem ser informados."
+                )
+
+            hwnd = wait_for_window(
+                title_substring,
+                timeout=timeout,
+            )
+
+            if hwnd is None:
+                raise WindowNotFoundError(
+                    f"Não foi possível localizar a janela '{title_substring}'."
+                )
 
         self._hwnd = hwnd
 
         return hwnd
 
-    def disconnect(self) -> None:
-        """
-        Desconecta da janela atual.
-        """
+    def disconnect(self):
+
         self._hwnd = None
 
-    def is_connected(self) -> bool:
-        """
-        Indica se existe uma janela conectada.
-        """
+    def is_connected(self):
+
         return self._hwnd is not None
 
-    def find(self, title_substring: str) -> Optional[int]:
-        """
-        Procura uma janela sem alterar o estado interno do serviço.
-        """
+    # =====================================================
+    # Busca
+    # =====================================================
+
+    def find(
+        self,
+        title_substring: str,
+    ) -> Optional[int]:
+
         return find_window(title_substring)
 
+    def find_by_pid(
+        self,
+        pid: int,
+    ) -> Optional[int]:
+
+        return find_window_by_pid(pid)
+
+    # =====================================================
+    # Captura
+    # =====================================================
+
     def capture(self):
-        """
-        Captura a client area da janela conectada.
-        """
+
         return capture_window(self.hwnd)
 
-    def client_size(self) -> tuple[int, int]:
-        """
-        Retorna o tamanho da client area da janela.
-        """
+    def client_size(self):
+
         return get_client_size(self.hwnd)

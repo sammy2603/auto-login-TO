@@ -6,7 +6,7 @@ SEM usar o cursor do mouse e SEM precisar que a janela esteja em foco/visível.
 Usa a API PrintWindow do Windows, que renderiza a janela diretamente
 num bitmap em memória.
 """
-
+import win32process
 import ctypes
 import time
 import numpy as np
@@ -36,6 +36,29 @@ def find_window(title_substring: str):
     win32gui.EnumWindows(_callback, None)
     return result["hwnd"]
 
+def find_window_by_pid(pid: int):
+    """
+    Procura a primeira janela pertencente ao PID informado.
+    """
+
+    result = {"hwnd": None}
+
+    def _callback(hwnd, _):
+
+        if not win32gui.IsWindowVisible(hwnd):
+            return True
+
+        _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
+
+        if window_pid == pid:
+            result["hwnd"] = hwnd
+            return False
+
+        return True
+
+    win32gui.EnumWindows(_callback, None)
+
+    return result["hwnd"]
 
 def wait_for_window(title_substring: str, timeout: float = 30.0, poll_interval: float = 0.5):
     """Espera a janela aparecer, sem travar indefinidamente."""
@@ -47,6 +70,28 @@ def wait_for_window(title_substring: str, timeout: float = 30.0, poll_interval: 
         time.sleep(poll_interval)
     return None
 
+def wait_for_window_by_pid(
+    pid: int,
+    timeout: float = 30.0,
+    poll_interval: float = 0.5,
+):
+    """
+    Aguarda a janela pertencente ao PID informado.
+    """
+
+    start = time.time()
+
+    while time.time() - start < timeout:
+
+        hwnd = find_window_by_pid(pid)
+
+        if hwnd:
+
+            return hwnd
+
+        time.sleep(poll_interval)
+
+    return None
 
 def get_client_size(hwnd):
     """Retorna (largura, altura) da área útil (client area) da janela."""
@@ -100,3 +145,61 @@ def capture_window(hwnd) -> np.ndarray:
         pass
 
     return img[:, :, :3]  # remove canal alpha, retorna BGR
+
+def list_windows():
+    """
+    Retorna todos os HWND visíveis.
+    """
+
+    windows = []
+
+    def callback(hwnd, _):
+
+        if not win32gui.IsWindowVisible(hwnd):
+            return True
+
+        title = win32gui.GetWindowText(hwnd)
+
+        if not title.strip():
+            return True
+
+        windows.append(hwnd)
+
+        return True
+
+    win32gui.EnumWindows(callback, None)
+
+    return windows
+
+def wait_for_new_window(
+    previous_windows,
+    timeout=30.0,
+    poll_interval=0.25,
+):
+    """
+    Aguarda aparecer uma nova janela.
+    """
+
+    start = time.time()
+
+    previous = set(previous_windows)
+
+    while time.time() - start < timeout:
+
+        current = set(list_windows())
+
+        diff = current - previous
+
+        if diff:
+
+            return diff.pop()
+
+        time.sleep(poll_interval)
+
+    return None
+
+def get_window_pid(hwnd):
+
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+
+    return pid

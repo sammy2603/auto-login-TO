@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import time
 
 
@@ -15,25 +14,35 @@ class GameClient:
 
     def __init__(
         self,
+        session,
+        launcher,
         window_service,
         vision_service,
         input_service,
-        launcher,
     ):
+        self.session = session
+
+        self.launcher = launcher
         self.window = window_service
         self.vision = vision_service
         self.input = input_service
-        self.launcher = launcher
 
     # =====================================================
     # Launcher
     # =====================================================
 
-    def launch(self, client_path: str):
-        """
-        Abre o cliente do jogo.
-        """
-        self.launcher.launch(client_path)
+    def launch(self, client_path):
+
+        process = self.launcher.launch(client_path)
+
+        self.session.process = process
+
+        self.session.pid = process.pid
+
+        self.session.launched = True
+
+        print(f"[GameClient] PID: {self.session.pid}")
+        return process
 
     # =====================================================
     # Window
@@ -41,20 +50,52 @@ class GameClient:
 
     def connect(
         self,
-        title_substring: str,
+        title_substring: str | None = None,
         timeout: float = 30.0,
     ):
         """
-        Conecta à janela do jogo.
+        Conecta ao cliente do jogo.
+
+        Dá preferência à conexão por PID.
+        Caso a sessão ainda não possua PID,
+        utiliza o método legado por título.
         """
-        self.window.connect(
-            title_substring=title_substring,
-            timeout=timeout,
-        )
+
+        if self.session.pid is not None:
+
+            print(
+                f"[GameClient] Conectando pelo PID {self.session.pid}..."
+            )
+
+            self.window.connect(
+                pid=self.session.pid,
+                timeout=timeout,
+            )
+
+        else:
+
+            print(
+                "[GameClient] Conectando pelo título..."
+            )
+
+            self.window.connect(
+                title_substring=title_substring,
+                timeout=timeout,
+            )
+
+        self.session.hwnd = self.window.hwnd
+        self.session.connected = True
 
     @property
     def hwnd(self):
-        return self.window.hwnd
+
+        if self.session.hwnd is None:
+
+            raise RuntimeError(
+                "Nenhuma janela conectada."
+            )
+
+        return self.session.hwnd
 
     def capture(self):
         """
