@@ -56,6 +56,7 @@ class LoginWorkflow(BaseWorkflow):
         )
 
         self.log("Janela encontrada.")
+        self.wait(5)
 
     # =====================================================
     # Tela de Login

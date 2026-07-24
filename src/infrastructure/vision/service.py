@@ -42,7 +42,7 @@ class VisionService:
     ):
         return locate_template_in_window(
             hwnd=hwnd,
-            template_name=template,
+            template_name=f"{template}.png",
             templates_dir=str(self.templates_dir),
             threshold=threshold,
         )
@@ -56,7 +56,7 @@ class VisionService:
     ):
         return wait_for_template(
             hwnd=hwnd,
-            template_name=template,
+            template_name=f"{template}.png",
             templates_dir=str(self.templates_dir),
             timeout=timeout,
             threshold=threshold,
