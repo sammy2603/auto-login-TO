@@ -19,5 +19,11 @@ class Delays:
     # Após clicar em Entrar
     AFTER_LOGIN = 0.30
 
+    # Após selecionar um servidor
+    AFTER_SERVER_SELECT = 0.30
+
+    # Após confirmar a entrada no servidor
+    AFTER_SERVER_CONFIRM = 0.30
+
     # Mudança de tela
     SCREEN_TRANSITION = 1.50

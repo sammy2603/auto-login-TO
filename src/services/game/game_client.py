@@ -56,10 +56,34 @@ class GameClient:
         """
         Conecta ao cliente do jogo.
 
-        Dá preferência à conexão por PID.
-        Caso a sessão ainda não possua PID,
-        utiliza o método legado por título.
+        Prioriza detectar a JANELA NOVA que aparece logo após o
+        launch. Isso é necessário porque launchers baseados em .bat
+        costumam iniciar o executável real via "start", que roda como
+        um processo separado com PID diferente do processo rastreado
+        em session.pid — nesse caso, conectar pelo PID original nunca
+        encontraria a janela do jogo. Ao detectar a janela nova,
+        corrigimos session.pid para o PID real do client.
+
+        Caso o launch não tenha acontecido nesta sessão (ex: conexão
+        manual/reconexão), cai para os métodos legados por PID ou
+        título.
         """
+
+        if self.session.launched and not self.session.connected:
+
+            print(
+                "[GameClient] Aguardando nova janela após o lançamento..."
+            )
+
+            hwnd, pid = self.window.connect_new_window(
+                timeout=timeout,
+            )
+
+            self.session.hwnd = hwnd
+            self.session.pid = pid  # corrige para o PID real da janela
+
+            self.session.connected = True
+            return
 
         if self.session.pid is not None:
 
