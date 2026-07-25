@@ -84,4 +84,5 @@ class ServiceContainer:
             login_workflow=self.login_workflow,
             server_workflow=self.server_workflow,
             character_workflow=self.character_workflow,
+            max_connection_retries=self.settings.max_connection_retries,
         )

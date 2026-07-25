@@ -1,7 +1,8 @@
 from src.domain.workflows.base_workflow import BaseWorkflow
 
-from src.shared.templates import CharacterTemplates, GameTemplates
+from src.shared.templates import CharacterTemplates, GameTemplates, ErrorTemplates
 from src.shared.delays import Delays
+from src.domain.exceptions import ServerConnectionInterrupted
 
 
 class CharacterWorkflow(BaseWorkflow):
@@ -51,23 +52,64 @@ class CharacterWorkflow(BaseWorkflow):
             "(pode demorar se houver fila no servidor)..."
         )
 
-        self.enter_game_button = self.wait_template_patient(
-            CharacterTemplates.ENTER_GAME_BUTTON,
+        label, position = self.wait_for_any_template_patient(
+            templates={
+                "character_screen": (
+                    CharacterTemplates.ENTER_GAME_BUTTON,
+                    (0, 0),
+                ),
+                "connection_error": (
+                    ErrorTemplates.CONNECTION_INTERRUPTED,
+                    (0, 0),
+                ),
+            },
             timeout=self.settings.timeout_queue,
             poll_interval=Delays.QUEUE_POLL_INTERVAL,
             heartbeat_interval=Delays.QUEUE_HEARTBEAT_INTERVAL,
             waiting_message="Ainda em fila / carregando...",
         )
 
-        if not self.enter_game_button:
+        if label is None:
             raise TimeoutError(
                 "Tela de seleção de personagem não apareceu "
                 f"(timeout de fila de {int(self.settings.timeout_queue)}s excedido)."
             )
 
+        if label == "connection_error":
+            self.log(
+                "Conexão interrompida! O servidor ficou indisponível "
+                "e o jogo voltou pra tela de login."
+            )
+            self._dismiss_connection_error()
+            raise ServerConnectionInterrupted(
+                "Conexão interrompida ao entrar no servidor "
+                f"'{self.settings.server_name}'."
+            )
+
+        self.enter_game_button = position
+
         self.log(
             f"Botão de entrar no jogo localizado em {self.enter_game_button}"
         )
+
+    def _dismiss_connection_error(self):
+
+        ok_button = self.find_template(
+            ErrorTemplates.OK_BUTTON
+        )
+
+        if not ok_button:
+            self.log(
+                "Aviso: botão OK do popup de erro não foi encontrado. "
+                "Tentando prosseguir mesmo assim."
+            )
+            return
+
+        self.log("Fechando popup de erro (clicando em OK)...")
+
+        self.click(ok_button)
+
+        self.wait(Delays.AFTER_CLICK)
 
     # =====================================================
     # Entrar no jogo

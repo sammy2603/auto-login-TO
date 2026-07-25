@@ -29,7 +29,7 @@ USERNAME = os.environ.get("TALISMAN_USER", "")
 PASSWORD = os.environ.get("TALISMAN_PASS", "")
 
 # --- Nome do servidor a selecionar (usado para nomear o template) ---
-SERVER_NAME = "White Horse"
+SERVER_NAME = "Sky Ice"
 
 # --- Pasta onde ficam as imagens de referência (templates) ---
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -46,4 +46,8 @@ TIMEOUT_ENTER_GAME = 30
 # personagem aparecer. Filas podem demorar bastante -- ajuste esse
 # valor conforme a experiência real com o servidor usado.
 # Padrão: 30 minutos.
-TIMEOUT_SERVER_QUEUE = 1800# -*- coding: utf-8 -*-
+TIMEOUT_SERVER_QUEUE = 1800
+
+# Quantas vezes o bot tenta de novo se a conexão for interrompida
+# (servidor indisponível) antes de desistir.
+MAX_CONNECTION_RETRIES = 5# -*- coding: utf-8 -*-

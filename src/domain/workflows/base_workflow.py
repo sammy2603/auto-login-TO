@@ -117,20 +117,51 @@ class BaseWorkflow:
         travado.
         """
 
+        label, position = self.wait_for_any_template_patient(
+            {"target": (template, offset)},
+            timeout=timeout,
+            poll_interval=poll_interval,
+            heartbeat_interval=heartbeat_interval,
+            waiting_message=waiting_message,
+        )
+
+        return position if label else None
+
+    def wait_for_any_template_patient(
+        self,
+        templates,
+        timeout,
+        poll_interval=3.0,
+        heartbeat_interval=15.0,
+        waiting_message="Ainda aguardando...",
+    ):
+        """
+        Como wait_template_patient, mas observa VÁRIOS templates ao
+        mesmo tempo -- útil quando mais de uma tela pode aparecer em
+        seguida (ex: "chegou na tela de personagem" OU "apareceu um
+        popup de erro").
+
+        'templates' é um dict: {label: (template_name, offset)}.
+
+        Retorna (label, position) do primeiro que aparecer, ou
+        (None, None) se o timeout for atingido.
+        """
+
         start = time.time()
         last_heartbeat = start
 
         while True:
-            position = self.find_template(template, offset=offset)
+            for label, (template_name, offset) in templates.items():
+                position = self.find_template(template_name, offset=offset)
 
-            if position:
-                return position
+                if position:
+                    return label, position
 
             now = time.time()
             elapsed = now - start
 
             if elapsed >= timeout:
-                return None
+                return None, None
 
             if now - last_heartbeat >= heartbeat_interval:
                 self.log(

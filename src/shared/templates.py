@@ -41,8 +41,15 @@ class CharacterTemplates:
 class GameTemplates:
     """
     Templates utilizados para confirmar que o jogo carregou.
-
-    (Será utilizado posteriormente.)
     """
 
     HUD = "tela_jogo_carregada"
+
+
+class ErrorTemplates:
+    """
+    Templates de telas de erro que podem aparecer durante o fluxo.
+    """
+
+    CONNECTION_INTERRUPTED = "popup_conexao_interrompida"
+    OK_BUTTON = "botao_ok_popup"

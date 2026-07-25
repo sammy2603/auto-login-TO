@@ -29,4 +29,6 @@ class Settings:
 
     timeout_queue: float = config.TIMEOUT_SERVER_QUEUE
 
+    max_connection_retries: int = config.MAX_CONNECTION_RETRIES
+
     server_name: str = config.SERVER_NAME

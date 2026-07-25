@@ -172,3 +172,28 @@ class LoginWorkflow(BaseWorkflow):
         )
 
         self.log("Login enviado.")
+
+    # =====================================================
+    # Retentativa (após conexão interrompida)
+    # =====================================================
+
+    def retry_login(self):
+        """
+        Refaz o login sem reabrir o client nem reconectar à janela --
+        usado quando o jogo volta pra tela de login sozinho (ex: após
+        um popup de "conexão interrompida"). O client já está aberto e
+        a janela já está conectada, só precisamos preencher os campos
+        de novo.
+        """
+
+        self.log("Refazendo login...")
+
+        self.wait(Delays.SCREEN_TRANSITION)
+
+        self.wait_login_screen()
+
+        self.fill_username()
+
+        self.fill_password()
+
+        self.click_login()
