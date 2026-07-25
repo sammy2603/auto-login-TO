@@ -19,6 +19,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 import config
 from window_utils import wait_for_window, capture_window
 from vision import load_template, locate_on_screenshot
+from src.shared.offsets import FieldOffsets
+
+# Mapeia nome de arquivo de template -> offset configurado (se houver)
+_OFFSET_BY_FILENAME = {
+    "campo_usuario.png": FieldOffsets.USERNAME,
+    "campo_senha.png": FieldOffsets.PASSWORD,
+}
 
 
 def debug_one(screenshot, template_name, output_dir):
@@ -29,6 +36,7 @@ def debug_one(screenshot, template_name, output_dir):
     h, w = template.shape[:2]
     top_left = max_loc
     bottom_right = (top_left[0] + w, top_left[1] + h)
+    center = (top_left[0] + w // 2, top_left[1] + h // 2)
 
     annotated = screenshot.copy()
     color = (0, 255, 0) if max_val >= config.MATCH_THRESHOLD else (0, 0, 255)
@@ -37,9 +45,22 @@ def debug_one(screenshot, template_name, output_dir):
     cv2.putText(annotated, label, (top_left[0], max(top_left[1] - 8, 15)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
+    # Desenha também o ponto de clique real (com offset aplicado), se
+    # esse template tiver um offset configurado em src/shared/offsets.py
+    offset = _OFFSET_BY_FILENAME.get(template_name)
+    click_point = None
+    if offset:
+        dx, dy = offset
+        click_point = (center[0] + dx, center[1] + dy)
+        cv2.drawMarker(annotated, click_point, (255, 0, 255),
+                        markerType=cv2.MARKER_CROSS, markerSize=16, thickness=2)
+        cv2.putText(annotated, "clique", (click_point[0] + 8, click_point[1] - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 255), 2)
+
     status = "OK" if max_val >= config.MATCH_THRESHOLD else "BAIXA CONFIANCA"
+    extra = f" | ponto_de_clique(com offset)={click_point}" if click_point else ""
     print(f"[{status}] {template_name}: confianca={max_val:.3f} "
-          f"(threshold={config.MATCH_THRESHOLD}) posicao_centro=({top_left[0]+w//2}, {top_left[1]+h//2})")
+          f"(threshold={config.MATCH_THRESHOLD}) posicao_centro={center}{extra}")
 
     out_path = os.path.join(output_dir, f"debug_{template_name}")
     cv2.imwrite(out_path, annotated)

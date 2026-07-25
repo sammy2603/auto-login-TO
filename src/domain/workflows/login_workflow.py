@@ -3,6 +3,7 @@ from src.domain.workflows.base_workflow import BaseWorkflow
 from src.shared.templates import LoginTemplates
 from src.shared.delays import Delays
 from src.shared.keys import Keys
+from src.shared.offsets import FieldOffsets
 
 
 class LoginWorkflow(BaseWorkflow):
@@ -70,6 +71,7 @@ class LoginWorkflow(BaseWorkflow):
         self.username_field = self.wait_template(
             LoginTemplates.USERNAME,
             timeout=self.settings.timeout_login_screen,
+            offset=FieldOffsets.USERNAME,
         )
 
         if not self.username_field:
@@ -106,15 +108,28 @@ class LoginWorkflow(BaseWorkflow):
 
     def fill_password(self):
 
-        self.log("Avançando para o campo de senha (TAB)...")
+        password_field = self.find_template(
+            LoginTemplates.PASSWORD,
+            offset=FieldOffsets.PASSWORD,
+        )
 
-        self.press_key(Keys.TAB)
+        if not password_field:
+            raise RuntimeError(
+                "Campo senha não encontrado."
+            )
+
+        self.log(
+            f"Campo senha localizado em {password_field}"
+        )
+
+        self.log("Clicando no campo de senha...")
+
+        self.click(password_field)
 
         self.wait(Delays.AFTER_CLICK)
 
-        self.clear_current()
-
-        self.wait(Delays.AFTER_CLEAR)
+        # Não limpamos o campo aqui: ele já começa vazio (tela de login
+        # recém-carregada).
 
         self.log("Preenchendo senha...")
 

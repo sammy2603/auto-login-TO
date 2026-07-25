@@ -15,14 +15,16 @@
 
 ## Migração de funcionalidades
 
-- [ ] Conectar à janela
-- [ ] Capturar janela
-- [ ] Localizar templates
-- [ ] Clique
-- [ ] Digitação
-- [ ] Login
-- [ ] Seleção de servidor
-- [ ] Entrada no jogo
+- [x] Conectar à janela
+- [x] Capturar janela
+- [x] Localizar templates
+- [x] Clique
+- [x] Digitação
+- [x] Login
+- [x] Seleção de servidor
+- [x] Fila do servidor (espera paciente, sem timeout curto)
+- [x] Seleção de personagem
+- [x] Entrada no jogo (confirmação de HUD)
 
 ## Limpeza
 

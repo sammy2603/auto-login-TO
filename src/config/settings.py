@@ -27,4 +27,6 @@ class Settings:
 
     timeout_game_load: float = config.TIMEOUT_ENTER_GAME
 
+    timeout_queue: float = config.TIMEOUT_SERVER_QUEUE
+
     server_name: str = config.SERVER_NAME

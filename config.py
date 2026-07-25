@@ -29,7 +29,7 @@ USERNAME = os.environ.get("TALISMAN_USER", "")
 PASSWORD = os.environ.get("TALISMAN_PASS", "")
 
 # --- Nome do servidor a selecionar (usado para nomear o template) ---
-SERVER_NAME = "Sky Ice"
+SERVER_NAME = "White Horse"
 
 # --- Pasta onde ficam as imagens de referência (templates) ---
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -40,4 +40,10 @@ MATCH_THRESHOLD = 0.85
 # --- Timeouts (segundos) ---
 TIMEOUT_LOGIN_SCREEN = 30
 TIMEOUT_SERVER_SCREEN = 20
-TIMEOUT_ENTER_GAME = 30# -*- coding: utf-8 -*-
+TIMEOUT_ENTER_GAME = 30
+
+# Tempo máximo de espera na fila do servidor até a tela de seleção de
+# personagem aparecer. Filas podem demorar bastante -- ajuste esse
+# valor conforme a experiência real com o servidor usado.
+# Padrão: 30 minutos.
+TIMEOUT_SERVER_QUEUE = 1800# -*- coding: utf-8 -*-
