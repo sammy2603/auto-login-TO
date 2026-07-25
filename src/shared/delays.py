@@ -10,6 +10,13 @@ class Delays:
     # Após clicar em um campo
     AFTER_CLICK = 0.25
 
+    # Tempo de espera entre clicar num campo de texto e começar a
+    # digitar nele. Maior que AFTER_CLICK de propósito: dá margem pro
+    # client "assentar" o foco antes da digitação começar, evitando
+    # perder os primeiros caracteres (visto acontecer no campo de
+    # senha, onde é difícil notar já que o conteúdo fica mascarado).
+    FIELD_FOCUS_DELAY = 0.50
+
     # Após limpar um campo
     AFTER_CLEAR = 0.15
 

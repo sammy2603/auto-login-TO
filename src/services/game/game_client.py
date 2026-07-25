@@ -266,8 +266,8 @@ class GameClient:
         self,
         position,
         text: str,
-        click_delay: float = 0.25,
-        clear_delay: float = 0.15,
+        click_delay: float = 0.40,
+        clear_delay: float = 0.30,
     ):
         """
         Fluxo completo para preencher um campo.

@@ -29,7 +29,7 @@ USERNAME = os.environ.get("TALISMAN_USER", "")
 PASSWORD = os.environ.get("TALISMAN_PASS", "")
 
 # --- Nome do servidor a selecionar (usado para nomear o template) ---
-SERVER_NAME = "Sky Ice"
+SERVER_NAME = "White Horse"
 
 # --- Pasta onde ficam as imagens de referência (templates) ---
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -50,4 +50,13 @@ TIMEOUT_SERVER_QUEUE = 1800
 
 # Quantas vezes o bot tenta de novo se a conexão for interrompida
 # (servidor indisponível) antes de desistir.
-MAX_CONNECTION_RETRIES = 5# -*- coding: utf-8 -*-
+MAX_CONNECTION_RETRIES = 5
+
+# Qual personagem selecionar na tela de seleção (a conta pode ter até
+# 3, alinhados da esquerda pra direita). Valores: "LEFT", "CENTER" ou
+# "RIGHT".
+CHARACTER_SLOT = "RIGHT"
+
+# Quantas vezes o bot tenta de novo (clicar OK + Entrar) se o popup
+# "Acquiring server IP address" aparecer repetidamente após o login.
+MAX_IP_RETRIES = 10

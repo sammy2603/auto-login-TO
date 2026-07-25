@@ -36,7 +36,7 @@ def click_at(hwnd, x: int, y: int, delay: float = 0.05):
     win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
 
 
-def type_text(hwnd, text: str, delay: float = 0.03):
+def type_text(hwnd, text: str, delay: float = 0.06):
     """
     Envia texto caractere por caractere para a janela, via WM_CHAR.
     Não usa o teclado físico, então não interfere no que o usuário

@@ -53,3 +53,8 @@ class ErrorTemplates:
 
     CONNECTION_INTERRUPTED = "popup_conexao_interrompida"
     OK_BUTTON = "botao_ok_popup"
+
+    # Popup "Acquiring server IP address" que às vezes aparece logo
+    # após clicar em Entrar, na tela de login.
+    ACQUIRING_IP = "popup_acquiring_ip"
+    OK_BUTTON_LOGIN = "botao_ok_login_popup"

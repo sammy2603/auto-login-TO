@@ -2,6 +2,7 @@ from src.domain.workflows.base_workflow import BaseWorkflow
 
 from src.shared.templates import CharacterTemplates, GameTemplates, ErrorTemplates
 from src.shared.delays import Delays
+from src.shared.character_slots import CHARACTER_SLOT_POSITIONS
 from src.domain.exceptions import ServerConnectionInterrupted
 
 
@@ -36,6 +37,8 @@ class CharacterWorkflow(BaseWorkflow):
     def execute(self):
 
         self.wait_character_screen()
+
+        self.select_character()
 
         self.enter_game()
 
@@ -108,6 +111,30 @@ class CharacterWorkflow(BaseWorkflow):
         self.log("Fechando popup de erro (clicando em OK)...")
 
         self.click(ok_button)
+
+        self.wait(Delays.AFTER_CLICK)
+
+    # =====================================================
+    # Seleção do personagem (slot esquerda/centro/direita)
+    # =====================================================
+
+    def select_character(self):
+
+        slot = self.settings.character_slot
+
+        position = CHARACTER_SLOT_POSITIONS.get(slot)
+
+        if not position:
+            raise ValueError(
+                f"Slot de personagem inválido: {slot!r}. "
+                f"Use um de: {list(CHARACTER_SLOT_POSITIONS.keys())}"
+            )
+
+        self.log(
+            f"Selecionando personagem (slot {slot}, posição {position})..."
+        )
+
+        self.click(position)
 
         self.wait(Delays.AFTER_CLICK)
 

@@ -31,4 +31,8 @@ class Settings:
 
     max_connection_retries: int = config.MAX_CONNECTION_RETRIES
 
+    character_slot: str = config.CHARACTER_SLOT
+
+    max_ip_retries: int = config.MAX_IP_RETRIES
+
     server_name: str = config.SERVER_NAME
