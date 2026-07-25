@@ -19,13 +19,16 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import win32gui
 import config
-from window_utils import wait_for_window
+from src.infrastructure.window.service import WindowService
 
 
 def main():
-    hwnd = wait_for_window(config.WINDOW_TITLE, timeout=10)
-    if not hwnd:
-        print(f"Janela '{config.WINDOW_TITLE}' não encontrada.")
+    window = WindowService()
+
+    try:
+        hwnd = window.connect(title_substring=config.WINDOW_TITLE, timeout=10)
+    except Exception as e:
+        print(f"Janela '{config.WINDOW_TITLE}' não encontrada: {e}")
         sys.exit(1)
 
     print(f"Janela principal: hwnd={hwnd}, classe='{win32gui.GetClassName(hwnd)}'")

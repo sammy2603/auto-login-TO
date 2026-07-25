@@ -17,8 +17,8 @@ import cv2
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import config
-from window_utils import wait_for_window, capture_window
-from vision import load_template, locate_on_screenshot
+from src.infrastructure.window.service import WindowService
+from src.infrastructure.vision.service import VisionService
 from src.shared.offsets import FieldOffsets
 
 # Mapeia nome de arquivo de template -> offset configurado (se houver)
@@ -28,8 +28,8 @@ _OFFSET_BY_FILENAME = {
 }
 
 
-def debug_one(screenshot, template_name, output_dir):
-    template = load_template(template_name, config.TEMPLATES_DIR)
+def debug_one(vision, screenshot, template_name, output_dir):
+    template = vision.load_template(template_name[:-4])  # remove ".png"
     result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
@@ -68,12 +68,16 @@ def debug_one(screenshot, template_name, output_dir):
 
 
 def main():
-    hwnd = wait_for_window(config.WINDOW_TITLE, timeout=10)
-    if not hwnd:
-        print(f"Janela '{config.WINDOW_TITLE}' não encontrada.")
+    window = WindowService()
+    vision = VisionService(window_service=window, templates_dir=config.TEMPLATES_DIR)
+
+    try:
+        window.connect(title_substring=config.WINDOW_TITLE, timeout=10)
+    except Exception as e:
+        print(f"Janela '{config.WINDOW_TITLE}' não encontrada: {e}")
         sys.exit(1)
 
-    screenshot = capture_window(hwnd)
+    screenshot = window.capture()
     output_dir = os.getcwd()
 
     if len(sys.argv) > 1:
@@ -87,7 +91,7 @@ def main():
 
     for name in names:
         try:
-            out_path = debug_one(screenshot, name, output_dir)
+            out_path = debug_one(vision, screenshot, name, output_dir)
             print(f"  -> salvo em {out_path}")
         except Exception as e:
             print(f"[ERRO] {name}: {e}")

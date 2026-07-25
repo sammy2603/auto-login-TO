@@ -43,7 +43,7 @@ class ServiceContainer:
         # ------------------------------------------------------------------
 
         self.window = WindowService()
-        self.vision = VisionService()
+        self.vision = VisionService(window_service=self.window)
         self.input = InputService()
         self.launcher = GameLauncher()
 

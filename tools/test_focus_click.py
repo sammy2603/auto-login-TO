@@ -18,8 +18,8 @@ import win32api
 import win32con
 import win32gui
 import config
-from window_utils import wait_for_window
-from input_utils import click_at, type_text, _make_lparam
+from src.infrastructure.window.service import WindowService
+from src.infrastructure.input.service import InputService
 
 
 def gradual_click(hwnd, x: int, y: int, steps: int = 15, step_delay: float = 0.02):
@@ -35,11 +35,11 @@ def gradual_click(hwnd, x: int, y: int, steps: int = 15, step_delay: float = 0.0
     for i in range(1, steps + 1):
         ix = start_x + (x - start_x) * i // steps
         iy = start_y + (y - start_y) * i // steps
-        lparam = _make_lparam(ix, iy)
+        lparam = InputService._make_lparam(ix, iy)
         win32api.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
         time.sleep(step_delay)
 
-    lparam_final = _make_lparam(x, y)
+    lparam_final = InputService._make_lparam(x, y)
     time.sleep(0.05)
     win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam_final)
     time.sleep(0.05)
@@ -53,9 +53,13 @@ def main():
 
     x, y = int(sys.argv[1]), int(sys.argv[2])
 
-    hwnd = wait_for_window(config.WINDOW_TITLE, timeout=10)
-    if not hwnd:
-        print(f"Janela '{config.WINDOW_TITLE}' não encontrada.")
+    window = WindowService()
+    input_service = InputService()
+
+    try:
+        hwnd = window.connect(title_substring=config.WINDOW_TITLE, timeout=10)
+    except Exception as e:
+        print(f"Janela '{config.WINDOW_TITLE}' não encontrada: {e}")
         sys.exit(1)
 
     print("Ativando a janela do jogo (sem mexer no cursor)...")
@@ -71,7 +75,7 @@ def main():
     time.sleep(0.3)
 
     print("Digitando texto de teste: 'testeFOCUS'")
-    type_text(hwnd, "testeFOCUS")
+    input_service.type_text(hwnd, "testeFOCUS")
 
     print("\nObserve no jogo: o texto apareceu no campo certo (onde você clicou)?")
     print("Se sim: o problema era a janela não estar ativa. Se não: não é isso.")

@@ -16,8 +16,8 @@ import time
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import config
-from window_utils import wait_for_window
-from input_utils import click_at, type_text
+from src.infrastructure.window.service import WindowService
+from src.infrastructure.input.service import InputService
 
 
 def main():
@@ -27,17 +27,21 @@ def main():
 
     x, y = int(sys.argv[1]), int(sys.argv[2])
 
-    hwnd = wait_for_window(config.WINDOW_TITLE, timeout=10)
-    if not hwnd:
-        print(f"Janela '{config.WINDOW_TITLE}' não encontrada.")
+    window = WindowService()
+    input_service = InputService()
+
+    try:
+        hwnd = window.connect(title_substring=config.WINDOW_TITLE, timeout=10)
+    except Exception as e:
+        print(f"Janela '{config.WINDOW_TITLE}' não encontrada: {e}")
         sys.exit(1)
 
     print(f"Clicando em ({x}, {y})... Observe se o jogo reagiu (destacou o campo, abriu cursor, etc.)")
-    click_at(hwnd, x, y)
+    input_service.click(hwnd, x, y)
     time.sleep(0.5)
 
     print("Digitando texto de teste: 'teste123'")
-    type_text(hwnd, "teste123")
+    input_service.type_text(hwnd, "teste123")
 
     print("Se nada aconteceu no jogo, ele provavelmente usa DirectInput/RawInput "
           "e vamos precisar de uma abordagem alternativa (cursor real via pyautogui).")

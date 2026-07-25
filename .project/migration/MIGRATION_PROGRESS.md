@@ -28,7 +28,7 @@
 
 ## Limpeza
 
-- [ ] Remover window_utils.py
-- [ ] Remover vision.py
-- [ ] Remover input_utils.py
-- [ ] Remover lógica do main.py
+- [x] Remover window_utils.py
+- [x] Remover vision.py
+- [x] Remover input_utils.py
+- [x] Remover lógica do main.py (já delega tudo para Application)
