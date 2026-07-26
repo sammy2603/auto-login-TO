@@ -24,13 +24,13 @@ class ServiceContainer:
     Responsável por criar e conectar todas as dependências.
     """
 
-    def __init__(self):
+    def __init__(self, settings: Settings | None = None):
 
         # ------------------------------------------------------------------
         # Configurações
         # ------------------------------------------------------------------
 
-        self.settings = Settings()
+        self.settings = settings or Settings()
 
         # ------------------------------------------------------------------
         # Sessão do jogo

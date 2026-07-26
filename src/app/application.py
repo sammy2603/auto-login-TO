@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.app.container import ServiceContainer
+from src.config.settings import Settings
 
 
 class Application:
@@ -11,8 +12,8 @@ class Application:
     o ciclo de vida da aplicação.
     """
 
-    def __init__(self):
-        self.container = ServiceContainer()
+    def __init__(self, settings: Settings | None = None):
+        self.container = ServiceContainer(settings=settings)
 
     def start(self):
         """

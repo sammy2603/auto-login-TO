@@ -1,4 +1,5 @@
 .env
+gui_settings.json
 *.png
 !templates/.gitkeep
 __pycache__/
