@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import threading
 import time
 from typing import Optional
 
@@ -28,6 +29,15 @@ class WindowService:
     client area via PrintWindow (sem usar o mouse físico nem precisar
     que a janela esteja em primeiro plano).
     """
+
+    # Trava COMPARTILHADA entre todas as instâncias (nível de classe).
+    # Necessária pra rodar múltiplas contas em paralelo: se dois clients
+    # abrirem quase ao mesmo tempo, o método de detecção (comparar
+    # janelas antes/depois) poderia "roubar" a janela de outra conta.
+    # A trava garante que só uma conta por vez fica no trecho crítico
+    # de detectar sua própria janela nova -- o resto do fluxo de cada
+    # conta continua rodando em paralelo normalmente.
+    _new_window_lock = threading.Lock()
 
     def __init__(self):
         self._hwnd: Optional[int] = None
@@ -65,12 +75,14 @@ class WindowService:
             (hwnd, pid)
         """
 
-        previous_windows = self._list_windows()
+        with WindowService._new_window_lock:
 
-        hwnd = self._wait_for_new_window(
-            previous_windows,
-            timeout=timeout,
-        )
+            previous_windows = self._list_windows()
+
+            hwnd = self._wait_for_new_window(
+                previous_windows,
+                timeout=timeout,
+            )
 
         if hwnd is None:
             raise WindowNotFoundError(
