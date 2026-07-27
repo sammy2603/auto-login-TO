@@ -1,43 +1,69 @@
-from dataclasses import dataclass
+# -*- coding: utf-8 -*-
+"""
+Configuracoes centrais da aplicacao.
+Fonte unica da verdade para todos os valores de configuracao.
 
-import config
+Nao depende de mais nada alem das variaveis de ambiente (.env).
+"""
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_TEMPLATES_DIR = str(Path(__file__).resolve().parents[2] / "templates")
 
 
 @dataclass(frozen=True)
 class Settings:
     """
-    Configurações da aplicação.
+    Configuracoes imutaveis da aplicacao.
 
-    Atualmente utiliza o módulo legado config.py
-    como fonte dos valores.
+    Todos os valores possuem defaults razoaveis e podem ser
+    sobrescritos no momento da construcao (ex: pela GUI ao logar
+    uma conta especifica).
     """
 
-    client_path: str = config.CLIENT_PATH
+    # --- Caminho do executavel do client ---
+    client_path: str = (
+        r"C:\Users\Sammy\Documents\TalismanOnline - 360\start.bat"
+    )
 
-    window_title: str = config.WINDOW_TITLE
+    # --- Titulo (ou parte do titulo) da janela do jogo ---
+    window_title: str = "Talisman Online"
 
-    username: str = config.USERNAME
-    password: str = config.PASSWORD
+    # --- Resolucao alvo (fixa) ---
+    target_width: int = 1024
+    target_height: int = 768
 
-    match_threshold: float = config.MATCH_THRESHOLD
+    # --- Credenciais (via .env) ---
+    username: str = os.environ.get("TALISMAN_USER", "")
+    password: str = os.environ.get("TALISMAN_PASS", "")
 
-    timeout_login_screen: float = config.TIMEOUT_LOGIN_SCREEN
+    # --- Nome do servidor (usado para nomear o template) ---
+    server_name: str = "White Horse"
 
-    timeout_server_selection: float = config.TIMEOUT_SERVER_SCREEN
+    # --- Pasta de templates (caminho absoluto) ---
+    templates_dir: str = _TEMPLATES_DIR
 
-    timeout_game_load: float = config.TIMEOUT_ENTER_GAME
+    # --- Confianca minima no template matching (0 a 1) ---
+    match_threshold: float = 0.85
 
-    timeout_queue: float = config.TIMEOUT_SERVER_QUEUE
+    # --- Timeouts (segundos) ---
+    timeout_login_screen: float = 30.0
+    timeout_server_selection: float = 20.0
+    timeout_game_load: float = 30.0
+    timeout_queue: float = 1800.0
 
-    max_connection_retries: int = config.MAX_CONNECTION_RETRIES
+    # --- Tentativas em caso de conexao interrompida ---
+    max_connection_retries: int = 5
+    max_ip_retries: int = 10
 
-    character_slot: str = config.CHARACTER_SLOT
+    # --- Slot de personagem: LEFT, CENTER ou RIGHT ---
+    character_slot: str = "RIGHT"
 
-    max_ip_retries: int = config.MAX_IP_RETRIES
-
-    server_name: str = config.SERVER_NAME
-
-    # Apelido/identificador da conta, usado para renomear a janela do
-    # jogo (útil pra diferenciar várias contas rodando ao mesmo tempo).
-    # Se vazio, cai no "username" como identificador.
+    # --- Apelido da conta (preenche a janela, exibido nos logs) ---
     account_label: str = ""

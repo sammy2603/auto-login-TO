@@ -1,62 +1,52 @@
 # -*- coding: utf-8 -*-
 """
-Configurações centrais do bot de login do Talisman Online.
-Ajuste os caminhos e o título da janela conforme seu ambiente.
+Shim de compatibilidade.
+
+As configuracoes agora vivem em src/config/settings.py.
+Este arquivo existe apenas para que scripts em tools/ continuem
+funcionando sem alteracoes.
+
+Novo codigo deve importar diretamente de src.config.settings:
+
+    from src.config.settings import Settings
 """
 
-import os
-from dotenv import load_dotenv
+from src.config.settings import Settings as _Settings
 
-# Carrega variáveis do arquivo .env (se existir) para o ambiente do processo.
-# Deve rodar antes de ler USERNAME/PASSWORD abaixo.
-load_dotenv()
+_defaults = _Settings()
 
-# --- Caminho do executável do client ---
-CLIENT_PATH = r"C:\Users\Sammy\Documents\TalismanOnline - 360\start.bat"
+# --- Caminho do executavel do client ---
+CLIENT_PATH = _defaults.client_path
 
-# --- Título (ou parte do título) da janela do jogo ---
-# Use o utilitário tools/find_window_title.py para descobrir o nome exato.
-WINDOW_TITLE = "Talisman Online"
+# --- Titulo da janela do jogo ---
+WINDOW_TITLE = _defaults.window_title
 
-# --- Resolução alvo (fixa, conforme combinado) ---
-TARGET_WIDTH = 1024
-TARGET_HEIGHT = 768
+# --- Resolucao alvo ---
+TARGET_WIDTH = _defaults.target_width
+TARGET_HEIGHT = _defaults.target_height
 
 # --- Credenciais ---
-# NUNCA deixe usuário/senha hardcoded aqui em produção.
-# Recomendado: variáveis de ambiente ou keyring (biblioteca 'keyring').
-USERNAME = os.environ.get("TALISMAN_USER", "")
-PASSWORD = os.environ.get("TALISMAN_PASS", "")
+USERNAME = _defaults.username
+PASSWORD = _defaults.password
 
-# --- Nome do servidor a selecionar (usado para nomear o template) ---
-SERVER_NAME = "White Horse"
+# --- Servidor ---
+SERVER_NAME = _defaults.server_name
 
-# --- Pasta onde ficam as imagens de referência (templates) ---
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+# --- Templates ---
+TEMPLATES_DIR = _defaults.templates_dir
 
-# --- Confiança mínima no reconhecimento de imagem (0 a 1) ---
-MATCH_THRESHOLD = 0.85
+# --- Confianca minima no template matching ---
+MATCH_THRESHOLD = _defaults.match_threshold
 
-# --- Timeouts (segundos) ---
-TIMEOUT_LOGIN_SCREEN = 30
-TIMEOUT_SERVER_SCREEN = 20
-TIMEOUT_ENTER_GAME = 30
+# --- Timeouts ---
+TIMEOUT_LOGIN_SCREEN = _defaults.timeout_login_screen
+TIMEOUT_SERVER_SCREEN = _defaults.timeout_server_selection
+TIMEOUT_ENTER_GAME = _defaults.timeout_game_load
+TIMEOUT_SERVER_QUEUE = _defaults.timeout_queue
 
-# Tempo máximo de espera na fila do servidor até a tela de seleção de
-# personagem aparecer. Filas podem demorar bastante -- ajuste esse
-# valor conforme a experiência real com o servidor usado.
-# Padrão: 30 minutos.
-TIMEOUT_SERVER_QUEUE = 1800
+# --- Retentativas ---
+MAX_CONNECTION_RETRIES = _defaults.max_connection_retries
+MAX_IP_RETRIES = _defaults.max_ip_retries
 
-# Quantas vezes o bot tenta de novo se a conexão for interrompida
-# (servidor indisponível) antes de desistir.
-MAX_CONNECTION_RETRIES = 5
-
-# Qual personagem selecionar na tela de seleção (a conta pode ter até
-# 3, alinhados da esquerda pra direita). Valores: "LEFT", "CENTER" ou
-# "RIGHT".
-CHARACTER_SLOT = "RIGHT"
-
-# Quantas vezes o bot tenta de novo (clicar OK + Entrar) se o popup
-# "Acquiring server IP address" aparecer repetidamente após o login.
-MAX_IP_RETRIES = 10
+# --- Personagem ---
+CHARACTER_SLOT = _defaults.character_slot

@@ -11,13 +11,14 @@ from tkinter import filedialog, messagebox, ttk
 
 import win32gui
 
-import config
 from src.app.application import Application
 from src.config.settings import Settings
 from src.shared.character_slots import CharacterSlot
 
 GUI_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "gui_settings.json"
 ACCOUNTS_FILE = Path(__file__).resolve().parents[2] / "accounts.json"
+
+_DEFAULTS = Settings()
 
 
 # =====================================================
@@ -132,7 +133,7 @@ class AccountDialog(tk.Toplevel):
         self.label_var = tk.StringVar(value=account.label if account else "")
         self.username_var = tk.StringVar(value=account.username if account else "")
         self.password_var = tk.StringVar(value=account.password if account else "")
-        self.server_var = tk.StringVar(value=account.server_name if account else config.SERVER_NAME)
+        self.server_var = tk.StringVar(value=account.server_name if account else _DEFAULTS.server_name)
         self.slot_var = tk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
         self.auto_login_var = tk.BooleanVar(value=account.auto_login if account else False)
 
@@ -233,7 +234,7 @@ class MainWindow:
         # Label -> indice na lista de contas (cache para lookup)
         self._account_index: dict[str, int] = {}
 
-        self._client_path = tk.StringVar(value=config.CLIENT_PATH)
+        self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
 
         self.log_redirector = None  # criado depois que o widget de log existir
 
@@ -438,7 +439,7 @@ class MainWindow:
             return
         try:
             data = json.loads(GUI_SETTINGS_FILE.read_text(encoding="utf-8"))
-            self._client_path.set(data.get("client_path", config.CLIENT_PATH))
+            self._client_path.set(data.get("client_path", _DEFAULTS.client_path))
         except Exception:
             pass
 
