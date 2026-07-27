@@ -3,28 +3,25 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 import tkinter as tk
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+import win32gui
 
 import config
 from src.app.application import Application
 from src.config.settings import Settings
 from src.shared.character_slots import CharacterSlot
 
-# Onde a interface lembra o caminho do client entre execuções.
 GUI_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "gui_settings.json"
-
-# Onde ficam as contas cadastradas. Mesmo nível de sensibilidade do
-# .env / gui_settings.json -- fica em texto puro no disco (senha
-# incluída), então não sincronize essa pasta nem suba pra repositório
-# compartilhado.
 ACCOUNTS_FILE = Path(__file__).resolve().parents[2] / "accounts.json"
 
 
 # =====================================================
-# Modelo de conta + persistência
+# Modelo de conta + persistencia
 # =====================================================
 
 @dataclass
@@ -34,6 +31,7 @@ class Account:
     password: str
     server_name: str
     character_slot: str
+    auto_login: bool = False
 
 
 def load_accounts() -> list[Account]:
@@ -41,7 +39,11 @@ def load_accounts() -> list[Account]:
         return []
     try:
         data = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
-        return [Account(**item) for item in data]
+        accounts = []
+        for item in data:
+            item.setdefault("auto_login", False)
+            accounts.append(Account(**item))
+        return accounts
     except Exception:
         return []
 
@@ -54,22 +56,17 @@ def save_accounts(accounts: list[Account]):
             encoding="utf-8",
         )
     except Exception as e:
-        print(f"[GUI] Aviso: não foi possível salvar as contas ({e})")
+        print(f"[GUI] Aviso: nao foi possivel salvar as contas ({e})")
 
 
 # =====================================================
-# Redirecionamento de log com identificação por conta
+# Redirecionamento de log com identificacao por conta
 # =====================================================
 
 class MultiAccountLogRedirector:
     """
-    Substitui sys.stdout enquanto a automação roda. Como várias contas
-    podem estar rodando ao mesmo tempo (cada uma na sua própria
-    thread), cada linha impressa é prefixada com o apelido da conta
-    responsável, pra não misturar os logs na mesma caixa de texto.
-
-    O mapeamento thread -> apelido é registrado/removido pela própria
-    thread de cada conta (ver AccountRunner).
+    Substitui sys.stdout enquanto a automacao roda. Cada linha impressa
+    e prefixada com o apelido da conta responsavel.
     """
 
     def __init__(self, widget: tk.Text, original):
@@ -119,7 +116,7 @@ class MultiAccountLogRedirector:
 
 
 # =====================================================
-# Diálogo de adicionar/editar conta
+# Dialogo de adicionar / editar conta
 # =====================================================
 
 class AccountDialog(tk.Toplevel):
@@ -137,6 +134,7 @@ class AccountDialog(tk.Toplevel):
         self.password_var = tk.StringVar(value=account.password if account else "")
         self.server_var = tk.StringVar(value=account.server_name if account else config.SERVER_NAME)
         self.slot_var = tk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
+        self.auto_login_var = tk.BooleanVar(value=account.auto_login if account else False)
 
         form = ttk.Frame(self, padding=12)
         form.pack(fill="both", expand=True)
@@ -145,7 +143,7 @@ class AccountDialog(tk.Toplevel):
         ttk.Label(form, text="Apelido:").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Entry(form, textvariable=self.label_var, width=30).grid(row=0, column=1, sticky="ew", pady=4)
 
-        ttk.Label(form, text="Usuário:").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(form, text="Usuario:").grid(row=1, column=0, sticky="w", pady=4)
         ttk.Entry(form, textvariable=self.username_var).grid(row=1, column=1, sticky="ew", pady=4)
 
         ttk.Label(form, text="Senha:").grid(row=2, column=0, sticky="w", pady=4)
@@ -162,8 +160,14 @@ class AccountDialog(tk.Toplevel):
             state="readonly",
         ).grid(row=4, column=1, sticky="ew", pady=4)
 
+        ttk.Checkbutton(
+            form,
+            text="Auto-login ao abrir o Bot",
+            variable=self.auto_login_var,
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
         buttons = ttk.Frame(form)
-        buttons.grid(row=5, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        buttons.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
         ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="right", padx=(6, 0))
         ttk.Button(buttons, text="Salvar", command=self._on_save).pack(side="right")
 
@@ -176,8 +180,8 @@ class AccountDialog(tk.Toplevel):
 
         if not label or not username or not self.password_var.get():
             messagebox.showwarning(
-                "Campos obrigatórios",
-                "Preencha ao menos apelido, usuário e senha.",
+                "Campos obrigatorios",
+                "Preencha ao menos apelido, usuario e senha.",
             )
             return
 
@@ -187,6 +191,7 @@ class AccountDialog(tk.Toplevel):
             password=self.password_var.get(),
             server_name=self.server_var.get().strip(),
             character_slot=self.slot_var.get(),
+            auto_login=self.auto_login_var.get(),
         )
         self.destroy()
 
@@ -197,321 +202,523 @@ class AccountDialog(tk.Toplevel):
 
 class MainWindow:
     """
-    Janela principal: cadastro de contas (apelido, usuário, senha,
-    servidor, personagem), seleção de múltiplas contas pra logar de
-    uma vez, e log em tempo real identificado por conta.
+    Interface grafica com duas abas:
+      1. Gerenciar Contas  — cadastro, edicao e remocao de contas.
+      2. Login             — checkboxes para logar, com relogging
+                              automatico enquanto o checkbox estiver
+                              marcado.
 
-    Cada conta selecionada roda numa thread própria, cada uma abrindo
-    seu próprio client e operando de forma independente -- então dá
-    pra logar várias contas em paralelo, não uma de cada vez.
+    Contas com auto_login=True tem o checkbox marcado automaticamente
+    na abertura do bot.
     """
 
     def __init__(self):
 
         self.root = tk.Tk()
         self.root.title("Talisman Online - Auto Login")
-        self.root.geometry("700x620")
-        self.root.minsize(620, 480)
+        self.root.geometry("720x660")
+        self.root.minsize(620, 520)
 
         self.accounts: list[Account] = load_accounts()
+
         self._active_threads = 0
         self._active_lock = threading.Lock()
 
-        self._build_client_path_field()
-        self._build_accounts_panel()
+        # Controle de threads por conta
+        self._stop_events: dict[str, threading.Event] = {}
+
+        # Variaveis dos checkboxes na aba Login (label -> BooleanVar)
+        self._login_vars: dict[str, tk.BooleanVar] = {}
+
+        # Label -> indice na lista de contas (cache para lookup)
+        self._account_index: dict[str, int] = {}
+
+        self._client_path = tk.StringVar(value=config.CLIENT_PATH)
+
+        self.log_redirector = None  # criado depois que o widget de log existir
+
+        self._build_client_path_row()
+        self._build_notebook()
         self._build_log_area()
-        self._load_saved_client_path()
-        self._refresh_accounts_list()
 
         self.log_redirector = MultiAccountLogRedirector(self.log_text, sys.stdout)
+
+        self._load_saved_client_path()
+        self._refresh_accounts_list()
+        self._rebuild_login_tab()
+
+        # Auto-login ao abrir
+        self.root.after(500, self._auto_start_accounts)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # =====================================================
-    # Construção da interface
+    # Layout: caminho do client (topo)
     # =====================================================
 
-    def _build_client_path_field(self):
-
-        frame = ttk.Frame(self.root, padding=(12, 12, 12, 0))
+    def _build_client_path_row(self):
+        frame = ttk.Frame(self.root, padding=(12, 12, 12, 6))
         frame.pack(fill="x")
         frame.columnconfigure(1, weight=1)
 
         ttk.Label(frame, text="Client (.exe/.bat):").grid(row=0, column=0, sticky="w")
-        self.client_path_var = tk.StringVar(value=config.CLIENT_PATH)
-        ttk.Entry(frame, textvariable=self.client_path_var).grid(row=0, column=1, sticky="ew", padx=(6, 6))
-        ttk.Button(frame, text="Procurar...", command=self._browse_client_path).grid(row=0, column=2)
+        ttk.Entry(frame, textvariable=self._client_path).grid(
+            row=0, column=1, sticky="ew", padx=(6, 6)
+        )
+        ttk.Button(frame, text="Procurar...", command=self._browse_client_path).grid(
+            row=0, column=2
+        )
 
-    def _build_accounts_panel(self):
+    # =====================================================
+    # Notebook (abas)
+    # =====================================================
 
-        frame = ttk.Frame(self.root, padding=12)
-        frame.pack(fill="both", expand=False)
+    def _build_notebook(self):
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=12, pady=(6, 0))
 
-        ttk.Label(frame, text="Contas cadastradas (selecione uma ou mais pra logar):").pack(anchor="w")
+        # Aba 1: Gerenciar Contas
+        self._manage_frame = ttk.Frame(self.notebook, padding=8)
+        self.notebook.add(self._manage_frame, text="Gerenciar Contas")
+        self._build_manage_tab()
 
-        list_frame = ttk.Frame(frame)
-        list_frame.pack(fill="both", expand=True, pady=(4, 6))
+        # Aba 2: Login
+        self._login_frame = ttk.Frame(self.notebook, padding=8)
+        self.notebook.add(self._login_frame, text="Login")
+
+    # -----------------------------------------------------
+    # Aba: Gerenciar Contas
+    # -----------------------------------------------------
+
+    def _build_manage_tab(self):
+        self._manage_frame.columnconfigure(0, weight=1)
+        self._manage_frame.rowconfigure(0, weight=1)
+
+        # Lista de contas
+        list_frame = ttk.Frame(self._manage_frame)
+        list_frame.grid(row=0, column=0, sticky="nsew")
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
 
         scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.pack(side="right", fill="y")
+        scrollbar.grid(row=0, column=1, sticky="ns")
 
         self.accounts_listbox = tk.Listbox(
             list_frame,
             selectmode="extended",
-            height=8,
+            height=10,
             yscrollcommand=scrollbar.set,
         )
-        self.accounts_listbox.pack(side="left", fill="both", expand=True)
+        self.accounts_listbox.grid(row=0, column=0, sticky="nsew")
         scrollbar.config(command=self.accounts_listbox.yview)
 
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill="x")
+        # Botoes
+        btn_frame = ttk.Frame(self._manage_frame)
+        btn_frame.grid(row=1, column=0, sticky="ew", pady=(8, 0))
 
-        ttk.Button(buttons, text="Adicionar", command=self._on_add_account).pack(side="left")
-        ttk.Button(buttons, text="Editar", command=self._on_edit_account).pack(side="left", padx=(6, 0))
-        ttk.Button(buttons, text="Remover", command=self._on_remove_account).pack(side="left", padx=(6, 0))
+        ttk.Button(btn_frame, text="Adicionar", command=self._on_add_account).pack(side="left")
+        ttk.Button(btn_frame, text="Editar", command=self._on_edit_account).pack(side="left", padx=(6, 0))
+        ttk.Button(btn_frame, text="Remover", command=self._on_remove_account).pack(side="left", padx=(6, 0))
 
-        self.start_button = ttk.Button(
-            buttons, text="Logar Selecionadas", command=self._on_start_selected
+    # -----------------------------------------------------
+    # Aba: Login
+    # -----------------------------------------------------
+
+    def _rebuild_login_tab(self):
+        """Reconstroi o conteudo da aba de Login."""
+
+        for widget in self._login_frame.winfo_children():
+            widget.destroy()
+
+        # Guarda o estado atual dos checkboxes antes de recriar
+        old_checked: set[str] = set()
+        old_vars = getattr(self, "_login_vars", {})
+        for label, var in old_vars.items():
+            if var.get():
+                old_checked.add(label)
+
+        self._login_vars.clear()
+        self._account_index.clear()
+
+        if not self.accounts:
+            ttk.Label(
+                self._login_frame,
+                text="Nenhuma conta cadastrada.\nVa em 'Gerenciar Contas' para adicionar.",
+                justify="center",
+            ).pack(expand=True)
+            return
+
+        # Canvas + scrollbar para muitas contas
+        canvas = tk.Canvas(self._login_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self._login_frame, orient="vertical", command=canvas.yview)
+        scroll_frame = ttk.Frame(canvas)
+
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
         )
-        self.start_button.pack(side="right")
+
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Vincula roda do mouse ao canvas
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        # Cabecalho
+        header = ttk.Frame(scroll_frame)
+        header.pack(fill="x", pady=(0, 6))
+        ttk.Label(header, text="Conta", font=("", 9, "bold"), width=16, anchor="w").pack(side="left")
+        ttk.Label(header, text="Servidor", font=("", 9, "bold"), width=18, anchor="w").pack(side="left", padx=(8, 0))
+        ttk.Label(header, text="Usuario", font=("", 9, "bold"), width=18, anchor="w").pack(side="left", padx=(8, 0))
+
+        ttk.Separator(scroll_frame, orient="horizontal").pack(fill="x", pady=(0, 4))
+
+        for idx, account in enumerate(self.accounts):
+            self._account_index[account.label] = idx
+
+            row = ttk.Frame(scroll_frame)
+            row.pack(fill="x", pady=1)
+
+            var = tk.BooleanVar(value=(account.label in old_checked))
+            self._login_vars[account.label] = var
+
+            cb = ttk.Checkbutton(
+                row,
+                variable=var,
+                command=lambda label=account.label: self._on_checkbox_toggle(label),
+            )
+            cb.pack(side="left")
+
+            ttk.Label(row, text=account.label, width=14, anchor="w").pack(side="left", padx=(2, 0))
+            ttk.Label(row, text=account.server_name, width=16, anchor="w").pack(side="left", padx=(8, 0))
+            ttk.Label(row, text=account.username, width=16, anchor="w").pack(side="left", padx=(8, 0))
+
+    # =====================================================
+    # Area de log (rodape)
+    # =====================================================
 
     def _build_log_area(self):
-
-        frame = ttk.Frame(self.root, padding=(12, 0, 12, 12))
+        frame = ttk.Frame(self.root, padding=(12, 6, 12, 12))
         frame.pack(fill="both", expand=True)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
 
-        ttk.Label(frame, text="Log:").pack(anchor="w")
+        ttk.Label(frame, text="Log:").grid(row=0, column=0, sticky="w")
 
         text_frame = ttk.Frame(frame)
-        text_frame.pack(fill="both", expand=True)
+        text_frame.grid(row=1, column=0, sticky="nsew")
+        text_frame.rowconfigure(0, weight=1)
+        text_frame.columnconfigure(0, weight=1)
 
         scrollbar = ttk.Scrollbar(text_frame)
-        scrollbar.pack(side="right", fill="y")
+        scrollbar.grid(row=0, column=1, sticky="ns")
 
         self.log_text = tk.Text(
             text_frame,
             state="disabled",
             wrap="word",
             yscrollcommand=scrollbar.set,
-            height=14,
+            height=10,
         )
-        self.log_text.pack(side="left", fill="both", expand=True)
+        self.log_text.grid(row=0, column=0, sticky="nsew")
         scrollbar.config(command=self.log_text.yview)
 
     # =====================================================
-    # Persistência
+    # Persistencia
     # =====================================================
 
     def _load_saved_client_path(self):
-
         if not GUI_SETTINGS_FILE.exists():
             return
-
         try:
             data = json.loads(GUI_SETTINGS_FILE.read_text(encoding="utf-8"))
-            self.client_path_var.set(data.get("client_path", config.CLIENT_PATH))
+            self._client_path.set(data.get("client_path", config.CLIENT_PATH))
         except Exception:
             pass
 
     def _save_client_path(self):
-
-        data = {"client_path": self.client_path_var.get()}
-
+        data = {"client_path": self._client_path.get()}
         try:
             GUI_SETTINGS_FILE.write_text(
                 json.dumps(data, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
         except Exception as e:
-            print(f"[GUI] Aviso: não foi possível salvar as configurações ({e})")
+            print(f"[GUI] Aviso: nao foi possivel salvar as configuracoes ({e})")
 
     def _refresh_accounts_list(self):
-
         self.accounts_listbox.delete(0, "end")
-
         for account in self.accounts:
+            auto = " [auto-login]" if account.auto_login else ""
             self.accounts_listbox.insert(
                 "end",
-                f"{account.label}  —  usuário: {account.username}  "
-                f"—  servidor: {account.server_name}  —  slot: {account.character_slot}",
+                f"{account.label}  —  usuario: {account.username}  "
+                f"—  servidor: {account.server_name}  —  slot: {account.character_slot}{auto}",
             )
 
     def _on_close(self):
         self._save_client_path()
+        # Para todas as threads ativas
+        for stop_event in list(self._stop_events.values()):
+            stop_event.set()
         self.root.destroy()
 
     # =====================================================
-    # Gerenciamento de contas
+    # Gerenciamento de contas (Aba Gerenciar)
     # =====================================================
 
     def _browse_client_path(self):
-
         path = filedialog.askopenfilename(
-            title="Selecione o executável/launcher do client",
+            title="Selecione o executavel/launcher do client",
             filetypes=[
-                ("Executáveis", "*.exe;*.bat;*.cmd"),
+                ("Executaveis", "*.exe;*.bat;*.cmd"),
                 ("Todos os arquivos", "*.*"),
             ],
         )
-
         if path:
-            self.client_path_var.set(path)
+            self._client_path.set(path)
 
     def _on_add_account(self):
-
         dialog = AccountDialog(self.root, "Adicionar conta")
-
         if dialog.result:
             self.accounts.append(dialog.result)
             save_accounts(self.accounts)
             self._refresh_accounts_list()
+            self._rebuild_login_tab()
 
     def _on_edit_account(self):
-
         index = self._get_single_selected_index()
-
         if index is None:
             return
 
-        dialog = AccountDialog(self.root, "Editar conta", self.accounts[index])
+        old_label = self.accounts[index].label
 
+        dialog = AccountDialog(self.root, "Editar conta", self.accounts[index])
         if dialog.result:
+            # Se o apelido mudou, para a thread antiga e atualiza
+            new_label = dialog.result.label
+            if new_label != old_label:
+                self._stop_login_thread(old_label)
+
             self.accounts[index] = dialog.result
             save_accounts(self.accounts)
             self._refresh_accounts_list()
+            self._rebuild_login_tab()
+
+            # Se o novo apelido tinha auto_login ativo e estava
+            # rodando antes, reinicia a thread com o novo apelido
+            if dialog.result.auto_login:
+                self._start_login_thread(new_label)
 
     def _on_remove_account(self):
-
         index = self._get_single_selected_index()
-
         if index is None:
             return
 
         account = self.accounts[index]
-
-        if not messagebox.askyesno(
-            "Remover conta", f"Remover a conta '{account.label}'?"
-        ):
+        if not messagebox.askyesno("Remover conta", f"Remover a conta '{account.label}'?"):
             return
+
+        # Para a thread se estiver rodando
+        self._stop_login_thread(account.label)
 
         del self.accounts[index]
         save_accounts(self.accounts)
         self._refresh_accounts_list()
+        self._rebuild_login_tab()
 
     def _get_single_selected_index(self) -> int | None:
-
         selection = self.accounts_listbox.curselection()
-
         if not selection:
             messagebox.showinfo("Nenhuma conta selecionada", "Selecione uma conta na lista.")
             return None
-
         if len(selection) > 1:
-            messagebox.showinfo(
-                "Selecione apenas uma", "Essa ação funciona com uma conta por vez."
-            )
+            messagebox.showinfo("Selecione apenas uma", "Essa acao funciona com uma conta por vez.")
             return None
-
         return selection[0]
 
     # =====================================================
-    # Execução (uma ou várias contas em paralelo)
+    # Controle de login por checkbox (Aba Login)
     # =====================================================
 
-    def _on_start_selected(self):
+    def _on_checkbox_toggle(self, label: str):
+        """Callback quando o usuario marca/desmarca um checkbox."""
+        var = self._login_vars.get(label)
+        if var is None:
+            return
+        if var.get():
+            self._start_login_thread(label)
+        else:
+            self._stop_login_thread(label)
 
-        selection = self.accounts_listbox.curselection()
+    def _start_login_thread(self, label: str):
+        """Inicia a thread de login + relogging para a conta."""
 
-        if not selection:
-            messagebox.showinfo(
-                "Nenhuma conta selecionada",
-                "Selecione uma ou mais contas na lista antes de logar.",
-            )
+        if label not in self._account_index:
             return
 
-        client_path = self.client_path_var.get().strip()
+        # Se ja existe uma thread rodando para esse label, nao inicia outra
+        if label in self._stop_events and not self._stop_events[label].is_set():
+            return
 
+        client_path = self._client_path.get().strip()
         if not client_path:
             messagebox.showwarning(
-                "Client não informado", "Informe o caminho do client antes de continuar."
+                "Client nao informado",
+                "Informe o caminho do client antes de logar.",
             )
+            # Desmarca o checkbox
+            var = self._login_vars.get(label)
+            if var:
+                self.root.after(0, lambda: var.set(False))
             return
 
         self._save_client_path()
 
-        selected_accounts = [self.accounts[i] for i in selection]
+        with self._active_lock:
+            if self._active_threads == 0:
+                self._clear_log()
+                sys.stdout = self.log_redirector
+            self._active_threads += 1
 
-        self._clear_log()
+        stop_event = threading.Event()
+        self._stop_events[label] = stop_event
 
-        sys.stdout = self.log_redirector
+        idx = self._account_index[label]
+        account = self.accounts[idx]
 
-        self.start_button.configure(state="disabled", text="Rodando...")
+        thread = threading.Thread(
+            target=self._run_account_loop,
+            args=(account, client_path, stop_event),
+            daemon=True,
+        )
+        thread.start()
 
-        for account in selected_accounts:
-            thread = threading.Thread(
-                target=self._run_account,
-                args=(account, client_path),
-                daemon=True,
-            )
-            with self._active_lock:
-                self._active_threads += 1
-            thread.start()
+    def _stop_login_thread(self, label: str):
+        """Para a thread de login da conta (desmarca checkbox)."""
+        stop_event = self._stop_events.pop(label, None)
+        if stop_event:
+            stop_event.set()
 
-    def _run_account(self, account: Account, client_path: str):
+    # =====================================================
+    # Loop principal de login + relogging (roda na thread)
+    # =====================================================
+
+    def _run_account_loop(self, account: Account, client_path: str, stop_event: threading.Event):
+        """Loop que faz login e monitora a janela. Se a janela fechar
+        e o stop_event nao estiver ativo, refaz o login."""
 
         self.log_redirector.register(account.label)
 
-        settings = replace(
-            Settings(),
-            username=account.username,
-            password=account.password,
-            server_name=account.server_name,
-            character_slot=account.character_slot,
-            client_path=client_path,
-            account_label=account.label,
-        )
-
         try:
-            app = Application(settings=settings)
-            try:
-                app.start()
-                print(f"[{account.label}] Login concluído com sucesso!")
-            finally:
-                app.shutdown()
+            while not stop_event.is_set():
+                app = None
+                try:
+                    settings = replace(
+                        Settings(),
+                        username=account.username,
+                        password=account.password,
+                        server_name=account.server_name,
+                        character_slot=account.character_slot,
+                        client_path=client_path,
+                        account_label=account.label,
+                    )
 
-        except Exception as e:
-            print(f"[{account.label}] Falhou: {e}")
+                    app = Application(settings=settings)
+                    app.start()
+
+                    hwnd = app.container.session.hwnd
+                    if hwnd is None:
+                        raise RuntimeError("Login concluido mas sem handle de janela.")
+
+                    print(f"[{account.label}] Login concluido com sucesso!")
+
+                    # Entra no modo de monitoramento
+                    self._monitor_game_window(hwnd, account.label, stop_event)
+
+                except Exception as e:
+                    print(f"[{account.label}] Erro: {e}")
+                    if stop_event.wait(5.0):
+                        break
+                finally:
+                    if app:
+                        try:
+                            app.shutdown()
+                        except Exception:
+                            pass
 
         finally:
             self.log_redirector.unregister()
+            self._on_account_finished(account.label)
 
-            with self._active_lock:
-                self._active_threads -= 1
-                remaining = self._active_threads
+    def _monitor_game_window(self, hwnd: int, label: str, stop_event: threading.Event):
+        """Monitora a janela do jogo. Retorna quando a janela fechar
+        ou o stop_event for ativado."""
 
-            if remaining <= 0:
-                self.root.after(0, self._on_all_finished)
+        print(f"[{label}] Monitorando janela (hwnd={hwnd})...")
+
+        while not stop_event.is_set():
+            if not win32gui.IsWindow(hwnd):
+                print(f"[{label}] Janela fechada. Reiniciando login...")
+                return
+            time.sleep(2.0)
+
+    def _on_account_finished(self, label: str):
+        """Chamado quando a thread de uma conta termina (stop_event
+        ativado ou loop encerrado por outro motivo)."""
+
+        # Desmarca o checkbox na interface
+        def _uncheck():
+            var = self._login_vars.get(label)
+            if var:
+                var.set(False)
+
+        self.root.after(0, _uncheck)
+
+        with self._active_lock:
+            self._active_threads -= 1
+            remaining = self._active_threads
+
+        if remaining <= 0:
+            self.root.after(0, self._on_all_finished)
 
     def _on_all_finished(self):
-
+        """Todas as threads pararam."""
         sys.stdout = self.log_redirector.original
-        self.start_button.configure(state="normal", text="Logar Selecionadas")
+
+    # =====================================================
+    # Auto-login na abertura do bot
+    # =====================================================
+
+    def _auto_start_accounts(self):
+        """Marca os checkboxes das contas com auto_login=True e
+        dispara as threads de login."""
+
+        for account in self.accounts:
+            if account.auto_login:
+                var = self._login_vars.get(account.label)
+                if var is not None:
+                    var.set(True)
+                    self._start_login_thread(account.label)
 
     # =====================================================
     # Log
     # =====================================================
 
     def _clear_log(self):
-
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
 
     # =====================================================
-    # Execução
+    # Execucao
     # =====================================================
 
     def run(self):
-
         self.root.mainloop()
