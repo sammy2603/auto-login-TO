@@ -43,7 +43,7 @@ class BaseWorkflow:
         label = self.settings.account_label or self.settings.username
 
         self.client.rename_window(
-            f"Talisman Online - {label}"
+            f"{label}"
         )
 
     # =====================================================
