@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import tkinter as tk
-from tkinter import ttk
+import customtkinter as ctk
 from typing import Callable
 
 
-class Sidebar(ttk.Frame):
+class Sidebar(ctk.CTkFrame):
     """
     Painel de navegacao esquerdo com os modulos do bot.
     """
@@ -37,7 +36,7 @@ class Sidebar(ttk.Frame):
         super().__init__(parent, **kwargs)
 
         self._on_select = on_select
-        self._buttons: dict[str, ttk.Button] = {}
+        self._buttons: dict[str, ctk.CTkButton] = {}
         self._selected: str | None = None
 
         self._build()
@@ -46,15 +45,19 @@ class Sidebar(ttk.Frame):
         for label, _icon in self.ITEMS:
 
             if label == "---":
-                ttk.Separator(self, orient="horizontal").pack(
-                    fill="x", pady=4, padx=8
-                )
+                sep = ctk.CTkFrame(self, height=2, fg_color="#555555")
+                sep.pack(fill="x", padx=8, pady=6)
                 continue
 
-            btn = ttk.Button(
+            btn = ctk.CTkButton(
                 self,
                 text=label,
                 command=lambda l=label: self._select(l),
+                fg_color="transparent",
+                hover_color="#3a3a3a",
+                anchor="w",
+                corner_radius=4,
+                height=28,
             )
             btn.pack(fill="x", padx=4, pady=1)
             self._buttons[label] = btn
@@ -65,11 +68,13 @@ class Sidebar(ttk.Frame):
         if self._selected:
             prev = self._buttons.get(self._selected)
             if prev:
-                prev.configure(style="")
+                prev.configure(fg_color="transparent")
+
         self._selected = label
         curr = self._buttons.get(label)
         if curr:
-            curr.configure(style="Accent.TButton")
+            curr.configure(fg_color="#1a5c2a", hover_color="#1e6e32")
+
         self._on_select(label)
 
     @property

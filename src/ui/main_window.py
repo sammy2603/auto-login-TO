@@ -7,8 +7,9 @@ import time
 import tkinter as tk
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 
+import customtkinter as ctk
 import win32gui
 
 from src.app.application import Application
@@ -32,6 +33,9 @@ from src.shared.character_slots import CharacterSlot
 from src.ui.session_registry import SessionRegistry
 from src.ui.widgets.sidebar import Sidebar
 from src.ui.widgets.right_panel import RightPanel
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
 
 GUI_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "gui_settings.json"
 ACCOUNTS_FILE = Path(__file__).resolve().parents[2] / "accounts.json"
@@ -85,7 +89,7 @@ def save_accounts(accounts: list[Account]):
 class MultiAccountLogRedirector:
     """Substitui sys.stdout prefixando cada linha com o apelido da conta."""
 
-    def __init__(self, widget: tk.Text, original):
+    def __init__(self, widget, original):
         self.widget = widget
         self.original = original
         self._labels: dict[int, str] = {}
@@ -119,7 +123,7 @@ class MultiAccountLogRedirector:
     def _append(self, text: str):
         self.widget.configure(state="normal")
         self.widget.insert("end", text)
-        self.widget.see("end")
+        self.widget.yview_moveto(1.0)
         self.widget.configure(state="disabled")
 
     def flush(self):
@@ -130,7 +134,7 @@ class MultiAccountLogRedirector:
 # Dialogo de conta
 # =====================================================
 
-class AccountDialog(tk.Toplevel):
+class AccountDialog(ctk.CTkToplevel):
 
     def __init__(self, parent, title: str, account: Account | None = None):
         super().__init__(parent)
@@ -145,42 +149,43 @@ class AccountDialog(tk.Toplevel):
         self.password_var = tk.StringVar(value=account.password if account else "")
         self.server_var = tk.StringVar(value=account.server_name if account else _DEFAULTS.server_name)
         self.slot_var = tk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
-        self.auto_login_var = tk.BooleanVar(value=account.auto_login if account else False)
+        self.auto_login_var = ctk.BooleanVar(value=account.auto_login if account else False)
 
-        form = ttk.Frame(self, padding=12)
-        form.pack(fill="both", expand=True)
-        form.columnconfigure(1, weight=1)
+        form = ctk.CTkFrame(self)
+        form.pack(fill="both", expand=True, padx=16, pady=16)
 
-        ttk.Label(form, text="Apelido:").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=self.label_var, width=30).grid(row=0, column=1, sticky="ew", pady=4)
+        ctk.CTkLabel(form, text="Apelido:").grid(row=0, column=0, sticky="w", pady=4)
+        ctk.CTkEntry(form, textvariable=self.label_var, width=260).grid(row=0, column=1, sticky="ew", pady=4, padx=(8, 0))
 
-        ttk.Label(form, text="Usuario:").grid(row=1, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=self.username_var).grid(row=1, column=1, sticky="ew", pady=4)
+        ctk.CTkLabel(form, text="Usuario:").grid(row=1, column=0, sticky="w", pady=4)
+        ctk.CTkEntry(form, textvariable=self.username_var, width=260).grid(row=1, column=1, sticky="ew", pady=4, padx=(8, 0))
 
-        ttk.Label(form, text="Senha:").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=self.password_var, show="*").grid(row=2, column=1, sticky="ew", pady=4)
+        ctk.CTkLabel(form, text="Senha:").grid(row=2, column=0, sticky="w", pady=4)
+        ctk.CTkEntry(form, textvariable=self.password_var, show="*", width=260).grid(row=2, column=1, sticky="ew", pady=4, padx=(8, 0))
 
-        ttk.Label(form, text="Servidor:").grid(row=3, column=0, sticky="w", pady=4)
-        ttk.Entry(form, textvariable=self.server_var).grid(row=3, column=1, sticky="ew", pady=4)
+        ctk.CTkLabel(form, text="Servidor:").grid(row=3, column=0, sticky="w", pady=4)
+        ctk.CTkEntry(form, textvariable=self.server_var, width=260).grid(row=3, column=1, sticky="ew", pady=4, padx=(8, 0))
 
-        ttk.Label(form, text="Personagem:").grid(row=4, column=0, sticky="w", pady=4)
-        ttk.Combobox(
+        ctk.CTkLabel(form, text="Personagem:").grid(row=4, column=0, sticky="w", pady=4)
+        combo = ctk.CTkComboBox(
             form,
-            textvariable=self.slot_var,
             values=[CharacterSlot.LEFT, CharacterSlot.CENTER, CharacterSlot.RIGHT],
+            variable=self.slot_var,
+            width=260,
             state="readonly",
-        ).grid(row=4, column=1, sticky="ew", pady=4)
+        )
+        combo.grid(row=4, column=1, sticky="ew", pady=4, padx=(8, 0))
 
-        ttk.Checkbutton(
+        ctk.CTkCheckBox(
             form,
             text="Auto-login ao abrir o Bot",
             variable=self.auto_login_var,
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
-        buttons = ttk.Frame(form)
-        buttons.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(buttons, text="Cancelar", command=self.destroy).pack(side="right", padx=(6, 0))
-        ttk.Button(buttons, text="Salvar", command=self._on_save).pack(side="right")
+        btns = ctk.CTkFrame(form, fg_color="transparent")
+        btns.grid(row=6, column=0, columnspan=2, sticky="e", pady=(16, 0))
+        ctk.CTkButton(btns, text="Salvar", command=self._on_save).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btns, text="Cancelar", fg_color="transparent", border_width=1, command=self.destroy).pack(side="right")
 
         self.grab_set()
         self.wait_window()
@@ -208,8 +213,14 @@ class AccountDialog(tk.Toplevel):
 
 class MainWindow:
 
+    FEATURES = [
+        "Attack", "Potion", "Pet Food", "Buff",
+        "Helper", "Fairy", "Revive", "Delete",
+        "BC", "Hollow", "Sell", "DR Lure",
+    ]
+
     def __init__(self):
-        self.root = tk.Tk()
+        self.root = ctk.CTk()
         self.root.title("Talisman Online - Auto Login")
         self.root.geometry("960x650")
         self.root.minsize(800, 520)
@@ -218,97 +229,62 @@ class MainWindow:
         self._active_threads = 0
         self._active_lock = threading.Lock()
         self._stop_events: dict[str, threading.Event] = {}
-        self._login_vars: dict[str, tk.BooleanVar] = {}
+        self._login_vars: dict[str, ctk.BooleanVar] = {}
         self._account_index: dict[str, int] = {}
         self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
         self._license = LicenseService()
 
-        # Leitor de dados do jogo (regioes calibraveis via config)
+        self._selected_window: str | None = None
+        self._feature_vars: dict[str, dict[str, ctk.BooleanVar]] = {}
+        self._widget_states: dict[str, bool] = {}
         self._game_reader = GameReader()
 
-        # Per-window state para o Dashboard
-        self._selected_window: str | None = None
-        self._feature_vars: dict[str, dict[str, tk.BooleanVar]] = {}
-        self._widget_states: dict[str, bool] = {}
-
-        self._setup_theme()
         self._build_top_bar()
-
-        # Container principal (casca vazia, 3 colunas)
         self._build_main_shell()
-
-        # Conteudo central (notebook, abas, home, dashboard)
         self.log_redirector = None
         self._build_center_frames()
         self._build_home_content()
-
-        # Paineis laterais (sidebar + right panel — precisam
-        # do notebook pronto no centro)
         self._build_side_panels()
-
         self._build_status_bar()
 
         self._load_saved_client_path()
         self._rebuild_login_table()
-
         self.root.after(500, self._auto_start_accounts)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    # =====================================================
-    # Tema escuro
-    # =====================================================
-
-    def _setup_theme(self):
-        style = ttk.Style()
-        # Tenta usar um tema escuro se disponivel
-        available = style.theme_names()
-        for preferred in ("clam", "alt", "default"):
-            if preferred in available:
-                style.theme_use(preferred)
-                break
-
-        BG = "#2a2a2a"
-        FG = "#cccccc"
-        self.root.configure(bg=BG)
-
-        style.configure(".", background=BG, foreground=FG)
-        style.configure("TFrame", background=BG)
-        style.configure("TLabel", background=BG, foreground=FG)
-        style.configure("TButton", background="#3a3a3a", foreground=FG)
-        style.map("TButton", background=[("active", "#4a4a4a")])
-        style.configure("TNotebook", background=BG)
-        style.configure("TNotebook.Tab", background="#3a3a3a", foreground=FG)
-        style.map("TNotebook.Tab", background=[("selected", "#4a4a4a")])
-
-        # Estilo para botao selecionado na sidebar
-        style.configure("Accent.TButton", background="#1a5c2a", foreground="#ffffff")
-        style.map("Accent.TButton", background=[("active", "#1e6e32")])
 
     # =====================================================
     # Barra superior
     # =====================================================
 
     def _build_top_bar(self):
-        top = ttk.Frame(self.root)
+        top = ctk.CTkFrame(self.root, fg_color="transparent")
         top.pack(fill="x", padx=8, pady=(8, 0))
 
-        self._top_buttons: dict[str, ttk.Button] = {}
+        self._top_buttons: dict[str, ctk.CTkButton] = {}
 
         for label in ("List", "Config", "Login", "Pricing", "Help"):
-            btn = ttk.Button(top, text=label, command=lambda l=label: self._on_top_bar(l))
+            btn = ctk.CTkButton(
+                top, text=label,
+                command=lambda l=label: self._on_top_bar(l),
+                fg_color="transparent",
+                hover_color="#3a3a3a",
+                width=60,
+                height=28,
+            )
             btn.pack(side="left", padx=2)
             self._top_buttons[label] = btn
 
         # Separador
-        ttk.Separator(self.root, orient="horizontal").pack(fill="x", padx=8, pady=4)
+        ctk.CTkFrame(
+            self.root, height=1, fg_color="#444444",
+        ).pack(fill="x", padx=8, pady=4)
 
     def _on_top_bar(self, label: str):
-        """Callback dos botoes da barra superior."""
         if label == "Login":
-            self.notebook.select(self._home_tab_id)
+            self.tabview.set("Home")
             self.sidebar._select("Home")
         elif label == "Config":
-            self.notebook.select(self._config_tab_id)
+            self.tabview.set("Config")
         elif label == "Help":
             self._show_help_dialog()
         elif label == "Pricing":
@@ -317,38 +293,36 @@ class MainWindow:
             self._toggle_window_list()
 
     def _toggle_window_list(self):
-        """Alterna entre ordenado e livre para as janelas no painel direito."""
-        # Fase 2: ordenar por indice ou deixar livre
         messagebox.showinfo("List", "Ordenacao de janelas sera implementada em breve.")
 
     # =====================================================
-    # Dialogs: Pricing e Help
+    # Dialogs
     # =====================================================
 
     def _show_pricing_dialog(self):
-        dialog = tk.Toplevel(self.root)
+        dialog = ctk.CTkToplevel(self.root)
         dialog.title("Pricing")
         dialog.resizable(False, False)
         dialog.transient(self.root)
 
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack()
+        frame = ctk.CTkFrame(dialog)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        ttk.Label(frame, text="Planos", font=("", 14, "bold")).pack(pady=(0, 16))
+        ctk.CTkLabel(frame, text="Planos", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(0, 16))
 
-        # Free
-        free = ttk.LabelFrame(frame, text="Gratuito", padding=12)
+        free = ctk.CTkFrame(frame)
         free.pack(fill="x", pady=4)
+        ctk.CTkLabel(free, text="Gratuito", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=12, pady=(8, 4))
         for item in [
             "Login automatico",
             "Configuracoes basicas",
             "1 conta simultanea",
         ]:
-            ttk.Label(free, text=f"  • {item}").pack(anchor="w")
+            ctk.CTkLabel(free, text=f"  - {item}", text_color="#aaaaaa").pack(anchor="w", padx=12)
 
-        # Premium
-        premium = ttk.LabelFrame(frame, text="Premium", padding=12)
+        premium = ctk.CTkFrame(frame)
         premium.pack(fill="x", pady=4)
+        ctk.CTkLabel(premium, text="Premium", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=12, pady=(8, 4))
         for item in [
             "Multiplas contas simultaneas",
             "Todos os scripts de automacao",
@@ -356,166 +330,91 @@ class MainWindow:
             "Atualizacoes prioritarias",
             "Suporte dedicado",
         ]:
-            ttk.Label(premium, text=f"  • {item}").pack(anchor="w")
+            ctk.CTkLabel(premium, text=f"  - {item}", text_color="#aaaaaa").pack(anchor="w", padx=12)
 
-        ttk.Label(
+        ctk.CTkLabel(
             frame,
             text="Contato: contato@loginto.app",
-            foreground="#888888",
+            text_color="#888888",
         ).pack(pady=(16, 0))
 
-        ttk.Button(frame, text="Fechar", command=dialog.destroy).pack(pady=(12, 0))
+        ctk.CTkButton(frame, text="Fechar", command=dialog.destroy).pack(pady=(12, 0))
 
         dialog.grab_set()
         dialog.wait_window()
 
     def _show_help_dialog(self):
-        dialog = tk.Toplevel(self.root)
+        dialog = ctk.CTkToplevel(self.root)
         dialog.title("Help / Sobre")
         dialog.resizable(False, False)
         dialog.transient(self.root)
 
-        frame = ttk.Frame(dialog, padding=20)
-        frame.pack()
+        frame = ctk.CTkFrame(dialog)
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        ttk.Label(frame, text="Auto Login TO", font=("", 14, "bold")).pack()
-        ttk.Label(frame, text="Versao 0.2.0", foreground="#888888").pack(pady=(2, 12))
+        ctk.CTkLabel(frame, text="Auto Login TO", font=ctk.CTkFont(size=16, weight="bold")).pack()
+        ctk.CTkLabel(frame, text="Versao 0.2.0", text_color="#888888").pack(pady=(2, 12))
+        ctk.CTkLabel(frame, text="Automatizacao de login para Talisman Online").pack()
 
-        ttk.Label(frame, text="Automatizacao de login para Talisman Online").pack()
+        ctk.CTkFrame(frame, height=1, fg_color="#444444").pack(fill="x", pady=12)
 
-        ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=12)
-
-        ttk.Button(
-            frame,
-            text="Verificar Atualizacao",
+        ctk.CTkButton(
+            frame, text="Verificar Atualizacao",
             command=self._check_for_updates,
         ).pack(pady=(0, 8))
-
-        ttk.Button(frame, text="Fechar", command=dialog.destroy).pack()
+        ctk.CTkButton(
+            frame, text="Fechar", command=dialog.destroy,
+            fg_color="transparent", border_width=1,
+        ).pack()
 
         dialog.grab_set()
         dialog.wait_window()
 
     def _check_for_updates(self):
-        """Verifica se ha uma nova versao disponivel no GitHub."""
         try:
             import urllib.request
-            import json
-
-            url = (
-                "https://api.github.com/repos/anomalyco/opencode/"
-                "releases/latest"
-            )
+            url = "https://api.github.com/repos/anomalyco/opencode/releases/latest"
             req = urllib.request.Request(url)
             req.add_header("Accept", "application/vnd.github+json")
             req.add_header("User-Agent", "LoginTO-UpdateChecker")
-
             with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
+                import json as _json
+                data = _json.loads(resp.read())
                 latest = data.get("tag_name", "")
-
             if latest:
                 messagebox.showinfo(
                     "Atualizacao",
-                    f"Ultima versao disponivel: {latest}\n"
-                    f"Versao atual: 0.2.0\n\n"
-                    f"A atualizacao manual e necessaria por enquanto.",
+                    f"Ultima versao: {latest}\nVersao atual: 0.2.0\n\nA atualizacao manual e necessaria.",
                 )
             else:
                 messagebox.showinfo("Atualizacao", "Nao foi possivel verificar.")
         except Exception as e:
-            messagebox.showinfo("Atualizacao", f"Erro ao verificar: {e}")
+            messagebox.showinfo("Atualizacao", f"Erro: {e}")
 
     # =====================================================
-    # Bot Engine
-    # =====================================================
-
-    def _get_or_create_bot_engine(self, label: str) -> BotEngine:
-        """Retorna o BotEngine para a janela, criando se necessario."""
-
-        if not hasattr(self, "_bot_engines"):
-            self._bot_engines: dict[str, BotEngine] = {}
-
-        if label not in self._bot_engines:
-            engine = BotEngine()
-            engine.register(AttackScript())
-            engine.register(PotionScript())
-            engine.register(PetFoodScript())
-            engine.register(BuffScript())
-            engine.register(HelperScript())
-            engine.register(FairyScript())
-            engine.register(ReviveScript())
-            engine.register(DeleteScript())
-            engine.register(BCScript())
-            engine.register(HollowScript())
-            engine.register(SellScript())
-            engine.register(DRLureScript())
-            self._bot_engines[label] = engine
-
-        return self._bot_engines[label]
-
-    def _start_bot_for_window(self, label: str):
-        """Inicia o bot para a janela especificada."""
-
-        sessions = SessionRegistry.get_all()
-        session = sessions.get(label)
-        if session is None or not session.get("hwnd"):
-            print(f"[GUI] Nao ha janela ativa para '{label}'.")
-            return
-
-        hwnd = session["hwnd"]
-
-        engine = self._get_or_create_bot_engine(label)
-        if engine.is_running:
-            return
-
-        # Cria servicos para esta janela
-        from src.infrastructure.window.service import WindowService
-        from src.infrastructure.vision.service import VisionService
-        from src.infrastructure.input.service import InputService
-
-        ws = WindowService()
-        vs = VisionService(window_service=ws)
-        ins = InputService()
-
-        engine.start(hwnd, ins, vs, ws, self._game_reader)
-
-    def _stop_bot_for_window(self, label: str):
-        """Para o bot para a janela especificada."""
-
-        if not hasattr(self, "_bot_engines"):
-            return
-
-        engine = self._bot_engines.get(label)
-        if engine:
-            engine.stop()
-
-    # =====================================================
-    # Area principal (3 colunas)
+    # Layout 3 colunas
     # =====================================================
 
     def _build_main_shell(self):
-        """Cria o layout de 3 colunas com o centro vazio."""
-        self._main_pw = ttk.PanedWindow(self.root, orient="horizontal")
-        self._main_pw.pack(fill="both", expand=True, padx=8, pady=4)
+        self._main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        self._main_frame.pack(fill="both", expand=True, padx=8, pady=4)
+        self._main_frame.grid_columnconfigure(1, weight=1)
+        self._main_frame.grid_rowconfigure(0, weight=1)
 
-        # Centro (vazio, preenchido depois)
-        self.center_frame = ttk.Frame(self._main_pw)
-        self._main_pw.add(self.center_frame, weight=1)
+        self.center_frame = ctk.CTkFrame(self._main_frame, fg_color="transparent")
+        self.center_frame.grid(row=0, column=1, sticky="nsew")
 
     def _build_side_panels(self):
-        """Adiciona sidebar e painel direito ao redor do centro."""
-
-        # --- Sidebar esquerda ---
-        sidebar_frame = ttk.Frame(self._main_pw, width=130)
-        self._main_pw.insert(0, sidebar_frame, weight=0)
+        sidebar_frame = ctk.CTkFrame(self._main_frame, fg_color="transparent", width=130)
+        sidebar_frame.grid(row=0, column=0, sticky="ns", padx=(0, 4))
+        sidebar_frame.grid_propagate(False)
 
         self.sidebar = Sidebar(sidebar_frame, on_select=self._on_sidebar_select)
         self.sidebar.pack(fill="both", expand=True)
 
-        # --- Painel direito ---
-        right_frame = ttk.Frame(self._main_pw, width=190)
-        self._main_pw.add(right_frame, weight=0)
+        right_frame = ctk.CTkFrame(self._main_frame, width=190)
+        right_frame.grid(row=0, column=2, sticky="ns", padx=(4, 0))
+        right_frame.grid_propagate(False)
 
         self.right_panel = RightPanel(
             right_frame,
@@ -525,132 +424,84 @@ class MainWindow:
         self.right_panel.pack(fill="both", expand=True)
 
     # =====================================================
-    # Conteudo central (abas / frames)
+    # Centro: CTkTabview
     # =====================================================
 
     def _build_center_frames(self):
-        """Cria o notebook central com as paginas principais."""
-        self.notebook = ttk.Notebook(self.center_frame)
-        self.notebook.pack(fill="both", expand=True)
+        self.tabview = ctk.CTkTabview(self.center_frame)
+        self.tabview.pack(fill="both", expand=True)
 
-        # Tab 0: Home (login)
-        self._home_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self._home_frame, text="Home")
-        self._home_tab_id = 0
+        self.tabview.add("Home")
+        self.tabview.add("Config")
+        self.tabview.add("Dashboard")
+        self.tabview.add("Key")
 
-        # Tab 1: Config
-        self._config_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self._config_frame, text="Config")
-        self._config_tab_id = 1
-
-        # Tab 2: Dashboard (Attack, Potion, etc.)
-        self._dashboard_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self._dashboard_frame, text="Dashboard")
-        self._dashboard_tab_id = 2
-
-        # Tab 3: Key (licenca)
-        self._key_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self._key_frame, text="Key")
-        self._key_tab_id = 3
+        self._home_frame = self.tabview.tab("Home")
+        self._config_frame = self.tabview.tab("Config")
+        self._dashboard_frame = self.tabview.tab("Dashboard")
+        self._key_frame = self.tabview.tab("Key")
 
         self._build_config_content()
         self._build_dashboard_content()
         self._build_key_content()
 
-        self.notebook.select(self._home_tab_id)
+        self.tabview.set("Home")
 
     def _build_config_content(self):
-        """Conteudo da aba Config."""
-        frame = ttk.Frame(self._config_frame, padding=12)
-        frame.pack(fill="both", expand=True)
+        frame = ctk.CTkFrame(self._config_frame, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=16, pady=16)
 
-        ttk.Label(frame, text="Configuracoes", font=("", 11, "bold")).pack(anchor="w", pady=(0, 12))
+        ctk.CTkLabel(frame, text="Configuracoes", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", pady=(0, 12))
 
-        # Client path
-        row1 = ttk.Frame(frame)
+        row1 = ctk.CTkFrame(frame, fg_color="transparent")
         row1.pack(fill="x", pady=4)
-        ttk.Label(row1, text="Client:").pack(side="left")
-        ttk.Entry(row1, textvariable=self._client_path, width=50).pack(side="left", padx=(8, 4))
-        ttk.Button(row1, text="Procurar", command=self._browse_client_path).pack(side="left")
+        ctk.CTkLabel(row1, text="Client:").pack(side="left")
+        ctk.CTkEntry(row1, textvariable=self._client_path, width=320).pack(side="left", padx=(8, 4))
+        ctk.CTkButton(
+            row1, text="Procurar", width=80,
+            command=self._browse_client_path,
+        ).pack(side="left")
 
-        ttk.Label(
+        ctk.CTkLabel(
             frame,
             text="Demais configuracoes ficam em config.py e .env",
-            foreground="#888888",
+            text_color="#888888",
         ).pack(anchor="w", pady=(16, 0))
 
     # =====================================================
-    # Secao Home — login
+    # Home: login
     # =====================================================
 
     def _build_home_content(self):
-        """Conteudo da aba Home: login + log."""
+        self._home_frame.grid_columnconfigure(0, weight=1)
+        self._home_frame.grid_rowconfigure(2, weight=1)
 
-        self._home_frame.columnconfigure(0, weight=1)
-        self._home_frame.rowconfigure(1, weight=1)
+        # Tabela de contas
+        self._login_scroll = ctk.CTkScrollableFrame(self._home_frame)
+        self._login_scroll.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 4))
 
-        # --- Tabela de contas com checkboxes ---
-        table_container = ttk.Frame(self._home_frame)
-        table_container.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 4))
-        table_container.columnconfigure(0, weight=1)
+        btn_row = ctk.CTkFrame(self._home_frame, fg_color="transparent")
+        btn_row.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        ctk.CTkButton(btn_row, text="Adicionar Conta", command=self._on_add_account).pack(side="left")
 
-        # Cabecalho + scroll
-        self._login_canvas = tk.Canvas(table_container, highlightthickness=0, bg="#2a2a2a")
-        self._login_scrollbar = ttk.Scrollbar(table_container, orient="vertical", command=self._login_canvas.yview)
-        self._login_inner = ttk.Frame(self._login_canvas)
+        # Log
+        log_frame = ctk.CTkFrame(self._home_frame, fg_color="transparent")
+        log_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 4))
+        log_frame.grid_rowconfigure(1, weight=1)
+        log_frame.grid_columnconfigure(0, weight=1)
 
-        self._login_inner.bind(
-            "<Configure>",
-            lambda e: self._login_canvas.configure(scrollregion=self._login_canvas.bbox("all")),
-        )
-        self._login_canvas.create_window((0, 0), window=self._login_inner, anchor="nw")
-        self._login_canvas.configure(yscrollcommand=self._login_scrollbar.set)
+        ctk.CTkLabel(log_frame, text="Log:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w")
 
-        self._login_canvas.pack(side="left", fill="both", expand=True)
-        self._login_scrollbar.pack(side="right", fill="y")
-
-        # Botoes de gerenciamento
-        btn_row = ttk.Frame(self._home_frame)
-        btn_row.grid(row=2, column=0, sticky="ew", padx=8, pady=(4, 4))
-        ttk.Button(btn_row, text="Adicionar Conta", command=self._on_add_account).pack(side="left")
-
-        # --- Log ---
-        log_frame = ttk.Frame(self._home_frame)
-        log_frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=(0, 4))
-        log_frame.rowconfigure(1, weight=1)
-        log_frame.columnconfigure(0, weight=1)
-
-        ttk.Label(log_frame, text="Log:", font=("", 9, "bold")).grid(row=0, column=0, sticky="w")
-
-        text_frame = ttk.Frame(log_frame)
-        text_frame.grid(row=1, column=0, sticky="nsew")
-        text_frame.rowconfigure(0, weight=1)
-        text_frame.columnconfigure(0, weight=1)
-
-        log_scroll = ttk.Scrollbar(text_frame)
-        log_scroll.grid(row=0, column=1, sticky="ns")
-
-        self.log_text = tk.Text(
-            text_frame,
-            state="disabled",
-            wrap="word",
-            yscrollcommand=log_scroll.set,
-            height=8,
-            bg="#1e1e1e",
-            fg="#cccccc",
-            insertbackground="#cccccc",
-        )
-        self.log_text.grid(row=0, column=0, sticky="nsew")
-        log_scroll.config(command=self.log_text.yview)
+        self.log_text = ctk.CTkTextbox(log_frame)
+        self.log_text.grid(row=1, column=0, sticky="nsew")
+        self.log_text.configure(state="disabled")
 
         self.log_redirector = MultiAccountLogRedirector(self.log_text, sys.stdout)
 
-        self._home_frame.rowconfigure(3, weight=1)
+        self._home_frame.grid_rowconfigure(2, weight=1)
 
     def _rebuild_login_table(self):
-        """Reconstroi a tabela de contas com checkboxes."""
-
-        for widget in self._login_inner.winfo_children():
+        for widget in self._login_scroll.winfo_children():
             widget.destroy()
 
         old_checked = {label for label, var in self._login_vars.items() if var.get()}
@@ -658,193 +509,182 @@ class MainWindow:
         self._account_index.clear()
 
         if not self.accounts:
-            ttk.Label(
-                self._login_inner,
+            ctk.CTkLabel(
+                self._login_scroll,
                 text="Nenhuma conta cadastrada.\nClique em 'Adicionar Conta' para comecar.",
-                justify="center",
             ).pack(expand=True, pady=20)
             return
 
-        # Cabecalho
-        hdr = ttk.Frame(self._login_inner)
+        hdr = ctk.CTkFrame(self._login_scroll, fg_color="transparent")
         hdr.pack(fill="x", pady=(4, 4))
-        ttk.Label(hdr, text="Conta", font=("", 9, "bold"), width=16, anchor="w").pack(side="left")
-        ttk.Label(hdr, text="Servidor", font=("", 9, "bold"), width=18, anchor="w").pack(side="left", padx=(8, 0))
-        ttk.Label(hdr, text="Usuario", font=("", 9, "bold"), width=18, anchor="w").pack(side="left", padx=(8, 0))
-        ttk.Separator(self._login_inner, orient="horizontal").pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(hdr, text="Conta", font=ctk.CTkFont(weight="bold"), width=120, anchor="w").pack(side="left")
+        ctk.CTkLabel(hdr, text="Servidor", font=ctk.CTkFont(weight="bold"), width=140, anchor="w").pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(hdr, text="Usuario", font=ctk.CTkFont(weight="bold"), width=140, anchor="w").pack(side="left", padx=(8, 0))
+
+        ctk.CTkFrame(self._login_scroll, height=1, fg_color="#444444").pack(fill="x", pady=(0, 4))
 
         for idx, account in enumerate(self.accounts):
             self._account_index[account.label] = idx
 
-            row = ttk.Frame(self._login_inner)
+            row = ctk.CTkFrame(self._login_scroll, fg_color="transparent")
             row.pack(fill="x", pady=1)
 
-            var = tk.BooleanVar(value=(account.label in old_checked))
+            var = ctk.BooleanVar(value=(account.label in old_checked))
             self._login_vars[account.label] = var
 
-            cb = ttk.Checkbutton(
-                row,
+            cb = ctk.CTkCheckBox(
+                row, text="",
                 variable=var,
                 command=lambda label=account.label: self._on_checkbox_toggle(label),
+                width=20,
             )
             cb.pack(side="left")
 
-            ttk.Label(row, text=account.label, width=14, anchor="w").pack(side="left", padx=(2, 0))
-            ttk.Label(row, text=account.server_name, width=16, anchor="w").pack(side="left", padx=(8, 0))
-            ttk.Label(row, text=account.username, width=16, anchor="w").pack(side="left", padx=(8, 0))
+            ctk.CTkLabel(row, text=account.label, width=120, anchor="w").pack(side="left", padx=(4, 0))
+            ctk.CTkLabel(row, text=account.server_name, width=140, anchor="w").pack(side="left", padx=(8, 0))
+            ctk.CTkLabel(row, text=account.username, width=140, anchor="w").pack(side="left", padx=(8, 0))
 
-            # Botao de editar / remover inline
-            ttk.Button(row, text="✎", width=3, command=lambda a=account: self._on_edit_inline(a)).pack(side="right", padx=(4, 0))
-            ttk.Button(row, text="✕", width=3, command=lambda a=account: self._on_remove_inline(a)).pack(side="right")
-
-    # =====================================================
-    # Centro: outras secoes (placeholder)
-    # =====================================================
+            edit_btn = ctk.CTkButton(
+                row, text="E", width=28, height=24,
+                command=lambda a=account: self._on_edit_inline(a),
+                fg_color="transparent", border_width=1,
+            )
+            edit_btn.pack(side="right", padx=(4, 2))
+            ctk.CTkButton(
+                row, text="X", width=28, height=24,
+                command=lambda a=account: self._on_remove_inline(a),
+                fg_color="transparent", border_width=1,
+                text_color="#cc4444",
+            ).pack(side="right")
 
     def _on_sidebar_select(self, label: str):
-        """Callback do Sidebar — alterna a aba do notebook."""
         if label == "Home":
-            self.notebook.select(self._home_tab_id)
+            self.tabview.set("Home")
         elif label == "Config":
-            self.notebook.select(self._config_tab_id)
+            self.tabview.set("Config")
         elif label == "Key":
-            self.notebook.select(self._key_tab_id)
+            self.tabview.set("Key")
         else:
-            # Attack, Potion, Pet Food, etc. — abre Dashboard
-            self.notebook.select(self._dashboard_tab_id)
+            self.tabview.set("Dashboard")
             self._highlight_feature(label)
 
     # =====================================================
-    # Dashboard (Attack, Potion, etc.)
+    # Dashboard
     # =====================================================
 
-    FEATURES = [
-        "Attack", "Potion", "Pet Food", "Buff",
-        "Helper", "Fairy", "Revive", "Delete",
-        "BC", "Hollow", "Sell", "DR Lure",
-    ]
-
     def _build_dashboard_content(self):
-        """Conteudo da aba Dashboard: Char Info, Target Info,
-        checkboxes de funcoes por janela e log."""
+        self._dashboard_frame.grid_columnconfigure(0, weight=1)
+        self._dashboard_frame.grid_rowconfigure(3, weight=1)
 
-        self._dashboard_frame.columnconfigure(0, weight=1)
-        self._dashboard_frame.rowconfigure(3, weight=1)
-
-        # --- Char Info ---
-        char_frame = ttk.LabelFrame(self._dashboard_frame, text="Char Info", padding=8)
+        # Char Info
+        char_frame = ctk.CTkFrame(self._dashboard_frame)
         char_frame.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
-        char_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(char_frame, text="HP:", width=10).grid(row=0, column=0, sticky="w")
-        self._char_hp_bar = ttk.Progressbar(char_frame, length=200, mode="determinate")
-        self._char_hp_bar.grid(row=0, column=1, sticky="ew", padx=(4, 4))
-        self._char_hp_label = ttk.Label(char_frame, text="---", width=6)
-        self._char_hp_label.grid(row=0, column=2)
+        ctk.CTkLabel(char_frame, text="Char Info", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=8, pady=(6, 4))
 
-        ttk.Label(char_frame, text="Recurso:", width=10).grid(row=1, column=0, sticky="w")
-        self._char_res_bar = ttk.Progressbar(char_frame, length=200, mode="determinate")
-        self._char_res_bar.grid(row=1, column=1, sticky="ew", padx=(4, 4))
-        self._char_res_label = ttk.Label(char_frame, text="---", width=6)
-        self._char_res_label.grid(row=1, column=2)
+        hp_row = ctk.CTkFrame(char_frame, fg_color="transparent")
+        hp_row.pack(fill="x", padx=8, pady=2)
+        ctk.CTkLabel(hp_row, text="HP:", width=60, anchor="w").pack(side="left")
+        self._char_hp_bar = ctk.CTkProgressBar(hp_row, width=180)
+        self._char_hp_bar.pack(side="left", padx=(8, 8))
+        self._char_hp_bar.set(0)
+        self._char_hp_label = ctk.CTkLabel(hp_row, text="---", width=40)
+        self._char_hp_label.pack(side="left")
 
-        # --- Target Info ---
-        target_frame = ttk.LabelFrame(self._dashboard_frame, text="Target Info", padding=8)
-        target_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-        target_frame.columnconfigure(1, weight=1)
+        res_row = ctk.CTkFrame(char_frame, fg_color="transparent")
+        res_row.pack(fill="x", padx=8, pady=2)
+        ctk.CTkLabel(res_row, text="Recurso:", width=60, anchor="w").pack(side="left")
+        self._char_res_bar = ctk.CTkProgressBar(res_row, width=180)
+        self._char_res_bar.pack(side="left", padx=(8, 8))
+        self._char_res_bar.set(0)
+        self._char_res_label = ctk.CTkLabel(res_row, text="---", width=40)
+        self._char_res_label.pack(side="left")
 
-        ttk.Label(target_frame, text="HP:", width=10).grid(row=0, column=0, sticky="w")
-        self._target_hp_bar = ttk.Progressbar(target_frame, length=200, mode="determinate")
-        self._target_hp_bar.grid(row=0, column=1, sticky="ew", padx=(4, 4))
-        self._target_hp_label = ttk.Label(target_frame, text="---", width=6)
-        self._target_hp_label.grid(row=0, column=2)
+        # Target Info
+        tgt_frame = ctk.CTkFrame(self._dashboard_frame)
+        tgt_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
 
-        ttk.Label(target_frame, text="Nome:", width=10).grid(row=1, column=0, sticky="w")
-        self._target_name_label = ttk.Label(target_frame, text="---")
-        self._target_name_label.grid(row=1, column=1, sticky="w", padx=(4, 0))
+        ctk.CTkLabel(tgt_frame, text="Target Info", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=8, pady=(6, 4))
 
-        # --- Feature Checkboxes ---
-        func_frame = ttk.LabelFrame(self._dashboard_frame, text="Funcoes", padding=8)
+        t_hp_row = ctk.CTkFrame(tgt_frame, fg_color="transparent")
+        t_hp_row.pack(fill="x", padx=8, pady=2)
+        ctk.CTkLabel(t_hp_row, text="HP:", width=60, anchor="w").pack(side="left")
+        self._target_hp_bar = ctk.CTkProgressBar(t_hp_row, width=180)
+        self._target_hp_bar.pack(side="left", padx=(8, 8))
+        self._target_hp_bar.set(0)
+        self._target_hp_label = ctk.CTkLabel(t_hp_row, text="---", width=40)
+        self._target_hp_label.pack(side="left")
+
+        t_name_row = ctk.CTkFrame(tgt_frame, fg_color="transparent")
+        t_name_row.pack(fill="x", padx=8, pady=2)
+        ctk.CTkLabel(t_name_row, text="Nome:", width=60, anchor="w").pack(side="left")
+        self._target_name_label = ctk.CTkLabel(t_name_row, text="---")
+        self._target_name_label.pack(side="left", padx=(8, 0))
+
+        # Feature Checkboxes
+        func_frame = ctk.CTkFrame(self._dashboard_frame)
         func_frame.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
 
-        self._feature_check_frame = ttk.Frame(func_frame)
-        self._feature_check_frame.pack(fill="x")
+        ctk.CTkLabel(func_frame, text="Funcoes", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=8, pady=(6, 4))
 
-        self._feature_widgets: dict[str, ttk.Checkbutton] = {}
-        self._feature_highlight_labels: dict[str, ttk.Label] = {}
+        grid = ctk.CTkFrame(func_frame, fg_color="transparent")
+        grid.pack(fill="x", padx=8, pady=(0, 8))
+        grid.grid_columnconfigure(0, weight=1)
+        grid.grid_columnconfigure(1, weight=1)
+
+        self._feature_widgets: dict[str, ctk.CTkCheckBox] = {}
+        self._feature_highlight_labels: dict[str, ctk.CTkLabel] = {}
 
         half = len(self.FEATURES) // 2
-        left_col = ttk.Frame(self._feature_check_frame)
-        left_col.pack(side="left", fill="x", expand=True)
-        right_col = ttk.Frame(self._feature_check_frame)
-        right_col.pack(side="left", fill="x", expand=True, padx=(24, 0))
-
         for i, feature in enumerate(self.FEATURES):
-            parent = left_col if i < half else right_col
+            col = 0 if i < half else 1
+            row_num = i if i < half else i - half
 
-            row = ttk.Frame(parent)
-            row.pack(fill="x", pady=2)
+            check_row = ctk.CTkFrame(grid, fg_color="transparent")
+            check_row.grid(row=row_num, column=col, sticky="w", pady=4, padx=(0, 20))
 
-            hl = ttk.Label(row, text="  ", width=3)
+            hl = ctk.CTkLabel(check_row, text="  ", width=20)
             hl.pack(side="left")
             self._feature_highlight_labels[feature] = hl
 
-            cb = ttk.Checkbutton(row, text=feature, state="disabled")
+            cb = ctk.CTkCheckBox(check_row, text=feature, state="disabled")
             cb.pack(side="left")
             self._feature_widgets[feature] = cb
 
-        # --- Status da janela selecionada ---
-        self._dashboard_status = ttk.Label(
+        # Status
+        self._dashboard_status = ctk.CTkLabel(
             self._dashboard_frame,
             text="Selecione uma janela no painel direito para configurar as funcoes.",
-            foreground="#888888",
+            text_color="#888888",
         )
-        self._dashboard_status.grid(row=4, column=0, sticky="ew", padx=8, pady=2)
+        self._dashboard_status.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 4))
 
-        # --- Dashboard Log ---
-        log_frame = ttk.LabelFrame(self._dashboard_frame, text="Log da Janela", padding=4)
+        # Dashboard Log
+        log_frame = ctk.CTkFrame(self._dashboard_frame)
         log_frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=(4, 8))
-        log_frame.rowconfigure(0, weight=1)
-        log_frame.columnconfigure(0, weight=1)
+        log_frame.grid_rowconfigure(1, weight=1)
+        log_frame.grid_columnconfigure(0, weight=1)
 
-        text_frame = ttk.Frame(log_frame)
-        text_frame.grid(row=0, column=0, sticky="nsew")
-        text_frame.rowconfigure(0, weight=1)
-        text_frame.columnconfigure(0, weight=1)
+        ctk.CTkLabel(log_frame, text="Log da Janela", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", padx=8, pady=(6, 2))
 
-        dlog_scroll = ttk.Scrollbar(text_frame)
-        dlog_scroll.grid(row=0, column=1, sticky="ns")
-
-        self._dashboard_log = tk.Text(
-            text_frame,
-            state="disabled",
-            wrap="word",
-            yscrollcommand=dlog_scroll.set,
-            height=6,
-            bg="#1e1e1e",
-            fg="#cccccc",
-            insertbackground="#cccccc",
-        )
-        self._dashboard_log.grid(row=0, column=0, sticky="nsew")
-        dlog_scroll.config(command=self._dashboard_log.yview)
+        self._dashboard_log = ctk.CTkTextbox(log_frame, height=100)
+        self._dashboard_log.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        self._dashboard_log.configure(state="disabled")
 
     def _ensure_window_state(self, label: str):
-        """Garante que existe estado para a janela informada."""
         if label not in self._feature_vars:
             self._feature_vars[label] = {
-                f: tk.BooleanVar(value=False) for f in self.FEATURES
+                f: ctk.BooleanVar(value=False) for f in self.FEATURES
             }
             self._widget_states[label] = False
 
     def _on_right_panel_select(self, label: str):
-        """Callback do RightPanel quando uma janela e selecionada."""
         self._selected_window = label
         self._ensure_window_state(label)
         self._refresh_dashboard()
         self._start_dashboard_poll()
 
     def _on_right_panel_action(self, label: str):
-        """Callback do RightPanel quando Start/Stop e pressionado."""
         running = self.right_panel.running
         self._widget_states[label] = running
 
@@ -855,71 +695,51 @@ class MainWindow:
             self._stop_bot_for_window(label)
             status = "PARADO"
 
-        self._dashboard_log_append(
-            f"[{label}] Bot {status}.\n"
-        )
-
+        self._dashboard_log_append(f"[{label}] Bot {status}.\n")
         self._refresh_dashboard()
 
     def _refresh_dashboard(self):
-        """Atualiza o Dashboard com os dados da janela selecionada."""
-
         label = self._selected_window
 
         if label is None or label not in self._feature_vars:
-            self._dashboard_status.configure(
-                text="Selecione uma janela no painel direito para configurar as funcoes."
-            )
+            self._dashboard_status.configure(text="Selecione uma janela no painel direito para configurar as funcoes.")
             for feature in self.FEATURES:
                 self._feature_widgets[feature].configure(state="disabled")
                 self._feature_highlight_labels[feature].configure(text="  ")
-            self._char_hp_bar.configure(value=0)
+            self._char_hp_bar.set(0)
             self._char_hp_label.configure(text="---")
-            self._char_res_bar.configure(value=0)
+            self._char_res_bar.set(0)
             self._char_res_label.configure(text="---")
-            self._target_hp_bar.configure(value=0)
+            self._target_hp_bar.set(0)
             self._target_hp_label.configure(text="---")
             self._target_name_label.configure(text="---")
             return
 
         running = self._widget_states.get(label, False)
-        self._dashboard_status.configure(
-            text=f"Janela: {label}  |  Status: {'ATIVO' if running else 'PARADO'}"
-        )
+        self._dashboard_status.configure(text=f"Janela: {label}  |  Status: {'ATIVO' if running else 'PARADO'}")
 
-        # Habilita checkboxes e conecta com os vars
         for feature in self.FEATURES:
             cb = self._feature_widgets[feature]
             var = self._feature_vars[label][feature]
             cb.configure(state="normal", variable=var)
 
     def _highlight_feature(self, feature: str):
-        """Destaca uma feature no Dashboard (pisca o indicador)."""
         if feature not in self._feature_highlight_labels:
             return
-
         hl = self._feature_highlight_labels[feature]
-        hl.configure(text="▶")
-
+        hl.configure(text=">")
         def _clear():
             hl.configure(text="  ")
-
         self.root.after(2000, _clear)
 
     def _start_dashboard_poll(self):
-        """Inicia o loop de leitura de dados do jogo."""
         self._poll_dashboard()
 
     def _poll_dashboard(self):
-        """Le dados do jogo e atualiza o Dashboard (chamada periodica)."""
-
         label = self._selected_window
-
         if label is None or not self._widget_states.get(label, False):
-            # Nao ha janela selecionada ou bot nao esta rodando
             return
 
-        # Tenta obter o HWND da sessao ativa
         sessions = SessionRegistry.get_all()
         session = sessions.get(label)
         if session is None:
@@ -930,7 +750,6 @@ class MainWindow:
             return
 
         try:
-            # Captura a janela e le os dados
             from src.infrastructure.window.service import WindowService
             ws = WindowService()
             screenshot = ws.capture_hwnd(hwnd)
@@ -938,81 +757,69 @@ class MainWindow:
             char_info = self._game_reader.read_char_info(screenshot)
             target_info = self._game_reader.read_target_info(screenshot)
 
-            # Atualiza as barras
-            self._char_hp_bar.configure(value=char_info.hp_pct)
+            self._char_hp_bar.set(char_info.hp_pct / 100.0)
             self._char_hp_label.configure(text=f"{char_info.hp_pct:.0f}%")
-            self._char_res_bar.configure(value=char_info.resource_pct)
+            self._char_res_bar.set(char_info.resource_pct / 100.0)
             self._char_res_label.configure(text=f"{char_info.resource_pct:.0f}%")
-            self._target_hp_bar.configure(value=target_info.hp_pct)
+            self._target_hp_bar.set(target_info.hp_pct / 100.0)
             self._target_hp_label.configure(text=f"{target_info.hp_pct:.0f}%")
             self._target_name_label.configure(text=target_info.name or "---")
-
         except Exception:
             pass
 
-        # Agenda proxima leitura
         if self._widget_states.get(label, False):
             self.root.after(1000, self._poll_dashboard)
 
     def _dashboard_log_append(self, text: str):
-        """Adiciona texto ao log do dashboard."""
         self._dashboard_log.configure(state="normal")
         self._dashboard_log.insert("end", text)
-        self._dashboard_log.see("end")
+        self._dashboard_log.yview_moveto(1.0)
         self._dashboard_log.configure(state="disabled")
 
     # =====================================================
-    # Aba Key (licenciamento)
+    # Key (licenciamento)
     # =====================================================
 
     def _build_key_content(self):
-        """Conteudo da aba Key: ativacao de licenca."""
+        frame = ctk.CTkFrame(self._key_frame, fg_color="transparent")
+        frame.pack(expand=True, padx=24)
 
-        frame = ttk.Frame(self._key_frame, padding=24)
-        frame.pack(expand=True)
+        ctk.CTkLabel(frame, text="Licenciamento", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(0, 16))
 
-        ttk.Label(frame, text="Licenciamento", font=("", 14, "bold")).pack(pady=(0, 16))
-
-        # Chave
-        key_row = ttk.Frame(frame)
+        key_row = ctk.CTkFrame(frame, fg_color="transparent")
         key_row.pack(fill="x", pady=4)
-        ttk.Label(key_row, text="Chave:", width=8).pack(side="left")
         self._license_key_var = tk.StringVar()
-        ttk.Entry(key_row, textvariable=self._license_key_var, width=28).pack(side="left", padx=(8, 8))
-        ttk.Button(key_row, text="Validar", command=self._on_validate_license).pack(side="left")
+        ctk.CTkEntry(key_row, textvariable=self._license_key_var, width=220, placeholder_text="TO-AAAAMMDD-HASH").pack(side="left", padx=(0, 8))
+        ctk.CTkButton(key_row, text="Validar", command=self._on_validate_license).pack(side="left")
 
-        # Demo
-        ttk.Button(
+        ctk.CTkButton(
             frame, text="Usar modo Demo (30 dias gratuitos)",
             command=self._on_activate_demo,
-        ).pack(pady=(12, 20))
+            fg_color="transparent", border_width=1,
+        ).pack(pady=(16, 20))
 
-        # Status
-        self._license_status_frame = ttk.LabelFrame(frame, text="Status", padding=12)
+        self._license_status_frame = ctk.CTkFrame(frame)
         self._license_status_frame.pack(fill="x")
 
-        self._license_status_text = ttk.Label(
+        self._license_status_text = ctk.CTkLabel(
             self._license_status_frame,
             text="",
-            font=("", 10),
+            font=ctk.CTkFont(size=12),
         )
-        self._license_status_text.pack(anchor="w")
+        self._license_status_text.pack(anchor="w", padx=12, pady=12)
 
-        ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=(16, 4))
+        ctk.CTkFrame(frame, height=1, fg_color="#444444").pack(fill="x", pady=(16, 4))
 
-        ttk.Label(
+        ctk.CTkLabel(
             frame,
             text="Adquira sua licenca: contato@loginto.app",
-            foreground="#888888",
+            text_color="#888888",
         ).pack()
 
         self._refresh_license_status()
 
     def _refresh_license_status(self):
-        """Atualiza o status da licenca na aba Key e na barra inferior."""
-
         self._license.check()
-
         info = self._license.info
 
         if info.status == "demo":
@@ -1035,47 +842,43 @@ class MainWindow:
                 f"Tipo: {tier}\n"
                 f"Chave: {info.key if info.key else '---'}"
             ),
-            foreground=color,
+            text_color=color,
         )
 
-        # Barra de status (pode ainda nao existir na primeira chamada)
         if hasattr(self, "_license_label"):
             self._license_label.configure(
                 text=f"Licenca: {tier} ({days}d)",
-                foreground=color,
+                text_color=color,
             )
 
     def _on_validate_license(self):
-        """Valida a chave inserida pelo usuario."""
         key = self._license_key_var.get().strip()
         if not key:
-            messagebox.showwarning("Chave vazia", "Insira uma chave de licenca.")
+            messagebox.showwarning("Chave vazia", "Insira uma chave.")
             return
-
         success, msg = self._license.activate(key)
         if success:
             messagebox.showinfo("Licenca ativada", msg)
         else:
             messagebox.showerror("Erro", msg)
-
         self._license_key_var.set("")
         self._refresh_license_status()
 
     def _on_activate_demo(self):
-        """Ativa o modo de demonstracao."""
-        success, msg = self._license.activate("DEMO")
-        if success:
-            messagebox.showinfo("Modo Demo", msg)
+        self._license.activate("DEMO")
         self._refresh_license_status()
 
-    def _build_status_bar(self):
-        bar = ttk.Frame(self.root)
-        bar.pack(fill="x", padx=8, pady=(0, 4))
+    # =====================================================
+    # Status bar
+    # =====================================================
 
-        self._license_label = ttk.Label(bar, text="Licenca: ...", foreground="#888888")
+    def _build_status_bar(self):
+        bar = ctk.CTkFrame(self.root, fg_color="transparent")
+        bar.pack(fill="x", padx=8, pady=(0, 6))
+
+        self._license_label = ctk.CTkLabel(bar, text="", text_color="#888888")
         self._license_label.pack(side="right")
 
-        # Atualiza com dados reais
         self._refresh_license_status()
 
     # =====================================================
@@ -1152,7 +955,7 @@ class MainWindow:
         self._rebuild_login_table()
 
     # =====================================================
-    # Login / relogging (threads)
+    # Login / relogging
     # =====================================================
 
     def _on_checkbox_toggle(self, label: str):
@@ -1188,7 +991,6 @@ class MainWindow:
 
         stop_event = threading.Event()
         self._stop_events[label] = stop_event
-
         account = self.accounts[self._account_index[label]]
 
         thread = threading.Thread(
@@ -1226,8 +1028,6 @@ class MainWindow:
                         raise RuntimeError("Login concluido mas sem handle de janela.")
 
                     SessionRegistry.register(account.label, hwnd)
-                    print(f"[{account.label}] Login concluido com sucesso!")
-
                     self._monitor_game_window(hwnd, account.label, stop_event)
 
                 except Exception as e:
@@ -1246,10 +1046,8 @@ class MainWindow:
             self._on_account_finished(account.label)
 
     def _monitor_game_window(self, hwnd: int, label: str, stop_event: threading.Event):
-        print(f"[{label}] Monitorando janela (hwnd={hwnd})...")
         while not stop_event.is_set():
             if not win32gui.IsWindow(hwnd):
-                print(f"[{label}] Janela fechada. Reiniciando login...")
                 return
             time.sleep(2.0)
 
@@ -1260,22 +1058,16 @@ class MainWindow:
                 var.set(False)
         self.root.after(0, _uncheck)
 
-        # Para o bot engine se estiver rodando
         self._stop_bot_for_window(label)
 
         with self._active_lock:
             self._active_threads -= 1
             remaining = self._active_threads
-
         if remaining <= 0:
             self.root.after(0, self._restore_stdout)
 
     def _restore_stdout(self):
         sys.stdout = self.log_redirector.original
-
-    # =====================================================
-    # Auto-login
-    # =====================================================
 
     def _auto_start_accounts(self):
         for account in self.accounts:
@@ -1285,14 +1077,64 @@ class MainWindow:
                     var.set(True)
                     self._start_login_thread(account.label)
 
-    # =====================================================
-    # Log
-    # =====================================================
-
     def _clear_log(self):
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
+
+    # =====================================================
+    # Bot Engine
+    # =====================================================
+
+    def _get_or_create_bot_engine(self, label: str) -> BotEngine:
+        if not hasattr(self, "_bot_engines"):
+            self._bot_engines: dict[str, BotEngine] = {}
+
+        if label not in self._bot_engines:
+            engine = BotEngine()
+            engine.register(AttackScript())
+            engine.register(PotionScript())
+            engine.register(PetFoodScript())
+            engine.register(BuffScript())
+            engine.register(HelperScript())
+            engine.register(FairyScript())
+            engine.register(ReviveScript())
+            engine.register(DeleteScript())
+            engine.register(BCScript())
+            engine.register(HollowScript())
+            engine.register(SellScript())
+            engine.register(DRLureScript())
+            self._bot_engines[label] = engine
+
+        return self._bot_engines[label]
+
+    def _start_bot_for_window(self, label: str):
+        sessions = SessionRegistry.get_all()
+        session = sessions.get(label)
+        if session is None or not session.get("hwnd"):
+            return
+
+        hwnd = session["hwnd"]
+        engine = self._get_or_create_bot_engine(label)
+        if engine.is_running:
+            return
+
+        from src.infrastructure.window.service import WindowService
+        from src.infrastructure.vision.service import VisionService
+        from src.infrastructure.input.service import InputService
+
+        ws = WindowService()
+        vs = VisionService(window_service=ws)
+        ins = InputService()
+
+        engine.start(hwnd, ins, vs, ws, self._game_reader)
+
+    def _stop_bot_for_window(self, label: str):
+        if not hasattr(self, "_bot_engines"):
+            return
+        engine = self._bot_engines.get(label)
+        if engine:
+            engine.stop()
 
     # =====================================================
     # Execucao

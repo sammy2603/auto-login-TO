@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
+
+import customtkinter as ctk
 from typing import Callable
 
 from src.ui.session_registry import SessionRegistry
 
 
-class RightPanel(ttk.Frame):
+class RightPanel(ctk.CTkFrame):
     """
     Painel direito: lista de janelas do jogo abertas + Start/Stop.
     """
@@ -31,13 +32,15 @@ class RightPanel(ttk.Frame):
         SessionRegistry.observe(self._schedule_refresh)
 
     def _build(self):
-        header = ttk.Label(self, text="Janelas", font=("", 9, "bold"))
-        header.pack(anchor="w", pady=(0, 4))
+        ctk.CTkLabel(
+            self, text="Janelas",
+            font=ctk.CTkFont(weight="bold"),
+        ).pack(anchor="w", pady=(0, 4))
 
-        list_frame = ttk.Frame(self)
+        list_frame = ctk.CTkFrame(self, fg_color="transparent")
         list_frame.pack(fill="both", expand=True)
 
-        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar = ctk.CTkScrollbar(list_frame)
         scrollbar.pack(side="right", fill="y")
 
         self._listbox = tk.Listbox(
@@ -45,21 +48,32 @@ class RightPanel(ttk.Frame):
             yscrollcommand=scrollbar.set,
             height=10,
             exportselection=False,
+            bg="#2b2b2b",
+            fg="#dcdcdc",
+            selectbackground="#1a5c2a",
+            selectforeground="#ffffff",
+            borderwidth=0,
+            highlightthickness=0,
         )
         self._listbox.pack(side="left", fill="both", expand=True)
-        scrollbar.config(command=self._listbox.yview)
+        scrollbar.configure(command=self._listbox.yview)
 
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
 
-        self._action_btn = ttk.Button(
+        self._action_btn = ctk.CTkButton(
             self,
             text="Start",
             state="disabled",
             command=self._on_action,
+            height=30,
         )
         self._action_btn.pack(fill="x", pady=(8, 0))
 
-        self._hint_label = ttk.Label(self, text="Selecione uma janela")
+        self._hint_label = ctk.CTkLabel(
+            self,
+            text="Selecione uma janela",
+            text_color="#888888",
+        )
         self._hint_label.pack(pady=(4, 0))
 
         self._refresh()
@@ -114,9 +128,9 @@ class RightPanel(ttk.Frame):
 
     def _update_action_button(self):
         if self._running:
-            self._action_btn.configure(text="Stop")
+            self._action_btn.configure(text="Stop", fg_color="#8b0000", hover_color="#a00000")
         else:
-            self._action_btn.configure(text="Start")
+            self._action_btn.configure(text="Start", fg_color="#1a5c2a", hover_color="#1e6e32")
 
     @property
     def selected_label(self) -> str | None:
