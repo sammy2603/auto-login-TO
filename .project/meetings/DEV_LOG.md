@@ -1,21 +1,39 @@
 ## 2026-07-27
 
-### Concluido
-- GUI refatorada: interface em abas (Gerenciar Contas / Login)
-- Login por checkboxes com relogging automatico (monitora janela via IsWindow)
-- Auto-login: contas com flag auto_login iniciam automaticamente ao abrir o bot
-- Adicionado campo auto_login no cadastro de conta (AccountDialog)
-- Limpeza: removidos window_utils.py, vision.py, input_utils.py
-- Removidos PNGs orfaos e debug PNGs da raiz
-- Documentacao atualizada: copilot-instructions, PROJECT_MAP, BACKLOG, MIGRATION_PROGRESS
-- Migracao do config: Settings em src/config/settings.py como fonte unica
-  - config.py raiz convertido em shim de compatibilidade
-  - Container passa templates_dir absoluto para VisionService
-  - main_window.py nao depende mais de config.py
+### Concluido — Fase 4: Bot Engine + Pricing + Help
+- BotEngine: motor de scripts em loop (thread separada), protocolo BotScript
+- Scripts exemplo: Attack (ataca alvo via Tab + tecla 1), Potion (usa pocao
+  quando HP < 55%)
+- Pricing: dialogo modal com tiers Free/Premium e contato
+- Help: dialogo com versao 0.2.0 e botao "Verificar Atualizacao"
+  (consulta GitHub Releases)
+- Start/Stop conectado ao BotEngine: inicia/para scripts para a janela
+  selecionada no painel direito
+- Bot engine parado automaticamente ao deslogar/fechar janela
 
 ### Proxima etapa
-- Implementar logger estruturado
-- Implementar testes
+- Calibracao das regioes de HP/resource com o jogo real
+- Scripts adicionais (Pet Food, Buff, Helper, Fairy, Revive,
+  Delete, BC, Hollow, Sell, DR Lure)
+- Tool de calibracao visual para regioes de HP
+
+### Fase 3: Licenciamento + GameReader
+- LicenseService: validacao de chave, demo (30d), expiracao, persistencia
+- Aba Key: input de chave, status (demo/ativa/expirada), dias, tier
+- Status bar com dados reais da licenca
+- GameReader: leitura de HP/recurso via analise de pixels
+- Dashboard: polling 1s para leitura em tempo real
+
+### Fase 2: Dashboard + Start/Stop
+- Aba Dashboard (Char Info, Target Info, Funcoes, Log)
+- 12 checkboxes de funcoes com estado por janela
+- Sidebar: clica em funcao → abre Dashboard + destaca linha
+- RightPanel conectado ao Dashboard e Start/Stop
+
+### Fase 1: Layout 3 paineis
+- SessionRegistry, Sidebar (15 itens), RightPanel
+- Top bar (List, Config, Login, Pricing, Help)
+- Tema escuro, status bar, Home com login/relogging/auto-login
 
 ## 2026-07-21
 
