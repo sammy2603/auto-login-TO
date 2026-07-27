@@ -1,4 +1,5 @@
 from __future__ import annotations
+import threading
 import time
 
 
@@ -11,6 +12,15 @@ class GameClient:
 
     Toda interação deve acontecer através desta classe.
     """
+
+    # Trava COMPARTILHADA entre todas as instâncias (nível de classe).
+    # Necessária pra rodar várias contas em paralelo: o trecho de
+    # "abrir o client + esperar a janela nova aparecer" precisa ser
+    # atômico -- se outra conta abrir o client dela no meio dessa
+    # espera, o bot pode confundir qual janela pertence a qual conta.
+    # O restante do fluxo de cada conta (login, fila, etc) continua
+    # rodando em paralelo normalmente; só esse trecho fica serializado.
+    launch_lock = threading.Lock()
 
     def __init__(
         self,
@@ -132,6 +142,16 @@ class GameClient:
         Retorna o tamanho da área útil da janela.
         """
         return self.window.client_size()
+
+    def rename_window(self, title: str):
+        """
+        Renomeia a janela conectada. Útil pra diferenciar várias
+        contas rodando ao mesmo tempo na barra de tarefas.
+        """
+        try:
+            self.window.set_title(title)
+        except Exception as e:
+            print(f"[GameClient] Aviso: não foi possível renomear a janela ({e})")
 
     # =====================================================
     # Vision

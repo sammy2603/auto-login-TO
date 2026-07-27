@@ -115,4 +115,9 @@ class ServerWorkflow(BaseWorkflow):
 
     def finish(self):
 
+        # O jogo reescreve o título da janela ao entrar no servidor
+        # (ex: acrescenta o nome do servidor) -- renomeamos de novo
+        # aqui pra não perder a identificação da conta.
+        self.rename_window()
+
         self.log("Seleção de servidor concluída.")

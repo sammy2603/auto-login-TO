@@ -32,6 +32,20 @@ class BaseWorkflow:
         else:
             print(f"[{self.__class__.__name__}] {message}")
 
+    def rename_window(self):
+        """
+        Renomeia a janela com o apelido da conta. Precisa ser chamado
+        de novo depois de qualquer transição de tela em que o próprio
+        jogo reescreve o título da janela (ex: ao selecionar servidor),
+        já que isso apaga o nome que colocamos antes.
+        """
+
+        label = self.settings.account_label or self.settings.username
+
+        self.client.rename_window(
+            f"Talisman Online - {label}"
+        )
+
     # =====================================================
     # Tempo
     # =====================================================

@@ -20,9 +20,16 @@ class LoginWorkflow(BaseWorkflow):
 
     def execute(self):
 
-        self.launch_client()
+        # Trava compartilhada entre contas: garante que "abrir o
+        # client + detectar a janela nova" acontece de forma atômica,
+        # mesmo com várias contas rodando em paralelo (evita o bot
+        # confundir qual janela pertence a qual conta). O resto do
+        # fluxo roda solto, em paralelo com as outras contas.
+        with self.client.launch_lock:
 
-        self.connect()
+            self.launch_client()
+
+            self.connect()
 
         self.wait_login_screen()
 
@@ -58,6 +65,9 @@ class LoginWorkflow(BaseWorkflow):
         )
 
         self.log("Janela encontrada.")
+
+        self.rename_window()
+
         self.wait(5)
 
     # =====================================================

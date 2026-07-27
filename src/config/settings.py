@@ -36,3 +36,8 @@ class Settings:
     max_ip_retries: int = config.MAX_IP_RETRIES
 
     server_name: str = config.SERVER_NAME
+
+    # Apelido/identificador da conta, usado para renomear a janela do
+    # jogo (útil pra diferenciar várias contas rodando ao mesmo tempo).
+    # Se vazio, cai no "username" como identificador.
+    account_label: str = ""

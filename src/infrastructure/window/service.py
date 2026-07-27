@@ -231,6 +231,14 @@ class WindowService:
 
         return self._get_client_size(self.hwnd)
 
+    def set_title(self, title: str):
+        """
+        Renomeia o título da janela conectada. Útil pra diferenciar
+        várias janelas do jogo abertas ao mesmo tempo (uma por conta).
+        """
+
+        win32gui.SetWindowText(self.hwnd, title)
+
     # =====================================================
     # Implementação interna (Win32)
     # =====================================================

@@ -469,6 +469,7 @@ class MainWindow:
             server_name=account.server_name,
             character_slot=account.character_slot,
             client_path=client_path,
+            account_label=account.label,
         )
 
         try:

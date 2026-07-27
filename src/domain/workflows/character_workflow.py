@@ -173,4 +173,9 @@ class CharacterWorkflow(BaseWorkflow):
                 "(HUD não encontrado)."
             )
 
+        # Renomeia de novo aqui: o jogo pode ter reescrito o título em
+        # alguma transição entre a seleção de servidor e o carregamento
+        # final (tela de personagem, entrada no mundo, etc).
+        self.rename_window()
+
         self.log("Jogo carregado com sucesso!")
