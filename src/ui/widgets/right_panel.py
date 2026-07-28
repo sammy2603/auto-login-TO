@@ -33,7 +33,7 @@ class RightPanel(ctk.CTkFrame):
 
     def _build(self):
         ctk.CTkLabel(
-            self, text="Janelas",
+            self, text="Characters",
             font=ctk.CTkFont(weight="bold"),
         ).pack(anchor="w", pady=(0, 4))
 
@@ -71,7 +71,7 @@ class RightPanel(ctk.CTkFrame):
 
         self._hint_label = ctk.CTkLabel(
             self,
-            text="Selecione uma janela",
+            text="Selecione um character",
             text_color="#888888",
         )
         self._hint_label.pack(pady=(4, 0))
@@ -87,34 +87,44 @@ class RightPanel(ctk.CTkFrame):
 
         self._listbox.delete(0, "end")
 
-        for label in sorted(sessions.keys()):
-            self._listbox.insert("end", label)
+        for label, info in sorted(sessions.items()):
+            self._listbox.insert("end", info.get("display", label))
 
         if current_selection and current_selection in sessions:
-            idx = sorted(sessions.keys()).index(current_selection)
-            self._listbox.selection_set(idx)
+            # Encontra pelo display
+            for idx, (label, info) in enumerate(sorted(sessions.items())):
+                if label == current_selection:
+                    self._listbox.selection_set(idx)
+                    break
         elif sessions:
             self._listbox.selection_set(0)
-            first = sorted(sessions.keys())[0]
-            self._select(first)
+            first_label = sorted(sessions.keys())[0]
+            self._select(first_label)
 
         if not sessions:
             self._selected_label = None
             self._running = False
             self._action_btn.configure(state="disabled", text="Start")
-            self._hint_label.configure(text="Selecione uma janela")
+            self._hint_label.configure(text="Selecione um character")
 
     def _on_select(self, event):
         selection = self._listbox.curselection()
         if selection:
-            label = self._listbox.get(selection[0])
-            self._select(label)
+            display = self._listbox.get(selection[0])
+            # Encontra a chave da sessao pelo display
+            sessions = SessionRegistry.get_all()
+            for label, info in sessions.items():
+                if info.get("display", label) == display:
+                    self._select(label)
+                    return
 
     def _select(self, label: str):
         self._selected_label = label
         self._action_btn.configure(state="normal")
         self._update_action_button()
-        self._hint_label.configure(text=f"Janela: {label}")
+        sessions = SessionRegistry.get_all()
+        display = sessions.get(label, {}).get("display", label)
+        self._hint_label.configure(text=f"Character: {display}")
         if self._on_select_callback:
             self._on_select_callback(label)
 

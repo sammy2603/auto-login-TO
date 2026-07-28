@@ -61,6 +61,7 @@ class BotEngine:
         vision_service,
         window_service,
         game_reader,
+        memory_reader=None,
     ):
         """Inicia o loop de execucao em uma thread separada."""
         if self._running:
@@ -69,7 +70,8 @@ class BotEngine:
         self._running = True
         self._thread = threading.Thread(
             target=self._loop,
-            args=(hwnd, input_service, vision_service, window_service, game_reader),
+            args=(hwnd, input_service, vision_service, window_service,
+                  game_reader, memory_reader),
             daemon=True,
         )
         self._thread.start()
@@ -89,18 +91,36 @@ class BotEngine:
         vision_service,
         window_service,
         game_reader,
+        memory_reader,
     ):
         print(f"[BotEngine] Iniciado para hwnd={hwnd}")
 
+        from src.services.game.game_reader import CharInfo, TargetInfo
+
         while self._running:
 
-            try:
-                screenshot = window_service.capture_hwnd(hwnd)
-                char_info = game_reader.read_char_info(screenshot)
-                target_info = game_reader.read_target_info(screenshot)
-            except Exception:
-                time.sleep(0.5)
-                continue
+            char_info = CharInfo()
+            target_info = TargetInfo()
+
+            # Prefere dados de memoria (mais precisos)
+            if memory_reader:
+                try:
+                    char_info.hp_pct = memory_reader.hp_pct
+                    char_info.resource_pct = memory_reader.mana_pct
+                    target_info.hp_pct = memory_reader.target_hp_pct
+                    target_info.name = memory_reader.target_name
+                except Exception:
+                    pass
+
+            # Fallback para analise de pixels
+            if char_info.hp_pct == 0 and char_info.resource_pct == 0:
+                try:
+                    screenshot = window_service.capture_hwnd(hwnd)
+                    char_info = game_reader.read_char_info(screenshot)
+                    target_info = game_reader.read_target_info(screenshot)
+                except Exception:
+                    time.sleep(0.5)
+                    continue
 
             with self._lock:
                 scripts = list(self._scripts)
@@ -109,9 +129,10 @@ class BotEngine:
                 if not self._running:
                     break
                 try:
+                    screenshot_arg = None
                     acted = script.tick(
                         hwnd=hwnd,
-                        screenshot=screenshot,
+                        screenshot=screenshot_arg,
                         char_info=char_info,
                         target_info=target_info,
                         input_service=input_service,

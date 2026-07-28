@@ -15,10 +15,24 @@ class SessionRegistry:
     _observers: list[Callable[[], None]] = []
 
     @classmethod
-    def register(cls, label: str, hwnd: int):
-        """Registra uma sessao ativa."""
+    def register(cls, label: str, hwnd: int, pid: int | None = None,
+                 display: str | None = None):
+        """Registra uma sessao ativa. Remove duplicatas pelo HWND."""
         with cls._lock:
-            cls._sessions[label] = {"hwnd": hwnd, "running": True}
+            # Remove qualquer entrada existente com o mesmo HWND
+            to_remove = [
+                k for k, v in cls._sessions.items()
+                if v.get("hwnd") == hwnd and k != label
+            ]
+            for k in to_remove:
+                del cls._sessions[k]
+
+            cls._sessions[label] = {
+                "hwnd": hwnd,
+                "pid": pid,
+                "display": display or label,
+                "running": True,
+            }
         cls._notify()
 
     @classmethod

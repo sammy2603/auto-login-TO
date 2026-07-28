@@ -251,7 +251,7 @@ class WindowService:
     @staticmethod
     def _find_window(title_substring: str):
         """
-        Procura a primeira janela cujo título contenha
+        Procura a primeira janela cujo titulo contenha
         'title_substring'. Retorna o handle (HWND) ou None.
         """
         result = {"hwnd": None}
@@ -266,6 +266,24 @@ class WindowService:
 
         win32gui.EnumWindows(_callback, None)
         return result["hwnd"]
+
+    @staticmethod
+    def find_all_windows(title_substring: str) -> list[int]:
+        """
+        Retorna TODOS os HWNDs visiveis cujo titulo contenha
+        'title_substring'.
+        """
+        results = []
+
+        def _callback(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                if title_substring.lower() in title.lower():
+                    results.append(hwnd)
+            return True
+
+        win32gui.EnumWindows(_callback, None)
+        return results
 
     @staticmethod
     def _find_window_by_pid(pid: int):

@@ -3,31 +3,28 @@ from __future__ import annotations
 
 class AttackScript:
     """
-    Script de ataque automatico.
+    Script de ataque com skills configuraveis.
 
-    Estrategia:
-    1. Se ha alvo com HP > 0, ataca (tecla de ataque ou skill)
-    2. Se nao ha alvo, procura o alvo mais proximo (Tab)
-    3. Se HP do personagem esta baixo, nao ataca (aguarda Potion)
+    Cicla pelas teclas configuradas com o delay definido
+    pelo usuario (50-250ms entre cada tecla).
 
-    Nota: este script e um exemplo. As teclas, templates e
-    coordenadas precisam ser calibradas para cada cliente.
+    So ataca se houver alvo selecionado e HP do char > 0.
     """
 
     name = "Attack"
 
-    # Tecla virtual de ataque (ajustar conforme o jogo)
-    ATTACK_KEY = "1"
+    def __init__(self, config: dict | None = None):
+        self._config = config or {}
+        self._index = 0
+        self._last_key = 0.0
 
-    # Abaixo de qual % de HP o script para de atacar
-    MIN_HP_PCT = 25.0
+    @property
+    def _keys(self) -> list[str]:
+        return self._config.get("keys", ["1"])
 
-    # Tempo minimo entre ataques (segundos)
-    ATTACK_COOLDOWN = 1.5
-
-    def __init__(self):
-        self._last_attack = 0.0
-        self._last_tab = 0.0
+    @property
+    def _speed_ms(self) -> int:
+        return self._config.get("speed", 150)
 
     def tick(
         self,
@@ -41,24 +38,24 @@ class AttackScript:
     ) -> bool:
         import time
 
+        keys = self._keys or ["1"]
+        speed = self._speed_ms / 1000.0
+
+        if not target_info or target_info.hp_pct <= 0:
+            return False
+
+        if char_info and char_info.hp_pct <= 0:
+            return False
+
         now = time.time()
-
-        # Seguranca: nao ataca se HP muito baixo
-        if char_info.hp_pct < self.MIN_HP_PCT:
+        if now - self._last_key < speed:
             return False
 
-        # Se tem alvo com HP > 0, ataca
-        if target_info.hp_pct > 0:
-            if now - self._last_attack >= self.ATTACK_COOLDOWN:
-                input_service.press_key(hwnd, self.ATTACK_KEY)
-                self._last_attack = now
-                return True
-            return False
+        if self._index >= len(keys):
+            self._index = 0
 
-        # Se nao tem alvo, procura (Tab)
-        if now - self._last_tab >= 1.0:
-            input_service.press_key(hwnd, "TAB")
-            self._last_tab = now
-            return True
-
-        return False
+        key = keys[self._index]
+        input_service.press_key(hwnd, key)
+        self._index += 1
+        self._last_key = now
+        return True

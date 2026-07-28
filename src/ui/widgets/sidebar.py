@@ -57,9 +57,10 @@ class Sidebar(ctk.CTkFrame):
                 hover_color="#3a3a3a",
                 anchor="w",
                 corner_radius=4,
-                height=28,
+                height=26,
+                font=ctk.CTkFont(size=11),
             )
-            btn.pack(fill="x", padx=4, pady=1)
+            btn.pack(fill="x", padx=2, pady=1)
             self._buttons[label] = btn
 
         self._select("Home")
