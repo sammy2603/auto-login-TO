@@ -905,12 +905,18 @@ class MainWindow:
     def _get_memory_reader(self, label: str, pid: int) -> MemoryReader | None:
         if not hasattr(self, "_memory_readers"):
             self._memory_readers: dict[str, MemoryReader] = {}
+            self._mr_failed: set[str] = set()
+
+        if label in self._mr_failed:
+            return None
+
         if label not in self._memory_readers:
             try:
                 self._memory_readers[label] = MemoryReader(pid)
-            except Exception as e:
-                print(f"[GUI] MemoryReader falhou para '{label}': {e}")
+            except Exception:
+                self._mr_failed.add(label)
                 return None
+
         return self._memory_readers[label]
 
     # =====================================================
@@ -993,7 +999,10 @@ class MainWindow:
             ev.set()
         if hasattr(self, "_memory_readers"):
             for mr in self._memory_readers.values():
-                mr.close()
+                try:
+                    mr.close()
+                except Exception:
+                    pass
         self.root.destroy()
 
     # =====================================================
@@ -1145,7 +1154,10 @@ class MainWindow:
         self._stop_bot_for_window(label)
         if hasattr(self, "_memory_readers"):
             mr = self._memory_readers.pop(label, None)
-            if mr: mr.close()
+            if mr:
+                mr.close()
+            if hasattr(self, "_mr_failed"):
+                self._mr_failed.discard(label)
         with self._active_lock:
             self._active_threads -= 1
             remaining = self._active_threads
@@ -1164,23 +1176,20 @@ class MainWindow:
                     self._start_login_thread(account.label)
 
     def _scan_for_game_windows(self):
-        """Detecta janelas do jogo que ja estao abertas, mesmo que
-        ja tenham sido renomeadas. Identifica pelo processo:
-        tenta ler o nome do personagem da memoria — se funcionar,
-        e uma janela do jogo."""
+        """Detecta janelas do jogo ja abertas. So registra se
+        conseguir ler o char_name via MemoryReader — isso garante
+        que e realmente o processo do jogo."""
 
         from src.infrastructure.window.service import WindowService
 
         ws = WindowService()
         existing = SessionRegistry.get_all()
 
-        # Remove janelas externas que fecharam
         for label, info in list(existing.items()):
             if label.startswith("ext_") and info.get("hwnd"):
                 if not win32gui.IsWindow(info["hwnd"]):
                     SessionRegistry.unregister(label)
 
-        # Busca TODAS as janelas visiveis e filtra pelo processo
         all_hwnds = ws._list_windows()
         tracked = {s["hwnd"] for s in existing.values() if s.get("hwnd")}
 
@@ -1190,7 +1199,6 @@ class MainWindow:
 
             pid = ws._get_window_pid(hwnd)
 
-            # Tenta ler o nome do personagem — se funcionar, e jogo
             char_name = None
             if pid:
                 try:
@@ -1198,12 +1206,11 @@ class MainWindow:
                     char_name = mr.char_name
                     mr.close()
                 except Exception:
-                    continue
+                    continue  # nao e o processo do jogo
 
             if not char_name:
-                continue
+                continue  # so registra se leu nome real
 
-            display = char_name
             label = f"ext_{hwnd}"
 
             try:
@@ -1211,8 +1218,8 @@ class MainWindow:
             except Exception:
                 pass
 
-            SessionRegistry.register(label, hwnd, pid, display=display)
-            print(f"[GUI] Janela detectada: {display}")
+            SessionRegistry.register(label, hwnd, pid, display=char_name)
+            print(f"[GUI] Janela detectada: {char_name}")
 
         self.root.after(5000, self._scan_for_game_windows)
 

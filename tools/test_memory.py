@@ -64,14 +64,52 @@ def main():
 
     ws = WindowService()
 
-    # 1. Encontrar janela
+    # 1. Encontrar janela (busca por titulo ou processo)
     print("Procurando janela do jogo...")
+    hwnd = None
+    pid = None
+
+    # Tenta pelo titulo original primeiro
     try:
-        hwnd = ws.connect(title_substring=config.WINDOW_TITLE, timeout=10)
-    except Exception as e:
-        print(f"  {fail(f'Janela nao encontrada: {e}')}")
+        hwnd = ws.connect(title_substring=config.WINDOW_TITLE, timeout=3)
+    except Exception:
+        pass
+
+    if hwnd:
+        pid = ws._get_window_pid(hwnd)
+    else:
+        # Busca por todas as janelas, tenta abrir o processo e ler char_name
+        from ctypes import wintypes
+        kernel32_test = ctypes.WinDLL("kernel32", use_last_error=True)
+        all_hwnds = ws._list_windows()
+        for h in all_hwnds:
+            try:
+                _, test_pid = __import__("win32process").GetWindowThreadProcessId(h)
+                hproc = kernel32_test.OpenProcess(0x0010, False, test_pid)
+                if hproc:
+                    kernel32_test.CloseHandle(hproc)
+                    # Verifica se consegue ler o nome do personagem
+                    try:
+                        mr = MemoryReader(test_pid)
+                        name = mr.char_name
+                        mr.close()
+                        if name:
+                            hwnd = h
+                            pid = test_pid
+                            print(f"  Janela renomeada encontrada: '{name}'")
+                            break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+    if not hwnd:
+        print(f"  {fail('Janela nao encontrada')}")
         print("\nAbra o jogo primeiro.")
         sys.exit(1)
+
+    if not pid:
+        pid = ws._get_window_pid(hwnd)
 
     print(f"  {ok('Janela encontrada')}  hwnd={hwnd}")
 

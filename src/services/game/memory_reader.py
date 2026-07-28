@@ -82,11 +82,11 @@ class MemoryReader:
     CLIENT_BASE = 0x00400000
 
     # Ponteiros base
-    CHAR_BASE = 0x011450EC
-    TARGET_BASE = 0x012CE2E0
-    SPLIT_BASE = 0x012CE2E0
-    XP_BASE = 0x011396A0
-    TEAM_SIZE_BASE = 0x0106D328
+    CHAR_BASE = 0x0114514C
+    TARGET_BASE = 0x012CE340
+    SPLIT_BASE = 0x012CE340
+    XP_BASE = 0x01139700
+    TEAM_SIZE_BASE = 0x0106D388
 
     def __init__(self, pid: int):
         self._pid = pid
@@ -303,7 +303,7 @@ class MemoryReader:
 
     @property
     def confirm_box(self) -> bool:
-        return _rpm_int(self._hProcess, 0x012CE35C, 4) == 1
+        return _rpm_int(self._hProcess, 0x012CE3BC, 4) == 1
 
     @property
     def xp_pct(self) -> float:
@@ -319,7 +319,7 @@ class MemoryReader:
 
     @property
     def dialog_open(self) -> bool:
-        chain = [0x0117B27C, 0x70, 0x56C, 0xC, 0x4, 0x42C, 0x1F8, 0x240]
+        chain = [0x0117B2DC, 0x70, 0x56C, 0xC, 0x4, 0x42C, 0x1F8, 0x240]
         addr = self._follow_chain(chain[0], chain[1:])
         return _rpm_int(self._hProcess, addr, 4) == 16775 if addr else False
 
@@ -331,4 +331,4 @@ class MemoryReader:
 
     @property
     def loot_window(self) -> bool:
-        return _rpm_int(self._hProcess, 0x0105B958, 4) == 1
+        return _rpm_int(self._hProcess, 0x0105B9B8, 4) == 1
