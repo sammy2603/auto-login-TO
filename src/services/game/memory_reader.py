@@ -166,11 +166,20 @@ class MemoryReader:
 
     @property
     def mana(self) -> int:
-        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3DC), 4)
+        # Tenta Stamina primeiro (+0x3DC), fallback Mana (+0x3BC)
+        val = _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3DC), 4)
+        if val == 0:
+            val = _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3BC), 4)
+        return val
 
     @property
     def max_mana(self) -> int:
-        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x77C), 4)
+        # Max Stamina (+0x3F0), fallback Max Mana (+0x6EC)
+        val = _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3F0), 4)
+        if val == 0:
+            val = _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x6EC), 4)
+            val += _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x6F0), 4)
+        return val
 
     @property
     def mana_pct(self) -> float:

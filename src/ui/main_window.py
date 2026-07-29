@@ -995,10 +995,58 @@ class MainWindow:
             }
         print(f"[GUI] Potion config salvo: {cfg}")
 
+    def _show_pet_food_config(self):
+        """Configuracao de Pet Food: tecla + intervalo."""
+        if not hasattr(self, "_petfood_config"):
+            self._petfood_config = {"key": "3", "interval": 300}
+        cfg = self._petfood_config
+
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Pet Food", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+
+        r1 = ctk.CTkFrame(inner, fg_color="transparent"); r1.pack(fill="x", pady=2)
+        ctk.CTkLabel(r1, text="Tecla:", width=60, anchor="w").pack(side="left")
+        key_var = tk.StringVar(value=cfg.get("key", "3"))
+        ctk.CTkEntry(r1, textvariable=key_var, width=60).pack(side="left", padx=(8, 0))
+
+        r2 = ctk.CTkFrame(inner, fg_color="transparent"); r2.pack(fill="x", pady=2)
+        ctk.CTkLabel(r2, text="Intervalo:", width=60, anchor="w").pack(side="left")
+        interval_var = tk.IntVar(value=cfg.get("interval", 300))
+        ctk.CTkEntry(r2, textvariable=interval_var, width=60).pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(r2, text="segundos").pack(side="left", padx=(4, 0))
+
+        # Status do pet
+        status_text = "Pet status: --"
+        sessions = SessionRegistry.get_all()
+        label = self._selected_window
+        if label:
+            session = sessions.get(label)
+            if session and session.get("pid"):
+                try:
+                    mr = MemoryReader(session["pid"])
+                    alive = mr.pet_alive
+                    mr.close()
+                    status_text = f"Pet: {'Vivo' if alive else 'Morto'}"
+                except Exception:
+                    pass
+
+        ctk.CTkLabel(inner, text=status_text, font=self.FONT_SMALL).pack(anchor="w", pady=(8, 0))
+
+        ctk.CTkButton(
+            inner, text="Salvar", width=80,
+            command=lambda: self._save_petfood_config(key_var, interval_var),
+        ).pack(pady=(12, 4))
+
+    def _save_petfood_config(self, key_var, interval_var):
+        cfg = self._petfood_config
+        cfg["key"] = key_var.get().strip()
+        cfg["interval"] = interval_var.get()
+        print(f"[GUI] Pet Food config salvo: {cfg}")
+
     def _start_dashboard_poll(self):
         if hasattr(self, "_poll_id") and self._poll_id:
             self.root.after_cancel(self._poll_id)
-        self._poll_id = self.root.after(500, self._poll_dashboard)
+        self._poll_id = self.root.after(100, self._poll_dashboard)
 
     def _poll_dashboard(self):
         label = self._selected_window
@@ -1020,7 +1068,7 @@ class MainWindow:
                             self._target_name_label.configure(text=mr.target_name or "---")
                         except Exception:
                             pass
-        self._poll_id = self.root.after(500, self._poll_dashboard)
+        self._poll_id = self.root.after(100, self._poll_dashboard)
 
     def _get_memory_reader(self, label: str, pid: int) -> MemoryReader | None:
         if not hasattr(self, "_memory_readers"):
@@ -1358,13 +1406,20 @@ class MainWindow:
                 "target_filter": {"mode": "all", "name": ""},
             }
         if not hasattr(self, "_potion_config"):
-            self._potion_config = {"key": "2", "hp_threshold": 55}
+            self._potion_config = {
+                "hp_potion": {"key": "2", "enabled": True, "threshold": 55},
+                "mana_potion": {"key": "3", "enabled": False, "threshold": 40},
+                "battle_hp": {"key": "4", "enabled": False, "threshold": 35},
+                "battle_mana": {"key": "5", "enabled": False, "threshold": 25},
+            }
+        if not hasattr(self, "_petfood_config"):
+            self._petfood_config = {"key": "3", "interval": 300}
 
         if label not in self._bot_engines:
             engine = BotEngine()
             engine.register(AttackScript(config=self._attack_config))
             engine.register(PotionScript(config=self._potion_config))
-            engine.register(PetFoodScript())
+            engine.register(PetFoodScript(config=self._petfood_config))
             engine.register(BuffScript())
             engine.register(HelperScript())
             engine.register(FairyScript())
