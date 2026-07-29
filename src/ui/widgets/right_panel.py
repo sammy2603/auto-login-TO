@@ -35,7 +35,7 @@ class RightPanel(ctk.CTkFrame):
         ctk.CTkLabel(
             self, text="Characters",
             font=ctk.CTkFont(weight="bold"),
-        ).pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="center", pady=(0, 4))
 
         list_frame = ctk.CTkFrame(self, fg_color="transparent")
         list_frame.pack(fill="both", expand=True)
@@ -59,6 +59,7 @@ class RightPanel(ctk.CTkFrame):
         scrollbar.configure(command=self._listbox.yview)
 
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
+        self._listbox.bind("<Double-Button-1>", self._on_double_click)
 
         self._action_btn = ctk.CTkButton(
             self,
@@ -135,6 +136,24 @@ class RightPanel(ctk.CTkFrame):
         self._update_action_button()
         if self._on_action_callback:
             self._on_action_callback(self._selected_label)
+
+    def _on_double_click(self, event):
+        """Duplo clique: foca a janela do jogo."""
+        selection = self._listbox.curselection()
+        if not selection:
+            return
+        display = self._listbox.get(selection[0])
+        sessions = SessionRegistry.get_all()
+        for label, info in sessions.items():
+            if info.get("display", label) == display:
+                hwnd = info.get("hwnd")
+                if hwnd:
+                    import win32gui
+                    try:
+                        win32gui.SetForegroundWindow(hwnd)
+                    except Exception:
+                        pass
+                return
 
     def _update_action_button(self):
         if self._running:

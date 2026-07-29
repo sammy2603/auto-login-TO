@@ -166,13 +166,11 @@ class MemoryReader:
 
     @property
     def mana(self) -> int:
-        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3BC), 4)
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3DC), 4)
 
     @property
     def max_mana(self) -> int:
-        mana = _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x6EC), 4)
-        mana_buff = _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x6F0), 4)
-        return mana + mana_buff
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x77C), 4)
 
     @property
     def mana_pct(self) -> float:
@@ -242,9 +240,7 @@ class MemoryReader:
 
     @property
     def target_selected(self) -> bool:
-        chain = [self.CLIENT_BASE + 0x00EC05C8, 0xD0, 0x2DC, 0x24, 0xC10]
-        addr = self._follow_chain(chain[0], chain[1:])
-        return _rpm_int(self._hProcess, addr, 1) == 1 if addr else False
+        return self.target_hp > 0 and bool(self.target_name)
 
     @property
     def target_hp(self) -> int:

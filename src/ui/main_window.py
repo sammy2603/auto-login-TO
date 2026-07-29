@@ -456,7 +456,7 @@ class MainWindow:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("Talisman Online - Auto Login")
-        self.root.geometry("900x640")
+        self.root.geometry("1024x680")
         self.root.resizable(False, False)
 
         # Grid do root: topo (0) | main (1) | status (2)
@@ -473,6 +473,12 @@ class MainWindow:
         self._account_index: dict[str, int] = {}
         self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
         self._license = LicenseService()
+
+        # Fontes
+        self.FONT = ctk.CTkFont(family="Segoe UI", size=13)
+        self.FONT_BOLD = ctk.CTkFont(family="Segoe UI", size=14, weight="bold")
+        self.FONT_SMALL = ctk.CTkFont(family="Segoe UI", size=12)
+        self.FONT_MONO = ctk.CTkFont(family="Consolas", size=11)
 
         self._selected_window: str | None = None
         self._feature_vars: dict[str, dict[str, ctk.BooleanVar]] = {}
@@ -511,6 +517,7 @@ class MainWindow:
                 command=lambda l=label: self._on_top_bar(l),
                 fg_color="transparent", hover_color="#3a3a3a",
                 width=60, height=28,
+                font=self.FONT_SMALL,
             ).pack(side="left", padx=2)
 
         ctk.CTkFrame(top, height=1, fg_color="#444444").pack(fill="x", pady=(4, 0))
@@ -627,14 +634,14 @@ class MainWindow:
         self.tabview.set("Dashboard")
 
         # Sidebar (criado depois do notebook estar pronto)
-        sf = ctk.CTkFrame(mf, fg_color="transparent", width=80)
+        sf = ctk.CTkFrame(mf, fg_color="transparent", width=150)
         sf.grid(row=0, column=0, sticky="ns", padx=(0, 4))
         sf.grid_propagate(False)
         self.sidebar = Sidebar(sf, on_select=self._on_sidebar_select)
         self.sidebar.pack(fill="both", expand=True)
 
         # Right panel
-        rf = ctk.CTkFrame(mf, width=190)
+        rf = ctk.CTkFrame(mf, width=196)
         rf.grid(row=0, column=2, sticky="ns", padx=(4, 0))
         rf.grid_propagate(False)
         self.right_panel = RightPanel(
@@ -650,9 +657,11 @@ class MainWindow:
             self._open_config_window()
         elif label == "Home":
             self.tabview.set("Dashboard")
+            self._cb_frame.grid()
             self._clear_feature_config()
         else:
             self.tabview.set("Dashboard")
+            self._cb_frame.grid_remove()
             self._highlight_feature(label)
 
     # =====================================================
@@ -669,32 +678,65 @@ class MainWindow:
         # Char Info
         cf = ctk.CTkFrame(self._dashboard_frame)
         cf.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
-        ctk.CTkLabel(cf, text="Char Info", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=8, pady=(6, 4))
+        cf.grid_columnconfigure(0, weight=1)
+        cf.grid_columnconfigure(2, weight=1)
+
+        # Char Info (coluna 0)
+        char_col = ctk.CTkFrame(cf, fg_color="transparent")
+        char_col.grid(row=0, column=0, sticky="ew", padx=(8, 0))
+        ctk.CTkLabel(char_col, text="Char Info", font=self.FONT_BOLD).pack(anchor="w", pady=(4, 2))
 
         for name, bar_attr, lbl_attr in [
             ("HP:", "_char_hp_bar", "_char_hp_label"),
             ("Recurso:", "_char_res_bar", "_char_res_label"),
         ]:
-            r = ctk.CTkFrame(cf, fg_color="transparent"); r.pack(fill="x", padx=8, pady=2)
-            ctk.CTkLabel(r, text=name, width=60, anchor="w").pack(side="left")
-            bar = ctk.CTkProgressBar(r, width=180); bar.pack(side="left", padx=(8, 8)); bar.set(0)
-            lbl = ctk.CTkLabel(r, text="---", width=60); lbl.pack(side="left")
+            r = ctk.CTkFrame(char_col, fg_color="transparent"); r.pack(fill="x", pady=1)
+            ctk.CTkLabel(r, text=name, width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
+            bar = ctk.CTkProgressBar(r, width=130, progress_color="#22aa22")
+            bar.pack(side="left", padx=(4, 4)); bar.set(0)
+            lbl = ctk.CTkLabel(r, text="---", width=55, anchor="e", font=self.FONT_SMALL); lbl.pack(side="right")
             setattr(self, bar_attr, bar)
             setattr(self, lbl_attr, lbl)
 
-        # Target Info
-        tf = ctk.CTkFrame(self._dashboard_frame)
-        tf.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-        ctk.CTkLabel(tf, text="Target Info", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=8, pady=(6, 4))
+        # Separador vertical (coluna 1)
+        ctk.CTkFrame(cf, width=2, fg_color="#444444").grid(
+            row=0, column=1, sticky="ns", padx=6,
+        )
 
-        r = ctk.CTkFrame(tf, fg_color="transparent"); r.pack(fill="x", padx=8, pady=2)
-        ctk.CTkLabel(r, text="HP:", width=60, anchor="w").pack(side="left")
-        self._target_hp_bar = ctk.CTkProgressBar(r, width=180); self._target_hp_bar.pack(side="left", padx=(8, 8)); self._target_hp_bar.set(0)
-        self._target_hp_label = ctk.CTkLabel(r, text="---", width=60); self._target_hp_label.pack(side="left")
+        # Target Info (coluna 2)
+        tgt_col = ctk.CTkFrame(cf, fg_color="transparent")
+        tgt_col.grid(row=0, column=2, sticky="ew", padx=(0, 8))
+        ctk.CTkLabel(tgt_col, text="Target Info", font=self.FONT_BOLD).pack(anchor="w", pady=(4, 2))
 
-        r2 = ctk.CTkFrame(tf, fg_color="transparent"); r2.pack(fill="x", padx=8, pady=2)
-        ctk.CTkLabel(r2, text="Nome:", width=60, anchor="w").pack(side="left")
-        self._target_name_label = ctk.CTkLabel(r2, text="---"); self._target_name_label.pack(side="left", padx=(8, 0))
+        r = ctk.CTkFrame(tgt_col, fg_color="transparent"); r.pack(fill="x", pady=1)
+        ctk.CTkLabel(r, text="HP:", width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
+        self._target_hp_bar = ctk.CTkProgressBar(r, width=130, progress_color="#cc2222")
+        self._target_hp_bar.pack(side="left", padx=(4, 4)); self._target_hp_bar.set(0)
+        self._target_hp_label = ctk.CTkLabel(r, text="---", width=55, anchor="e", font=self.FONT_SMALL)
+        self._target_hp_label.pack(side="right")
+
+        r2 = ctk.CTkFrame(tgt_col, fg_color="transparent"); r2.pack(fill="x", pady=1)
+        ctk.CTkLabel(r2, text="Nome:", width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
+        self._target_name_label = ctk.CTkLabel(r2, text="---", anchor="w", font=self.FONT_SMALL)
+        self._target_name_label.pack(side="left", padx=(4, 0))
+
+        # Feature checkboxes (grade fixa) — visivel so na Home
+        self._cb_frame = ctk.CTkFrame(self._dashboard_frame)
+        self._cb_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        self._cb_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        inner_cb = ctk.CTkFrame(self._cb_frame, fg_color="transparent")
+        inner_cb.pack(fill="x", padx=4, pady=2)
+        inner_cb.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        self._feature_widgets: dict[str, ctk.CTkCheckBox] = {}
+        for i, feat in enumerate(self.FEATURES):
+            col = i % 4
+            row_num = i // 4
+            cb = ctk.CTkCheckBox(
+                inner_cb, text=feat, state="disabled",
+            )
+            cb.grid(row=row_num, column=col, sticky="w", padx=4, pady=3)
+            self._feature_widgets[feat] = cb
 
         # Feature Config (parte inferior, expande)
         self._feature_config_frame = ctk.CTkFrame(self._dashboard_frame)
@@ -745,14 +787,21 @@ class MainWindow:
             self._char_res_bar.set(0); self._char_res_label.configure(text="---")
             self._target_hp_bar.set(0); self._target_hp_label.configure(text="---")
             self._target_name_label.configure(text="---")
+            for f in self.FEATURES:
+                self._feature_widgets[f].configure(state="disabled")
             return
         running = self._widget_states.get(label, False)
         sessions = SessionRegistry.get_all()
         display = sessions.get(label, {}).get("display", label)
         self._dashboard_status.configure(text=f"{display}  |  {'ATIVO' if running else 'PARADO'}")
+        for f in self.FEATURES:
+            cb = self._feature_widgets[f]
+            var = self._feature_vars[label][f]
+            cb.configure(state="normal", variable=var)
 
     def _clear_feature_config(self):
-        """Limpa o painel de config voltando ao placeholder."""
+        """Limpa o painel de config e mostra checkboxes (Home)."""
+        self._cb_frame.grid()
         for w in self._feature_config_inner.winfo_children():
             w.destroy()
         ctk.CTkLabel(
@@ -763,6 +812,7 @@ class MainWindow:
 
     def _highlight_feature(self, feature: str):
         """Mostra a configuracao da feature no Dashboard."""
+        self._cb_frame.grid_remove()
         for w in self._feature_config_inner.winfo_children():
             w.destroy()
 
@@ -783,96 +833,166 @@ class MainWindow:
     # =====================================================
 
     def _show_attack_config(self):
-        """Configuracao de Attack: 5 slots de skill + velocidade."""
+        """Configuracao de Attack: skills + target filter + velocidade."""
         if not hasattr(self, "_attack_config"):
             self._attack_config = {
                 "keys": ["1", "2", "3", "4", "5"],
                 "speed": 150,
+                "target_filter": {"mode": "all", "name": ""},
             }
         cfg = self._attack_config
+        tf = cfg.setdefault("target_filter", {"mode": "all", "name": ""})
 
         inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Attack", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 6))
+        ctk.CTkLabel(inner, text="Attack", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 2))
 
-        # Slots de skill
-        slots = ctk.CTkFrame(inner, fg_color="transparent")
-        slots.pack(fill="x", pady=2)
+        # Duas colunas: skills (esq) | target filter (dir)
+        cols = ctk.CTkFrame(inner, fg_color="transparent")
+        cols.pack(fill="x")
+        cols.grid_columnconfigure(0, weight=1)
+        cols.grid_columnconfigure(1, weight=1)
 
+        # Coluna esquerda — Skills
+        left = ctk.CTkFrame(cols, fg_color="transparent")
+        left.grid(row=0, column=0, sticky="nw", padx=(0, 8))
+        ctk.CTkLabel(left, text="Skills", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
         skill_vars = []
         for i in range(5):
-            row = ctk.CTkFrame(slots, fg_color="transparent")
+            row = ctk.CTkFrame(left, fg_color="transparent")
             row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=f"Skill {i+1}:", width=60, anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=f"Skill {i+1}:", width=55, anchor="w").pack(side="left")
             var = tk.StringVar(value=cfg["keys"][i] if i < len(cfg["keys"]) else "")
-            ctk.CTkEntry(row, textvariable=var, width=80).pack(side="left", padx=(8, 0))
+            ctk.CTkEntry(row, textvariable=var, width=60).pack(side="left", padx=(4, 0))
             skill_vars.append(var)
 
+        # Coluna direita — Target Filter + Velocidade
+        right = ctk.CTkFrame(cols, fg_color="transparent")
+        right.grid(row=0, column=1, sticky="nw")
+        ctk.CTkLabel(right, text="Target Filter", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
+
+        target_var = tk.StringVar(value=tf.get("name", ""))
+        tf_row = ctk.CTkFrame(right, fg_color="transparent")
+        tf_row.pack(fill="x", pady=2)
+        ctk.CTkEntry(tf_row, textvariable=target_var, width=130).pack(side="left")
+        ctk.CTkButton(
+            tf_row, text="Capturar", width=70,
+            command=lambda: self._capture_target_name(target_var),
+        ).pack(side="left", padx=(4, 0))
+
+        mode_var = tk.StringVar(value=tf.get("mode", "all"))
+        for val, label in [("all", "Atacar todos"), ("only", "Somente este"), ("exclude", "Excluir este")]:
+            ctk.CTkRadioButton(
+                right, text=label, variable=mode_var, value=val,
+            ).pack(anchor="w", pady=1)
+
         # Velocidade
-        speed_frame = ctk.CTkFrame(inner, fg_color="transparent")
-        speed_frame.pack(fill="x", pady=(8, 4))
-        ctk.CTkLabel(speed_frame, text="Velocidade:", width=80, anchor="w").pack(side="left")
-
-        speeds = [50, 100, 150, 200, 250]
-        speed_var = tk.IntVar(value=cfg["speed"])
-
-        speed_btns = ctk.CTkFrame(speed_frame, fg_color="transparent")
-        speed_btns.pack(side="left")
-        for s in speeds:
-            ctk.CTkButton(
-                speed_btns, text=f"{s}ms", width=50, height=26,
-                fg_color="transparent" if speed_var.get() != s else "#1a5c2a",
-                border_width=1,
-                command=lambda v=s: self._set_attack_speed(v, speed_var, speed_btns, speeds),
-            ).pack(side="left", padx=2)
+        ctk.CTkLabel(right, text="Velocidade", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
+        speeds = ["50ms", "100ms", "150ms", "200ms", "250ms"]
+        speed_var = tk.StringVar(value=f"{cfg['speed']}ms")
+        ctk.CTkComboBox(
+            right, values=speeds, variable=speed_var, width=130, state="readonly",
+        ).pack(anchor="w")
 
         # Save
         ctk.CTkButton(
-            inner, text="Salvar", width=80,
-            command=lambda: self._save_attack_config(skill_vars, speed_var),
-        ).pack(pady=(12, 4))
+            right, text="Salvar", width=80,
+            command=lambda: self._save_attack_config(skill_vars, speed_var, mode_var, target_var),
+        ).pack(anchor="w", pady=(12, 0))
 
-    def _set_attack_speed(self, value, speed_var, parent, speeds):
-        speed_var.set(value)
-        for child, s in zip(parent.winfo_children(), speeds):
-            child.configure(
-                fg_color="#1a5c2a" if s == value else "transparent"
-            )
+    def _capture_target_name(self, target_var):
+        """Le o nome do alvo atual da memoria e preenche o campo."""
+        sessions = SessionRegistry.get_all()
+        label = self._selected_window
+        if label is None:
+            return
+        session = sessions.get(label)
+        if not session or not session.get("pid"):
+            return
+        try:
+            mr = MemoryReader(session["pid"])
+            name = mr.target_name
+            mr.close()
+            if name:
+                target_var.set(name)
+        except Exception:
+            pass
 
-    def _save_attack_config(self, skill_vars, speed_var):
+    def _save_attack_config(self, skill_vars, speed_var, mode_var, target_var):
         cfg = self._attack_config
         cfg["keys"] = [v.get().strip() for v in skill_vars]
-        cfg["speed"] = speed_var.get()
+        cfg["speed"] = int(speed_var.get().replace("ms", ""))
+        cfg["target_filter"] = {
+            "mode": mode_var.get(),
+            "name": target_var.get().strip(),
+        }
         print(f"[GUI] Attack config salvo: {cfg}")
 
     def _show_potion_config(self):
-        """Configuracao de Potion: tecla + threshold de HP."""
+        """Configuracao de Potion: 4 tipos com atalho, checkbox e threshold."""
         if not hasattr(self, "_potion_config"):
-            self._potion_config = {"key": "2", "hp_threshold": 55}
+            self._potion_config = {
+                "hp_potion": {"key": "2", "enabled": True, "threshold": 55},
+                "mana_potion": {"key": "3", "enabled": False, "threshold": 40},
+                "battle_hp": {"key": "4", "enabled": False, "threshold": 35},
+                "battle_mana": {"key": "5", "enabled": False, "threshold": 25},
+            }
         cfg = self._potion_config
 
         inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Potion", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 6))
+        ctk.CTkLabel(inner, text="Potion", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
 
-        r1 = ctk.CTkFrame(inner, fg_color="transparent"); r1.pack(fill="x", pady=2)
-        ctk.CTkLabel(r1, text="Tecla:", width=80, anchor="w").pack(side="left")
-        key_var = tk.StringVar(value=cfg["key"])
-        ctk.CTkEntry(r1, textvariable=key_var, width=80).pack(side="left", padx=(8, 0))
+        self._potion_vars = {}
 
-        r2 = ctk.CTkFrame(inner, fg_color="transparent"); r2.pack(fill="x", pady=2)
-        ctk.CTkLabel(r2, text="Usar se HP <", width=80, anchor="w").pack(side="left")
-        hp_var = tk.IntVar(value=cfg["hp_threshold"])
-        ctk.CTkEntry(r2, textvariable=hp_var, width=60).pack(side="left", padx=(8, 0))
-        ctk.CTkLabel(r2, text="%").pack(side="left")
+        for section_title, keys in [
+            ("", ["hp_potion", "mana_potion"]),
+            ("Battle Potions", ["battle_hp", "battle_mana"]),
+        ]:
+            if section_title:
+                ctk.CTkLabel(
+                    inner, text=section_title,
+                    font=self.FONT_SMALL,
+                ).pack(anchor="w", pady=(8, 2))
+
+            for key in keys:
+                item = cfg.setdefault(key, {"key": "", "enabled": False, "threshold": 50})
+                row = ctk.CTkFrame(inner, fg_color="transparent")
+                row.pack(fill="x", pady=1)
+
+                enabled_var = ctk.BooleanVar(value=item.get("enabled", False))
+                ctk.CTkCheckBox(
+                    row, text="", variable=enabled_var, width=20,
+                ).pack(side="left")
+
+                names = {
+                    "hp_potion": "HP Potion", "mana_potion": "Mana Potion",
+                    "battle_hp": "Battle HP", "battle_mana": "Battle Mana",
+                }
+                ctk.CTkLabel(row, text=names[key], width=80, anchor="w").pack(side="left", padx=(4, 4))
+
+                ctk.CTkLabel(row, text="Tecla:", font=self.FONT_SMALL).pack(side="left")
+                key_var = tk.StringVar(value=item.get("key", ""))
+                ctk.CTkEntry(row, textvariable=key_var, width=45).pack(side="left", padx=(2, 6))
+
+                ctk.CTkLabel(row, text="HP% <", font=self.FONT_SMALL).pack(side="left")
+                thr_var = tk.IntVar(value=item.get("threshold", 50))
+                ctk.CTkEntry(row, textvariable=thr_var, width=40).pack(side="left", padx=(2, 2))
+                ctk.CTkLabel(row, text="%", font=self.FONT_SMALL).pack(side="left")
+
+                self._potion_vars[key] = (enabled_var, key_var, thr_var)
 
         ctk.CTkButton(
             inner, text="Salvar", width=80,
-            command=lambda: self._save_potion_config(key_var, hp_var),
+            command=self._save_potion_config,
         ).pack(pady=(12, 4))
 
-    def _save_potion_config(self, key_var, hp_var):
+    def _save_potion_config(self):
         cfg = self._potion_config
-        cfg["key"] = key_var.get().strip()
-        cfg["hp_threshold"] = hp_var.get()
+        for key, (enabled_var, key_var, thr_var) in self._potion_vars.items():
+            cfg[key] = {
+                "key": key_var.get().strip(),
+                "enabled": enabled_var.get(),
+                "threshold": thr_var.get(),
+            }
         print(f"[GUI] Potion config salvo: {cfg}")
 
     def _start_dashboard_poll(self):
@@ -894,9 +1014,9 @@ class MainWindow:
                             self._char_hp_bar.set(mr.hp_pct / 100.0)
                             self._char_hp_label.configure(text=f"{mr.hp:.0f}/{mr.max_hp}")
                             self._char_res_bar.set(mr.mana_pct / 100.0)
-                            self._char_res_label.configure(text=f"{mr.mana:.0f}/{mr.max_mana}")
+                            self._char_res_label.configure(text=f"{mr.mana_pct:.0f}%")
                             self._target_hp_bar.set(mr.target_hp_pct / 100.0)
-                            self._target_hp_label.configure(text=f"{mr.target_hp}")
+                            self._target_hp_label.configure(text=f"{mr.target_hp_pct:.0f}%")
                             self._target_name_label.configure(text=mr.target_name or "---")
                         except Exception:
                             pass
@@ -927,7 +1047,7 @@ class MainWindow:
         self._log_tab_frame.grid_columnconfigure(0, weight=1)
         self._log_tab_frame.grid_rowconfigure(0, weight=1)
 
-        self._log_tab_text = ctk.CTkTextbox(self._log_tab_frame)
+        self._log_tab_text = ctk.CTkTextbox(self._log_tab_frame, font=self.FONT_MONO)
         self._log_tab_text.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
         self._log_tab_text.configure(state="disabled")
 
@@ -1233,7 +1353,10 @@ class MainWindow:
 
         # Garante que as configs existam
         if not hasattr(self, "_attack_config"):
-            self._attack_config = {"keys": ["1","2","3","4","5"], "speed": 150}
+            self._attack_config = {
+                "keys": ["1","2","3","4","5"], "speed": 150,
+                "target_filter": {"mode": "all", "name": ""},
+            }
         if not hasattr(self, "_potion_config"):
             self._potion_config = {"key": "2", "hp_threshold": 55}
 
@@ -1268,7 +1391,7 @@ class MainWindow:
         from src.infrastructure.input.service import InputService
         ws = WindowService(); vs = VisionService(window_service=ws); ins = InputService()
         mr = self._get_memory_reader(label, pid) if pid else None
-        engine.start(hwnd, ins, vs, ws, self._game_reader, mr)
+        engine.start(hwnd, ins, vs, ws, self._game_reader, mr, self._feature_vars.get(label))
 
     def _stop_bot_for_window(self, label: str):
         if not hasattr(self, "_bot_engines"):

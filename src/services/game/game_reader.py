@@ -19,6 +19,7 @@ class CharInfo:
     """Informacoes lidas do personagem."""
     hp_pct: float = 0.0
     resource_pct: float = 0.0
+    in_battle: bool = False
 
 
 @dataclass

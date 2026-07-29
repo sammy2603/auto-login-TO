@@ -62,21 +62,54 @@ class InputService:
             win32api.PostMessage(hwnd, win32con.WM_CHAR, ord(char), 0)
             time.sleep(delay)
 
+    # Mapa de teclas para scan codes (necessario para alguns jogos)
+    _SCAN_MAP = {
+        "TAB": 0x0F,
+        "ENTER": 0x1C,
+        "ESC": 0x01,
+        "UP": 0x48,
+        "DOWN": 0x50,
+        "LEFT": 0x4B,
+        "RIGHT": 0x4D,
+        " ": 0x39,      # space
+        "0": 0x0B, "1": 0x02, "2": 0x03, "3": 0x04, "4": 0x05,
+        "5": 0x06, "6": 0x07, "7": 0x08, "8": 0x09, "9": 0x0A,
+        "A": 0x1E, "B": 0x30, "C": 0x2E, "D": 0x20, "E": 0x12,
+        "F": 0x21, "G": 0x22, "H": 0x23, "I": 0x17, "J": 0x24,
+        "K": 0x25, "L": 0x26, "M": 0x32, "N": 0x31, "O": 0x18,
+        "P": 0x19, "Q": 0x10, "R": 0x13, "S": 0x1F, "T": 0x14,
+        "U": 0x16, "V": 0x2F, "W": 0x11, "X": 0x2D, "Y": 0x15,
+        "Z": 0x2C,
+    }
+
     def press_key(self, hwnd, key, delay: float = 0.05):
         """
-        Pressiona uma tecla. Aceita tanto a chave simbólica (ex: "TAB",
-        vinda de src.shared.keys.Keys) quanto um código de tecla
-        virtual (int) diretamente.
+        Pressiona uma tecla. Aceita:
+        - Chave simbolica (ex: "TAB", "ENTER")
+        - Codigo de tecla virtual (int)
+        - Caractere unico (ex: "1", "a", "F5")
         """
 
-        vk_code = _VK_MAP.get(key, key) if isinstance(key, str) else key
+        if isinstance(key, int):
+            vk_code = key
+            scan = 0
+        elif isinstance(key, str) and len(key) == 1:
+            vk_code = ord(key.upper()) if key.isalpha() else ord(key)
+            scan = self._SCAN_MAP.get(key.upper(), 0)
+        else:
+            key_upper = key.upper() if isinstance(key, str) else key
+            vk_code = _VK_MAP.get(key_upper, key_upper)
+            scan = self._SCAN_MAP.get(key_upper, 0)
 
         if not isinstance(vk_code, int):
             raise ValueError(f"Tecla não reconhecida: {key!r}")
 
-        win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk_code, 0)
+        # lparam com scan code (bits 16-23) + repeat (0) + flags
+        lparam = (scan << 16) | 0x0001
+
+        win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk_code, lparam)
         time.sleep(delay)
-        win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, 0)
+        win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, lparam | 0xC0000000)
 
     # =====================================================
     # Limpeza de campos
