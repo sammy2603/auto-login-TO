@@ -21,6 +21,7 @@ class CharInfo:
     resource_pct: float = 0.0
     in_battle: bool = False
     pet_alive: bool | None = None
+    kill_count: int = 0
 
 
 @dataclass

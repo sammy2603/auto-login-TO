@@ -3,12 +3,12 @@ from __future__ import annotations
 
 class AttackScript:
     """
-    Script de ataque com skills e filtro de alvo.
+    Script de ataque com skills, filtro de alvo e unstuck.
 
     Fluxo:
-    1. Sem alvo ou alvo morto → TAB (procurar proximo)
-    2. Alvo vivo → cicla teclas de ataque
-    3. Alvo morreu → TAB (proximo)
+    1. Sem alvo ou alvo morto -> TAB
+    2. Alvo vivo -> cicla teclas
+    3. Unstuck: se nao atacar por X segundos -> TAB
     """
 
     name = "Attack"
@@ -19,7 +19,7 @@ class AttackScript:
         self._last_key = 0.0
         self._last_tab = 0.0
         self._started = False
-        self._last_target_name = ""
+        self._last_attack_time = 0.0
 
     @property
     def _keys(self) -> list[str]:
@@ -33,6 +33,10 @@ class AttackScript:
     def _filter(self) -> dict:
         return self._config.get("target_filter", {"mode": "all", "name": ""})
 
+    @property
+    def _unstuck(self) -> dict:
+        return self._config.get("unstuck", {"enabled": False, "timeout": 10})
+
     def tick(self, hwnd, screenshot, char_info, target_info,
              input_service, vision_service, window_service) -> bool:
         import time
@@ -41,9 +45,9 @@ class AttackScript:
         if char_info and char_info.hp_pct <= 0:
             return False
 
-        # Primeiro tick: forca TAB para adquirir alvo
         if not self._started:
             self._started = True
+            self._last_attack_time = now
             input_service.press_key(hwnd, "TAB")
             self._last_tab = now
             return True
@@ -53,21 +57,18 @@ class AttackScript:
         mode = tf.get("mode", "all")
         fname = tf.get("name", "")
 
-        # Filtro de alvo
         if fname:
             if mode == "only" and tname != fname:
-                # Alvo errado — procura outro
-                if now - self._last_tab >= 0.5:
+                if now - self._last_tab >= 0.3:
                     input_service.press_key(hwnd, "TAB")
                     self._last_tab = now
                 return True
             if mode == "exclude" and tname == fname:
-                if now - self._last_tab >= 0.5:
+                if now - self._last_tab >= 0.3:
                     input_service.press_key(hwnd, "TAB")
                     self._last_tab = now
                 return True
 
-        # Sem alvo ou alvo morto — TAB para procurar
         if not target_info or target_info.hp_pct <= 0:
             if now - self._last_tab >= 0.3:
                 input_service.press_key(hwnd, "TAB")
@@ -75,9 +76,16 @@ class AttackScript:
                 self._index = 0
             return True
 
-        self._last_target_name = tname
+        # Unstuck: sem ataque por X segundos -> troca alvo
+        us = self._unstuck
+        if us.get("enabled") and self._last_attack_time > 0:
+            if now - self._last_attack_time >= us.get("timeout", 10):
+                input_service.press_key(hwnd, "TAB")
+                self._last_tab = now
+                self._last_attack_time = now
+                self._index = 0
+                return True
 
-        # Alvo vivo — ataca
         keys = self._keys or ["1"]
         speed = self._speed_ms / 1000.0
 
@@ -91,4 +99,5 @@ class AttackScript:
         input_service.press_key(hwnd, key)
         self._index += 1
         self._last_key = now
+        self._last_attack_time = now
         return True

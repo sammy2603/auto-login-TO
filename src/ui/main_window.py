@@ -720,6 +720,12 @@ class MainWindow:
         self._target_name_label = ctk.CTkLabel(r2, text="---", anchor="w", font=self.FONT_SMALL)
         self._target_name_label.pack(side="left", padx=(4, 0))
 
+        # Kill counter
+        r3 = ctk.CTkFrame(tgt_col, fg_color="transparent"); r3.pack(fill="x", pady=1)
+        ctk.CTkLabel(r3, text="Kills:", width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
+        self._kill_label = ctk.CTkLabel(r3, text="0", font=self.FONT_SMALL)
+        self._kill_label.pack(side="left", padx=(4, 0))
+
         # Feature checkboxes (grade fixa) — visivel so na Home
         self._cb_frame = ctk.CTkFrame(self._dashboard_frame)
         self._cb_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
@@ -833,7 +839,7 @@ class MainWindow:
     # =====================================================
 
     def _show_attack_config(self):
-        """Configuracao de Attack: skills + target filter + velocidade."""
+        """Configuracao de Attack: skills + target filter + velocidade + unstuck."""
         if not hasattr(self, "_attack_config"):
             self._attack_config = {
                 "keys": ["1", "2", "3", "4", "5"],
@@ -842,6 +848,7 @@ class MainWindow:
             }
         cfg = self._attack_config
         tf = cfg.setdefault("target_filter", {"mode": "all", "name": ""})
+        us = cfg.setdefault("unstuck", {"enabled": False, "timeout": 10})
 
         inner = self._feature_config_inner
         ctk.CTkLabel(inner, text="Attack", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 2))
@@ -893,10 +900,19 @@ class MainWindow:
             right, values=speeds, variable=speed_var, width=130, state="readonly",
         ).pack(anchor="w")
 
-        # Save
+        # Unstuck
+        ctk.CTkLabel(right, text="Unstuck", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
+        us_row = ctk.CTkFrame(right, fg_color="transparent"); us_row.pack(fill="x")
+        us_enabled = ctk.BooleanVar(value=us.get("enabled", False))
+        ctk.CTkCheckBox(us_row, text="Ativar", variable=us_enabled, width=20).pack(side="left")
+        ctk.CTkLabel(us_row, text="Timeout:", font=self.FONT_SMALL).pack(side="left", padx=(2, 4))
+        us_timeout = tk.IntVar(value=us.get("timeout", 10))
+        ctk.CTkEntry(us_row, textvariable=us_timeout, width=40).pack(side="left")
+        ctk.CTkLabel(us_row, text="s", font=self.FONT_SMALL).pack(side="left")
+
         ctk.CTkButton(
             right, text="Salvar", width=80,
-            command=lambda: self._save_attack_config(skill_vars, speed_var, mode_var, target_var),
+            command=lambda: self._save_attack_config(skill_vars, speed_var, mode_var, target_var, us_enabled, us_timeout),
         ).pack(anchor="w", pady=(12, 0))
 
     def _capture_target_name(self, target_var):
@@ -917,7 +933,7 @@ class MainWindow:
         except Exception:
             pass
 
-    def _save_attack_config(self, skill_vars, speed_var, mode_var, target_var):
+    def _save_attack_config(self, skill_vars, speed_var, mode_var, target_var, us_enabled, us_timeout):
         cfg = self._attack_config
         cfg["keys"] = [v.get().strip() for v in skill_vars]
         cfg["speed"] = int(speed_var.get().replace("ms", ""))
@@ -925,6 +941,7 @@ class MainWindow:
             "mode": mode_var.get(),
             "name": target_var.get().strip(),
         }
+        cfg["unstuck"] = {"enabled": us_enabled.get(), "timeout": us_timeout.get()}
         print(f"[GUI] Attack config salvo: {cfg}")
 
     def _show_potion_config(self):
@@ -1051,6 +1068,209 @@ class MainWindow:
         cfg["interval_min"] = int(interval_var.get())
         print(f"[GUI] Pet config salvo: {cfg}")
 
+    def _show_buff_config(self):
+        """Configuracao de Buff: 3 skills + Self Buff com timer."""
+        if not hasattr(self, "_buff_config"):
+            self._buff_config = {
+                "skills": [
+                    {"key": "4", "enabled": True},
+                    {"key": "5", "enabled": False},
+                    {"key": "6", "enabled": False},
+                ],
+                "self_buff": {"enabled": False, "interval_min": 15},
+            }
+        cfg = self._buff_config
+        skills = cfg.setdefault("skills", [{"key": "4", "enabled": True}, {"key": "5", "enabled": False}, {"key": "6", "enabled": False}])
+        while len(skills) < 3:
+            skills.append({"key": "", "enabled": False})
+        sb = cfg.setdefault("self_buff", {"enabled": False, "interval_min": 15})
+
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Buff", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+
+        skill_vars = []
+        for i in range(3):
+            sk = skills[i]
+            row = ctk.CTkFrame(inner, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+
+            enabled_var = ctk.BooleanVar(value=sk.get("enabled", False))
+            ctk.CTkCheckBox(row, text="", variable=enabled_var, width=20).pack(side="left")
+
+            ctk.CTkLabel(row, text=f"Buff {i+1}:", width=50, anchor="w").pack(side="left", padx=(2, 4))
+            key_var = tk.StringVar(value=sk.get("key", ""))
+            ctk.CTkEntry(row, textvariable=key_var, width=50).pack(side="left")
+            skill_vars.append((enabled_var, key_var))
+
+        # Self Buff
+        ctk.CTkLabel(inner, text="Self Buff", font=self.FONT_SMALL).pack(anchor="w", pady=(10, 2))
+        sb_row = ctk.CTkFrame(inner, fg_color="transparent")
+        sb_row.pack(fill="x", pady=2)
+
+        sb_enabled = ctk.BooleanVar(value=sb.get("enabled", False))
+        ctk.CTkCheckBox(sb_row, text="Ativar", variable=sb_enabled, width=20).pack(side="left")
+
+        ctk.CTkLabel(sb_row, text="Buff every:", width=65, anchor="w").pack(side="left", padx=(4, 4))
+        sb_interval = tk.IntVar(value=sb.get("interval_min", 15))
+        ctk.CTkSlider(sb_row, from_=1, to=30, number_of_steps=29, variable=sb_interval, width=120).pack(side="left")
+        ctk.CTkLabel(sb_row, text=f"{sb_interval.get()} min", width=40).pack(side="left", padx=(4, 0))
+        def _upd_sb(val):
+            sb_row.winfo_children()[-1].configure(text=f"{int(float(val))} min")
+        sb_interval.trace_add("write", lambda *a, v=sb_interval: _upd_sb(v.get()))
+
+        ctk.CTkButton(
+            inner, text="Salvar", width=80,
+            command=lambda: self._save_buff_config(skill_vars, sb_enabled, sb_interval),
+        ).pack(pady=(12, 4))
+
+    def _save_buff_config(self, skill_vars, sb_enabled, sb_interval):
+        cfg = self._buff_config
+        cfg["skills"] = [{"key": v[1].get().strip(), "enabled": v[0].get()} for v in skill_vars]
+        cfg["self_buff"] = {"enabled": sb_enabled.get(), "interval_min": int(sb_interval.get())}
+        print(f"[GUI] Buff config salvo: {cfg}")
+
+    def _show_helper_config(self):
+        """Helper: 3 slots com keybind, delay, every X kills."""
+        if not hasattr(self, "_helper_config"):
+            self._helper_config = {
+                "slots": [
+                    {"key": "", "enabled": False, "delay_ms": 500, "every_kills": 10},
+                    {"key": "", "enabled": False, "delay_ms": 500, "every_kills": 20},
+                    {"key": "", "enabled": False, "delay_ms": 500, "every_kills": 30},
+                ]
+            }
+        cfg = self._helper_config
+        slots = cfg.setdefault("slots", [])
+        while len(slots) < 3:
+            slots.append({"key": "", "enabled": False, "delay_ms": 500, "every_kills": 10})
+
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Helper", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+
+        slot_vars = []
+        for i in range(3):
+            sk = slots[i]
+            row = ctk.CTkFrame(inner, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            en = ctk.BooleanVar(value=sk.get("enabled", False))
+            ctk.CTkCheckBox(row, text="", variable=en, width=20).pack(side="left")
+            ctk.CTkLabel(row, text=f"Slot {i+1}:", width=40, anchor="w", font=self.FONT_SMALL).pack(side="left", padx=(2, 2))
+            kv = tk.StringVar(value=sk.get("key", ""))
+            ctk.CTkEntry(row, textvariable=kv, width=40).pack(side="left")
+            ctk.CTkLabel(row, text="ms", font=self.FONT_SMALL).pack(side="left", padx=(2, 2))
+            dv = tk.IntVar(value=sk.get("delay_ms", 500))
+            ctk.CTkEntry(row, textvariable=dv, width=40).pack(side="left")
+            ctk.CTkLabel(row, text="a cada", font=self.FONT_SMALL).pack(side="left", padx=(4, 2))
+            ek = tk.IntVar(value=sk.get("every_kills", 10))
+            ctk.CTkEntry(row, textvariable=ek, width=35).pack(side="left")
+            ctk.CTkLabel(row, text="kills", font=self.FONT_SMALL).pack(side="left", padx=(2, 0))
+            slot_vars.append((en, kv, dv, ek))
+
+        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_helper_config(slot_vars)).pack(pady=(12, 4))
+
+    def _save_helper_config(self, slot_vars):
+        cfg = self._helper_config
+        cfg["slots"] = [{"key": v[1].get().strip(), "enabled": v[0].get(), "delay_ms": v[2].get(), "every_kills": v[3].get()} for v in slot_vars]
+        print(f"[GUI] Helper config salvo: {cfg}")
+
+    def _show_fairy_config(self):
+        if not hasattr(self, "_fairy_config"):
+            self._fairy_config = {"skills": [{"key": "8", "enabled": True}, {"key": "9", "enabled": False}, {"key": "0", "enabled": False}], "heal_key": "8", "self_heal": {"enabled": False, "hp_pct": 50}}
+        cfg = self._fairy_config
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Fairy", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        skill_vars = []
+        for i in range(3):
+            sk = cfg["skills"][i] if i < len(cfg["skills"]) else {"key": "", "enabled": False}
+            row = ctk.CTkFrame(inner, fg_color="transparent"); row.pack(fill="x", pady=2)
+            en = ctk.BooleanVar(value=sk.get("enabled", False))
+            ctk.CTkCheckBox(row, text="", variable=en, width=20).pack(side="left")
+            ctk.CTkLabel(row, text=f"Skill {i+1}:", width=50, anchor="w").pack(side="left", padx=(2, 4))
+            kv = tk.StringVar(value=sk.get("key", ""))
+            ctk.CTkEntry(row, textvariable=kv, width=50).pack(side="left")
+            skill_vars.append((en, kv))
+        ctk.CTkLabel(inner, text="Self Heal", font=self.FONT_SMALL).pack(anchor="w", pady=(8, 2))
+        sh = cfg.setdefault("self_heal", {"enabled": False, "hp_pct": 50})
+        sh_row = ctk.CTkFrame(inner, fg_color="transparent"); sh_row.pack(fill="x", pady=2)
+        sh_en = ctk.BooleanVar(value=sh.get("enabled", False))
+        ctk.CTkCheckBox(sh_row, text="Ativar", variable=sh_en, width=20).pack(side="left")
+        ctk.CTkLabel(sh_row, text="Heal key:", font=self.FONT_SMALL).pack(side="left", padx=(2, 4))
+        hk = tk.StringVar(value=cfg.get("heal_key", "8"))
+        ctk.CTkEntry(sh_row, textvariable=hk, width=40).pack(side="left")
+        ctk.CTkLabel(sh_row, text="HP <", font=self.FONT_SMALL).pack(side="left", padx=(4, 2))
+        hpv = tk.IntVar(value=sh.get("hp_pct", 50))
+        ctk.CTkEntry(sh_row, textvariable=hpv, width=35).pack(side="left")
+        ctk.CTkLabel(sh_row, text="%", font=self.FONT_SMALL).pack(side="left")
+        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_fairy_config(skill_vars, sh_en, hk, hpv)).pack(pady=(12, 4))
+
+    def _save_fairy_config(self, skill_vars, sh_en, hk, hpv):
+        cfg = self._fairy_config
+        cfg["skills"] = [{"key": v[1].get().strip(), "enabled": v[0].get()} for v in skill_vars]
+        cfg["heal_key"] = hk.get().strip()
+        cfg["self_heal"] = {"enabled": sh_en.get(), "hp_pct": hpv.get()}
+
+    def _show_revive_config(self):
+        if not hasattr(self, "_revive_config"):
+            self._revive_config = {"jackstraw_key": ""}
+        cfg = self._revive_config
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Revive", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        r = ctk.CTkFrame(inner, fg_color="transparent"); r.pack(fill="x", pady=2)
+        ctk.CTkLabel(r, text="Jackstraw:", width=70, anchor="w").pack(side="left")
+        jk = tk.StringVar(value=cfg.get("jackstraw_key", ""))
+        ctk.CTkEntry(r, textvariable=jk, width=60).pack(side="left", padx=(8, 0))
+        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_revive_config(jk)).pack(pady=(12, 4))
+
+    def _save_revive_config(self, jk):
+        self._revive_config["jackstraw_key"] = jk.get().strip()
+
+    def _show_sell_config(self):
+        if not hasattr(self, "_sell_config"):
+            self._sell_config = {"interval_min": 30}
+        cfg = self._sell_config
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Sell", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
+
+    def _show_delete_config(self):
+        if not hasattr(self, "_delete_config"):
+            self._delete_config = {"interval_min": 15}
+        cfg = self._delete_config
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Delete", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
+
+    def _show_bc_config(self):
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="BC", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
+
+    def _show_hollow_config(self):
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="Hollow", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
+
+    def _show_dr_lure_config(self):
+        if not hasattr(self, "_drlure_config"):
+            self._drlure_config = {"key": "8", "interval_sec": 30}
+        cfg = self._drlure_config
+        inner = self._feature_config_inner
+        ctk.CTkLabel(inner, text="DR Lure", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        r1 = ctk.CTkFrame(inner, fg_color="transparent"); r1.pack(fill="x", pady=2)
+        ctk.CTkLabel(r1, text="Tecla:", width=60, anchor="w").pack(side="left")
+        kv = tk.StringVar(value=cfg.get("key", "8"))
+        ctk.CTkEntry(r1, textvariable=kv, width=60).pack(side="left", padx=(8, 0))
+        r2 = ctk.CTkFrame(inner, fg_color="transparent"); r2.pack(fill="x", pady=2)
+        ctk.CTkLabel(r2, text="Intervalo:", width=60, anchor="w").pack(side="left")
+        iv = tk.IntVar(value=cfg.get("interval_sec", 30))
+        ctk.CTkEntry(r2, textvariable=iv, width=60).pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(r2, text="s").pack(side="left")
+        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_drlure_config(kv, iv)).pack(pady=(12, 4))
+
+    def _save_drlure_config(self, kv, iv):
+        self._drlure_config["key"] = kv.get().strip()
+        self._drlure_config["interval_sec"] = iv.get()
+
     def _start_dashboard_poll(self):
         if hasattr(self, "_poll_id") and self._poll_id:
             self.root.after_cancel(self._poll_id)
@@ -1073,7 +1293,25 @@ class MainWindow:
                             self._char_res_label.configure(text=f"{mr.mana_pct:.0f}%")
                             self._target_hp_bar.set(mr.target_hp_pct / 100.0)
                             self._target_hp_label.configure(text=f"{mr.target_hp_pct:.0f}%")
-                            self._target_name_label.configure(text=mr.target_name or "---")
+
+                            # Kill counter: detecta quando um mob morre
+                            if not hasattr(self, "_kill_track"):
+                                self._kill_track: dict = {}
+                            if label not in self._kill_track:
+                                self._kill_track[label] = {"last_hp": 0, "last_name": "", "kills": 0}
+                            kt = self._kill_track[label]
+                            current_hp = mr.target_hp
+                            current_name = mr.target_name
+                            # Mob morreu: tinha HP > 0 com nome, agora HP == 0 com mesmo nome
+                            if kt["last_hp"] > 0 and current_hp == 0 and current_name and kt["last_name"] == current_name:
+                                kt["kills"] += 1
+
+                            current_name = mr.target_name
+                            self._target_name_label.configure(text=current_name or "---")
+
+                            kt["last_hp"] = current_hp
+                            kt["last_name"] = current_name
+                            self._kill_label.configure(text=str(kt["kills"]))
                         except Exception:
                             pass
         self._poll_id = self.root.after(100, self._poll_dashboard)
@@ -1422,21 +1660,34 @@ class MainWindow:
             }
         if not hasattr(self, "_pet_config"):
             self._pet_config = {"pet_key": "7", "food_key": "3", "interval_min": 30}
+        if not hasattr(self, "_buff_config"):
+            self._buff_config = {
+                "skills": [{"key": "4", "enabled": True}, {"key": "5", "enabled": False}, {"key": "6", "enabled": False}],
+                "self_buff": {"enabled": False, "interval_min": 15},
+            }
+        if not hasattr(self, "_helper_config"):
+            self._helper_config = {"slots": [{"key": "", "enabled": False, "delay_ms": 500, "every_kills": 10}] * 3}
+        if not hasattr(self, "_fairy_config"):
+            self._fairy_config = {"skills": [{"key": "8", "enabled": True}, {"key": "9", "enabled": False}, {"key": "0", "enabled": False}], "heal_key": "8", "self_heal": {"enabled": False, "hp_pct": 50}}
+        if not hasattr(self, "_revive_config"):
+            self._revive_config = {"jackstraw_key": ""}
+        if not hasattr(self, "_drlure_config"):
+            self._drlure_config = {"key": "8", "interval_sec": 30}
 
         if label not in self._bot_engines:
             engine = BotEngine()
             engine.register(PetFoodScript(config=self._pet_config))
             engine.register(AttackScript(config=self._attack_config))
             engine.register(PotionScript(config=self._potion_config))
-            engine.register(BuffScript())
-            engine.register(HelperScript())
-            engine.register(FairyScript())
-            engine.register(ReviveScript())
+            engine.register(BuffScript(config=self._buff_config))
+            engine.register(HelperScript(config=self._helper_config))
+            engine.register(FairyScript(config=self._fairy_config))
+            engine.register(ReviveScript(config=self._revive_config))
             engine.register(DeleteScript())
             engine.register(BCScript())
             engine.register(HollowScript())
             engine.register(SellScript())
-            engine.register(DRLureScript())
+            engine.register(DRLureScript(config=self._drlure_config))
             self._bot_engines[label] = engine
         return self._bot_engines[label]
 
@@ -1454,6 +1705,8 @@ class MainWindow:
         from src.infrastructure.input.service import InputService
         ws = WindowService(); vs = VisionService(window_service=ws); ins = InputService()
         mr = self._get_memory_reader(label, pid) if pid else None
+        # Passa callback de kill count
+        engine._kill_track_cb = lambda: self._kill_track.get(label, {}).get("kills", 0) if hasattr(self, "_kill_track") else 0
         engine.start(hwnd, ins, vs, ws, self._game_reader, mr, self._feature_vars.get(label))
 
     def _stop_bot_for_window(self, label: str):
@@ -1462,6 +1715,9 @@ class MainWindow:
         engine = self._bot_engines.get(label)
         if engine:
             engine.stop()
+        if hasattr(self, "_kill_track") and label in self._kill_track:
+            self._kill_track[label]["kills"] = 0
+            self._kill_label.configure(text="0")
 
     # =====================================================
     # Execucao

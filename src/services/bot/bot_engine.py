@@ -70,6 +70,10 @@ class BotEngine:
                 except Exception:
                     pass
 
+            # Kill count do dashboard
+            if hasattr(self, "_kill_track_cb") and self._kill_track_cb:
+                char_info.kill_count = self._kill_track_cb()
+
             if char_info.hp_pct == 0 and char_info.resource_pct == 0:
                 try:
                     screenshot = window_service.capture_hwnd(hwnd)
