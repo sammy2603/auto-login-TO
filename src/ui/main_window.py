@@ -20,7 +20,7 @@ from src.services.game.memory_reader import MemoryReader
 from src.services.bot.bot_engine import BotEngine
 from src.services.bot.scripts.attack import AttackScript
 from src.services.bot.scripts.potion import PotionScript
-from src.services.bot.scripts.pet_food import PetFoodScript
+from src.services.bot.scripts.pet_food import PetScript as PetFoodScript
 from src.services.bot.scripts.buff import BuffScript
 from src.services.bot.scripts.helper import HelperScript
 from src.services.bot.scripts.fairy import FairyScript
@@ -448,7 +448,7 @@ class KeyWindow(ctk.CTkToplevel):
 class MainWindow:
 
     FEATURES = [
-        "Attack", "Potion", "Pet Food", "Buff",
+        "Attack", "Potion", "Pet", "Buff",
         "Helper", "Fairy", "Revive", "Delete",
         "BC", "Hollow", "Sell", "DR Lure",
     ]
@@ -995,28 +995,37 @@ class MainWindow:
             }
         print(f"[GUI] Potion config salvo: {cfg}")
 
-    def _show_pet_food_config(self):
-        """Configuracao de Pet Food: tecla + intervalo."""
-        if not hasattr(self, "_petfood_config"):
-            self._petfood_config = {"key": "3", "interval": 300}
-        cfg = self._petfood_config
+    def _show_pet_config(self):
+        """Configuracao de Pet: keybind Pet + Pet Food + intervalo."""
+        if not hasattr(self, "_pet_config"):
+            self._pet_config = {"pet_key": "7", "food_key": "3", "interval_min": 30}
+        cfg = self._pet_config
 
         inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Pet Food", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
+        ctk.CTkLabel(inner, text="Pet", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
 
         r1 = ctk.CTkFrame(inner, fg_color="transparent"); r1.pack(fill="x", pady=2)
-        ctk.CTkLabel(r1, text="Tecla:", width=60, anchor="w").pack(side="left")
-        key_var = tk.StringVar(value=cfg.get("key", "3"))
-        ctk.CTkEntry(r1, textvariable=key_var, width=60).pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(r1, text="Pet:", width=70, anchor="w").pack(side="left")
+        pet_var = tk.StringVar(value=cfg.get("pet_key", "7"))
+        ctk.CTkEntry(r1, textvariable=pet_var, width=60).pack(side="left", padx=(8, 0))
 
         r2 = ctk.CTkFrame(inner, fg_color="transparent"); r2.pack(fill="x", pady=2)
-        ctk.CTkLabel(r2, text="Intervalo:", width=60, anchor="w").pack(side="left")
-        interval_var = tk.IntVar(value=cfg.get("interval", 300))
-        ctk.CTkEntry(r2, textvariable=interval_var, width=60).pack(side="left", padx=(8, 0))
-        ctk.CTkLabel(r2, text="segundos").pack(side="left", padx=(4, 0))
+        ctk.CTkLabel(r2, text="Pet Food:", width=70, anchor="w").pack(side="left")
+        food_var = tk.StringVar(value=cfg.get("food_key", "3"))
+        ctk.CTkEntry(r2, textvariable=food_var, width=60).pack(side="left", padx=(8, 0))
 
-        # Status do pet
-        status_text = "Pet status: --"
+        r3 = ctk.CTkFrame(inner, fg_color="transparent"); r3.pack(fill="x", pady=2)
+        ctk.CTkLabel(r3, text="Intervalo:", width=70, anchor="w").pack(side="left")
+        interval_var = tk.IntVar(value=cfg.get("interval_min", 30))
+        ctk.CTkSlider(r3, from_=5, to=50, number_of_steps=9, variable=interval_var, width=150).pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(r3, text=f"{interval_var.get()} min", width=50).pack(side="left", padx=(4, 0))
+        # Atualiza label ao mover slider
+        def _update_slider_label(val):
+            r3.winfo_children()[-1].configure(text=f"{int(float(val))} min")
+        interval_var.trace_add("write", lambda *a, v=interval_var: _update_slider_label(v.get()))
+
+        # Status
+        status_text = "Status: --"
         sessions = SessionRegistry.get_all()
         label = self._selected_window
         if label:
@@ -1024,24 +1033,23 @@ class MainWindow:
             if session and session.get("pid"):
                 try:
                     mr = MemoryReader(session["pid"])
-                    alive = mr.pet_alive
+                    status_text = f"Pet: {'Vivo' if mr.pet_alive else 'Morto / Sem pet'}"
                     mr.close()
-                    status_text = f"Pet: {'Vivo' if alive else 'Morto'}"
                 except Exception:
                     pass
-
         ctk.CTkLabel(inner, text=status_text, font=self.FONT_SMALL).pack(anchor="w", pady=(8, 0))
 
         ctk.CTkButton(
             inner, text="Salvar", width=80,
-            command=lambda: self._save_petfood_config(key_var, interval_var),
+            command=lambda: self._save_pet_config(pet_var, food_var, interval_var),
         ).pack(pady=(12, 4))
 
-    def _save_petfood_config(self, key_var, interval_var):
-        cfg = self._petfood_config
-        cfg["key"] = key_var.get().strip()
-        cfg["interval"] = interval_var.get()
-        print(f"[GUI] Pet Food config salvo: {cfg}")
+    def _save_pet_config(self, pet_var, food_var, interval_var):
+        cfg = self._pet_config
+        cfg["pet_key"] = pet_var.get().strip()
+        cfg["food_key"] = food_var.get().strip()
+        cfg["interval_min"] = int(interval_var.get())
+        print(f"[GUI] Pet config salvo: {cfg}")
 
     def _start_dashboard_poll(self):
         if hasattr(self, "_poll_id") and self._poll_id:
@@ -1412,14 +1420,14 @@ class MainWindow:
                 "battle_hp": {"key": "4", "enabled": False, "threshold": 35},
                 "battle_mana": {"key": "5", "enabled": False, "threshold": 25},
             }
-        if not hasattr(self, "_petfood_config"):
-            self._petfood_config = {"key": "3", "interval": 300}
+        if not hasattr(self, "_pet_config"):
+            self._pet_config = {"pet_key": "7", "food_key": "3", "interval_min": 30}
 
         if label not in self._bot_engines:
             engine = BotEngine()
+            engine.register(PetFoodScript(config=self._pet_config))
             engine.register(AttackScript(config=self._attack_config))
             engine.register(PotionScript(config=self._potion_config))
-            engine.register(PetFoodScript(config=self._petfood_config))
             engine.register(BuffScript())
             engine.register(HelperScript())
             engine.register(FairyScript())

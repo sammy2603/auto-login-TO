@@ -10,7 +10,7 @@ class Sidebar(ctk.CTkFrame):
         ("Home", "\u2302"),
         ("Attack", "\u2694"),
         ("Potion", "\u2697"),
-        ("Pet Food", "\u2665"),
+        ("Pet", "\u2665"),
         ("Buff", "\u21E7"),
         ("Helper", "\u2699"),
         ("Fairy", "\u2726"),
