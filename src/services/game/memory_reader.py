@@ -203,6 +203,19 @@ class MemoryReader:
             return _rpm_string(self._hProcess, str_ptr, 30)
         return name
 
+    CLASS_NAMES = {10: "Monk", 4: "Wizard", 2: "Assassin", 3: "Tamer", 5: "Fairy"}
+
+    @property
+    def class_id(self) -> int:
+        """Retorna o ID da classe (WORD em +0x3C8)."""
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3C8), 2)
+
+    @property
+    def profession(self) -> str:
+        """Retorna o nome da profissao/classe."""
+        cid = self.class_id
+        return self.CLASS_NAMES.get(cid, f"Class_{cid}")
+
     @property
     def x(self) -> int:
         val = _rpm_float(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x810)) / 20.0

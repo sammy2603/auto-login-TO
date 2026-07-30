@@ -65,6 +65,8 @@ class BotEngine:
                     char_info.resource_pct = memory_reader.mana_pct
                     char_info.in_battle = memory_reader.in_battle
                     char_info.pet_alive = memory_reader.pet_alive
+                    char_info.x = memory_reader.x
+                    char_info.y = memory_reader.y
                     target_info.hp_pct = memory_reader.target_hp_pct
                     target_info.name = memory_reader.target_name
                 except Exception:

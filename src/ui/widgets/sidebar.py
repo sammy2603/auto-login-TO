@@ -7,75 +7,115 @@ from typing import Callable
 class Sidebar(ctk.CTkFrame):
 
     ITEMS = [
-        ("Home", "\u2302"),
-        ("Attack", "\u2694"),
-        ("Potion", "\u2697"),
-        ("Pet", "\u2665"),
-        ("Buff", "\u21E7"),
-        ("Helper", "\u2699"),
-        ("Fairy", "\u2726"),
-        ("Revive", "\u2715"),
-        ("Delete", "\u2717"),
-        ("BC", "\u25C6"),
-        ("Hollow", "\u25CE"),
-        ("---", None),
-        ("Sell", "\u25C8"),
-        ("DR Lure", "\u25C9"),
-        ("Key", "\u26BF"),
+        ("Home", "\u2302", "#555555"),
+        ("Attack", "\u2694", "#cc4444"),
+        ("Potion", "\u2697", "#44aa44"),
+        ("Pet", "\u2665", "#cc88cc"),
+        ("Buff", "\u21E7", "#cccc44"),
+        ("Helper", "\u2699", "#888888"),
+        ("Fairy", "\u2726", "#cc88cc"),
+        ("Revive", "\u2715", "#cc4444"),
+        ("Delete", "\u2717", "#888888"),
+        ("BC", "\u25C6", "#4488cc"),
+        ("Hollow", "\u25CE", "#8844cc"),
+        ("---", None, None),
+        ("Sell", "\u25C8", "#cc8844"),
+        ("DR Lure", "\u25C9", "#cc44cc"),
+        ("Key", "\u26BF", "#cc8844"),
     ]
 
-    def __init__(self, parent, on_select: Callable[[str], None], **kwargs):
+    COLORS = {
+        "Attack": "#cc4444", "Potion": "#44aa44", "Pet": "#cc88cc",
+        "Buff": "#cccc44", "Helper": "#888888", "Fairy": "#cc88cc",
+        "Revive": "#cc4444", "Delete": "#888888", "BC": "#4488cc",
+        "Hollow": "#8844cc", "Sell": "#cc8844", "DR Lure": "#cc44cc",
+        "Key": "#cc8844",
+    }
+
+    def __init__(self, parent, on_select: Callable[[str], None],
+                 on_toggle: Callable[[str, bool], None] | None = None, **kwargs):
         super().__init__(parent, **kwargs)
-        self._font = ctk.CTkFont(family="Segoe UI", size=16)
-        self._icon_font = ctk.CTkFont(family="Segoe UI", size=16)
+        self._font = ctk.CTkFont(family="Segoe UI", size=14)
+        self._icon_font = ctk.CTkFont(family="Segoe UI", size=17)
         self._on_select = on_select
-        self._buttons: dict[str, ctk.CTkButton] = {}
-        self._icon_labels: dict[str, ctk.CTkLabel] = {}
+        self._on_toggle = on_toggle
+        self._cards: dict[str, ctk.CTkFrame] = {}
+        self._switches: dict[str, ctk.CTkSwitch] = {}
         self._selected: str | None = None
         self._build()
 
     def _build(self):
-        for label, icon in self.ITEMS:
+        for label, icon, color in self.ITEMS:
             if label == "---":
-                ctk.CTkFrame(self, height=2, fg_color="#555555").pack(
-                    fill="x", padx=8, pady=6
-                )
+                ctk.CTkFrame(self, height=2, fg_color="#555555").pack(fill="x", padx=8, pady=6)
                 continue
 
-            row = ctk.CTkFrame(self, fg_color="transparent")
-            row.pack(fill="x", padx=2, pady=1)
-            row.grid_columnconfigure(0, minsize=28)
-            row.grid_columnconfigure(1, weight=1)
+            card = ctk.CTkFrame(self, corner_radius=6, border_width=2,
+                                fg_color="transparent", border_color="#333333")
+            card.pack(fill="x", padx=4, pady=2)
 
-            icon_lbl = ctk.CTkLabel(
-                row, text=icon or "",
-                font=self._font, width=28, anchor="center",
-            )
-            icon_lbl.grid(row=0, column=0, padx=(4, 0))
-            self._icon_labels[label] = icon_lbl
+            card.grid_columnconfigure(1, weight=1)
 
-            btn = ctk.CTkButton(
-                row, text=label,
-                command=lambda l=label: self._select(l),
-                fg_color="transparent", hover_color="#3a3a3a",
-                anchor="w", corner_radius=4, height=36,
-                font=self._font,
-            )
-            btn.grid(row=0, column=1, sticky="ew", padx=(0, 4))
-            self._buttons[label] = btn
+            icon_lbl = ctk.CTkLabel(card, text=icon, font=self._icon_font,
+                                    width=28, text_color=color)
+            icon_lbl.grid(row=0, column=0, padx=(4, 0), pady=4)
+
+            name_btn = ctk.CTkButton(card, text=label, font=self._font,
+                                     fg_color="transparent", hover_color="#3a3a3a",
+                                     anchor="w", height=28,
+                                     command=lambda l=label: self._select(l))
+            name_btn.grid(row=0, column=1, sticky="ew", padx=(2, 4), pady=4)
+
+            sw = ctk.CTkSwitch(card, text="",
+                               command=lambda l=label, s=None: self._toggle(l),
+                               width=36)
+            sw.grid(row=0, column=2, padx=(0, 8), pady=4)
+
+            self._cards[label] = card
+            self._switches[label] = sw
 
         self._select("Home")
 
     def _select(self, label: str):
         if self._selected:
-            prev = self._buttons.get(self._selected)
+            prev = self._cards.get(self._selected)
             if prev:
-                prev.configure(fg_color="transparent")
+                prev.configure(fg_color="transparent", border_color="#333333")
         self._selected = label
-        curr = self._buttons.get(label)
+        curr = self._cards.get(label)
         if curr:
-            curr.configure(fg_color="#1a5c2a", hover_color="#1e6e32")
+            curr.configure(fg_color="#1a2a1a", border_color="#2a5c2a")
         self._on_select(label)
+
+    def _toggle(self, label: str):
+        sw = self._switches.get(label)
+        if sw and self._on_toggle:
+            self._on_toggle(label, sw.get())
+        self._update_glow(label)
+
+    def _update_glow(self, label: str):
+        card = self._cards.get(label)
+        sw = self._switches.get(label)
+        if card and sw:
+            if sw.get():
+                color = self.COLORS.get(label, "#44aa44")
+                card.configure(border_color=color)
+            else:
+                if label == self._selected:
+                    card.configure(border_color="#2a5c2a")
+                else:
+                    card.configure(border_color="#333333")
+
+    def set_enabled(self, label: str, enabled: bool):
+        sw = self._switches.get(label)
+        if sw:
+            if sw.get() != enabled:
+                sw.select() if enabled else sw.deselect()
+            self._update_glow(label)
+
+    def is_enabled(self, label: str) -> bool:
+        sw = self._switches.get(label)
+        return sw.get() if sw else False
 
     @property
     def selected(self) -> str | None:

@@ -22,6 +22,8 @@ class CharInfo:
     in_battle: bool = False
     pet_alive: bool | None = None
     kill_count: int = 0
+    x: int = 0
+    y: int = 0
 
 
 @dataclass

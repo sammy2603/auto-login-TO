@@ -36,7 +36,7 @@ from src.ui.widgets.sidebar import Sidebar
 from src.ui.widgets.right_panel import RightPanel
 
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+ctk.set_default_color_theme("green")
 
 GUI_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "gui_settings.json"
 ACCOUNTS_FILE = Path(__file__).resolve().parents[2] / "accounts.json"
@@ -456,7 +456,7 @@ class MainWindow:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("Talisman Online - Auto Login")
-        self.root.geometry("1024x680")
+        self.root.geometry("900x600")
         self.root.resizable(False, False)
 
         # Grid do root: topo (0) | main (1) | status (2)
@@ -475,10 +475,10 @@ class MainWindow:
         self._license = LicenseService()
 
         # Fontes
-        self.FONT = ctk.CTkFont(family="Segoe UI", size=13)
-        self.FONT_BOLD = ctk.CTkFont(family="Segoe UI", size=14, weight="bold")
-        self.FONT_SMALL = ctk.CTkFont(family="Segoe UI", size=12)
-        self.FONT_MONO = ctk.CTkFont(family="Consolas", size=11)
+        self.FONT = ctk.CTkFont(family="Segoe UI", size=12)
+        self.FONT_BOLD = ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
+        self.FONT_SMALL = ctk.CTkFont(family="Segoe UI", size=11)
+        self.FONT_MONO = ctk.CTkFont(family="Consolas", size=10)
 
         self._selected_window: str | None = None
         self._feature_vars: dict[str, dict[str, ctk.BooleanVar]] = {}
@@ -634,14 +634,15 @@ class MainWindow:
         self.tabview.set("Dashboard")
 
         # Sidebar (criado depois do notebook estar pronto)
-        sf = ctk.CTkFrame(mf, fg_color="transparent", width=150)
+        sf = ctk.CTkFrame(mf, fg_color="transparent", width=120)
         sf.grid(row=0, column=0, sticky="ns", padx=(0, 4))
         sf.grid_propagate(False)
-        self.sidebar = Sidebar(sf, on_select=self._on_sidebar_select)
+        self.sidebar = Sidebar(sf, on_select=self._on_sidebar_select,
+                                on_toggle=self._on_sidebar_toggle)
         self.sidebar.pack(fill="both", expand=True)
 
         # Right panel
-        rf = ctk.CTkFrame(mf, width=196)
+        rf = ctk.CTkFrame(mf, width=180)
         rf.grid(row=0, column=2, sticky="ns", padx=(4, 0))
         rf.grid_propagate(False)
         self.right_panel = RightPanel(
@@ -651,18 +652,41 @@ class MainWindow:
         self.right_panel.pack(fill="both", expand=True)
 
     def _on_sidebar_select(self, label: str):
-        if label == "Key":
-            self._open_key_window()
-        elif label == "Config":
-            self._open_config_window()
-        elif label == "Home":
-            self.tabview.set("Dashboard")
-            self._cb_frame.grid()
-            self._clear_feature_config()
+        if label in ("Key", "Config", "Home"):
+            if label == "Key":
+                self._open_key_window()
+            elif label == "Config":
+                self._open_config_window()
+            elif label == "Home":
+                self.tabview.set("Dashboard")
+                self._char_frame.grid()
+                self._clear_feature_config()
         else:
+            # Feature — mostra config no Dashboard
             self.tabview.set("Dashboard")
-            self._cb_frame.grid_remove()
+            self._char_frame.grid_remove()
             self._highlight_feature(label)
+
+    def _on_sidebar_toggle(self, label: str, enabled: bool):
+        """Callback do switch On/Off na sidebar."""
+        win = self._selected_window
+        if win and win in self._feature_vars:
+            self._feature_vars[win][label].set(enabled)
+            self.sidebar._update_glow(label)
+
+    def _open_feature_window(self, label: str):
+        """Abre a janela de configuracao da feature (Attack, Potion, etc.)."""
+        method_name = f"_show_{label.lower().replace(' ', '_')}_config"
+        if hasattr(self, method_name):
+            # Abre em CTkToplevel
+            win = ctk.CTkToplevel(self.root)
+            win.title(f"Config — {label}")
+            win.geometry("400x500")
+            win.resizable(False, False)
+            win.transient(self.root)
+            self._center_on_parent(win, 400, 500)
+            win.grab_set()
+            win.wait_window()
 
     # =====================================================
     # Dashboard
@@ -677,76 +701,51 @@ class MainWindow:
 
         # Char Info
         cf = ctk.CTkFrame(self._dashboard_frame)
-        cf.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+        cf.grid(row=0, column=0, sticky="ew", padx=6, pady=(4, 2))
         cf.grid_columnconfigure(0, weight=1)
         cf.grid_columnconfigure(2, weight=1)
 
-        # Char Info (coluna 0)
-        char_col = ctk.CTkFrame(cf, fg_color="transparent")
-        char_col.grid(row=0, column=0, sticky="ew", padx=(8, 0))
-        ctk.CTkLabel(char_col, text="Char Info", font=self.FONT_BOLD).pack(anchor="w", pady=(4, 2))
+        # Linha unica: char info | target info
+        self._char_frame = cf  # referencia para mostrar/esconder
+        self._char_name_label = ctk.CTkLabel(cf, text="--", font=self.FONT_BOLD)
+        self._char_name_label.grid(row=0, column=0, sticky="w", padx=2)
 
+        # HP bar + Recurso bar
+        bars_frame = ctk.CTkFrame(cf, fg_color="transparent")
+        bars_frame.grid(row=1, column=0, sticky="ew", padx=2)
         for name, bar_attr, lbl_attr in [
-            ("HP:", "_char_hp_bar", "_char_hp_label"),
-            ("Recurso:", "_char_res_bar", "_char_res_label"),
+            ("HP ", "_char_hp_bar", "_char_hp_label"),
+            ("Rec ", "_char_res_bar", "_char_res_label"),
         ]:
-            r = ctk.CTkFrame(char_col, fg_color="transparent"); r.pack(fill="x", pady=1)
-            ctk.CTkLabel(r, text=name, width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
-            bar = ctk.CTkProgressBar(r, width=130, progress_color="#22aa22")
-            bar.pack(side="left", padx=(4, 4)); bar.set(0)
+            r = ctk.CTkFrame(bars_frame, fg_color="transparent"); r.pack(fill="x")
+            ctk.CTkLabel(r, text=name, width=30, anchor="w", font=self.FONT_SMALL).pack(side="left")
+            bar = ctk.CTkProgressBar(r, width=120)
+            bar.pack(side="left", padx=2); bar.set(0)
             lbl = ctk.CTkLabel(r, text="---", width=55, anchor="e", font=self.FONT_SMALL); lbl.pack(side="right")
             setattr(self, bar_attr, bar)
             setattr(self, lbl_attr, lbl)
 
-        # Separador vertical (coluna 1)
-        ctk.CTkFrame(cf, width=2, fg_color="#444444").grid(
-            row=0, column=1, sticky="ns", padx=6,
-        )
+        # Target info (coluna direita)
+        ctk.CTkLabel(cf, text="Target", font=self.FONT_BOLD).grid(row=0, column=2, sticky="w", padx=2)
+        tgt_bars = ctk.CTkFrame(cf, fg_color="transparent")
+        tgt_bars.grid(row=1, column=2, sticky="ew", padx=2)
 
-        # Target Info (coluna 2)
-        tgt_col = ctk.CTkFrame(cf, fg_color="transparent")
-        tgt_col.grid(row=0, column=2, sticky="ew", padx=(0, 8))
-        ctk.CTkLabel(tgt_col, text="Target Info", font=self.FONT_BOLD).pack(anchor="w", pady=(4, 2))
-
-        r = ctk.CTkFrame(tgt_col, fg_color="transparent"); r.pack(fill="x", pady=1)
-        ctk.CTkLabel(r, text="HP:", width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
-        self._target_hp_bar = ctk.CTkProgressBar(r, width=130, progress_color="#cc2222")
-        self._target_hp_bar.pack(side="left", padx=(4, 4)); self._target_hp_bar.set(0)
+        r = ctk.CTkFrame(tgt_bars, fg_color="transparent"); r.pack(fill="x")
+        ctk.CTkLabel(r, text="HP ", width=30, anchor="w", font=self.FONT_SMALL).pack(side="left")
+        self._target_hp_bar = ctk.CTkProgressBar(r, width=120, progress_color="#cc3333")
+        self._target_hp_bar.pack(side="left", padx=2); self._target_hp_bar.set(0)
         self._target_hp_label = ctk.CTkLabel(r, text="---", width=55, anchor="e", font=self.FONT_SMALL)
         self._target_hp_label.pack(side="right")
 
-        r2 = ctk.CTkFrame(tgt_col, fg_color="transparent"); r2.pack(fill="x", pady=1)
-        ctk.CTkLabel(r2, text="Nome:", width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
-        self._target_name_label = ctk.CTkLabel(r2, text="---", anchor="w", font=self.FONT_SMALL)
-        self._target_name_label.pack(side="left", padx=(4, 0))
-
-        # Kill counter
-        r3 = ctk.CTkFrame(tgt_col, fg_color="transparent"); r3.pack(fill="x", pady=1)
-        ctk.CTkLabel(r3, text="Kills:", width=55, anchor="w", font=self.FONT_SMALL).pack(side="left")
-        self._kill_label = ctk.CTkLabel(r3, text="0", font=self.FONT_SMALL)
-        self._kill_label.pack(side="left", padx=(4, 0))
-
-        # Feature checkboxes (grade fixa) — visivel so na Home
-        self._cb_frame = ctk.CTkFrame(self._dashboard_frame)
-        self._cb_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-        self._cb_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        inner_cb = ctk.CTkFrame(self._cb_frame, fg_color="transparent")
-        inner_cb.pack(fill="x", padx=4, pady=2)
-        inner_cb.grid_columnconfigure((0, 1, 2, 3), weight=1)
-
-        self._feature_widgets: dict[str, ctk.CTkCheckBox] = {}
-        for i, feat in enumerate(self.FEATURES):
-            col = i % 4
-            row_num = i // 4
-            cb = ctk.CTkCheckBox(
-                inner_cb, text=feat, state="disabled",
-            )
-            cb.grid(row=row_num, column=col, sticky="w", padx=4, pady=3)
-            self._feature_widgets[feat] = cb
+        r2 = ctk.CTkFrame(tgt_bars, fg_color="transparent"); r2.pack(fill="x")
+        self._target_name_label = ctk.CTkLabel(r2, text="", anchor="w", font=self.FONT_SMALL)
+        self._target_name_label.pack(side="left")
+        self._kill_label = ctk.CTkLabel(r2, text=" 0k", font=self.FONT_SMALL)
+        self._kill_label.pack(side="right")
 
         # Feature Config (parte inferior, expande)
         self._feature_config_frame = ctk.CTkFrame(self._dashboard_frame)
-        self._feature_config_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
+        self._feature_config_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=2)
         self._feature_config_inner = ctk.CTkFrame(
             self._feature_config_frame, fg_color="transparent",
         )
@@ -763,7 +762,7 @@ class MainWindow:
             text="Selecione um character no painel direito.",
             text_color="#888888",
         )
-        self._dashboard_status.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 4))
+        self._dashboard_status.grid(row=2, column=0, sticky="ew", padx=6, pady=(0, 2))
 
     def _ensure_window_state(self, label: str):
         if label not in self._feature_vars:
@@ -775,6 +774,10 @@ class MainWindow:
         self._ensure_window_state(label)
         self._refresh_dashboard()
         self._start_dashboard_poll()
+        # Sincroniza switches da sidebar com feature vars
+        if label in self._feature_vars:
+            for f in self.FEATURES:
+                self.sidebar.set_enabled(f, self._feature_vars[label][f].get())
 
     def _on_right_panel_action(self, label: str):
         running = self.right_panel.running
@@ -792,22 +795,16 @@ class MainWindow:
             self._char_hp_bar.set(0); self._char_hp_label.configure(text="---")
             self._char_res_bar.set(0); self._char_res_label.configure(text="---")
             self._target_hp_bar.set(0); self._target_hp_label.configure(text="---")
-            self._target_name_label.configure(text="---")
-            for f in self.FEATURES:
-                self._feature_widgets[f].configure(state="disabled")
+            self._target_name_label.configure(text="")
             return
         running = self._widget_states.get(label, False)
         sessions = SessionRegistry.get_all()
         display = sessions.get(label, {}).get("display", label)
         self._dashboard_status.configure(text=f"{display}  |  {'ATIVO' if running else 'PARADO'}")
-        for f in self.FEATURES:
-            cb = self._feature_widgets[f]
-            var = self._feature_vars[label][f]
-            cb.configure(state="normal", variable=var)
 
     def _clear_feature_config(self):
-        """Limpa o painel de config e mostra checkboxes (Home)."""
-        self._cb_frame.grid()
+        """Limpa o painel de config (Home)."""
+        self._char_frame.grid()
         for w in self._feature_config_inner.winfo_children():
             w.destroy()
         ctk.CTkLabel(
@@ -817,8 +814,8 @@ class MainWindow:
         ).pack(expand=True)
 
     def _highlight_feature(self, feature: str):
-        """Mostra a configuracao da feature no Dashboard."""
-        self._cb_frame.grid_remove()
+        """Mostra a configuracao da feature. Esconde info do char."""
+        self._char_frame.grid_remove()
         for w in self._feature_config_inner.winfo_children():
             w.destroy()
 
@@ -855,13 +852,14 @@ class MainWindow:
 
         # Duas colunas: skills (esq) | target filter (dir)
         cols = ctk.CTkFrame(inner, fg_color="transparent")
-        cols.pack(fill="x")
+        cols.pack(fill="both", expand=True)
         cols.grid_columnconfigure(0, weight=1)
         cols.grid_columnconfigure(1, weight=1)
+        cols.grid_rowconfigure(0, weight=1)
 
         # Coluna esquerda — Skills
         left = ctk.CTkFrame(cols, fg_color="transparent")
-        left.grid(row=0, column=0, sticky="nw", padx=(0, 8))
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         ctk.CTkLabel(left, text="Skills", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
         skill_vars = []
         for i in range(5):
@@ -872,25 +870,28 @@ class MainWindow:
             ctk.CTkEntry(row, textvariable=var, width=60).pack(side="left", padx=(4, 0))
             skill_vars.append(var)
 
-        # Coluna direita — Target Filter + Velocidade
-        right = ctk.CTkFrame(cols, fg_color="transparent")
-        right.grid(row=0, column=1, sticky="nw")
-        ctk.CTkLabel(right, text="Target Filter", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
+        # Coluna direita — scrollavel
+        right_scroll = ctk.CTkScrollableFrame(cols, fg_color="transparent", height=200)
+        right_scroll.grid(row=0, column=1, sticky="nsew")
+        right = right_scroll
+        ctk.CTkLabel(right, text="Target List", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
 
-        target_var = tk.StringVar(value=tf.get("name", ""))
-        tf_row = ctk.CTkFrame(right, fg_color="transparent")
-        tf_row.pack(fill="x", pady=2)
-        ctk.CTkEntry(tf_row, textvariable=target_var, width=130).pack(side="left")
-        ctk.CTkButton(
-            tf_row, text="Capturar", width=70,
-            command=lambda: self._capture_target_name(target_var),
-        ).pack(side="left", padx=(4, 0))
+        # Mode + Capturar
+        tl = cfg.setdefault("target_list", [])
+        add_row = ctk.CTkFrame(right, fg_color="transparent")
+        add_row.pack(fill="x", pady=2)
+        tl_mode = tk.StringVar(value="attack")
+        ctk.CTkComboBox(add_row, values=["attack", "ignore"], variable=tl_mode, width=65, state="readonly").pack(side="left")
+        ctk.CTkButton(add_row, text="Capturar", width=60, command=lambda: self._add_target_to_list(tl, tl_mode)).pack(side="left", padx=(4, 0))
 
-        mode_var = tk.StringVar(value=tf.get("mode", "all"))
-        for val, label in [("all", "Atacar todos"), ("only", "Somente este"), ("exclude", "Excluir este")]:
-            ctk.CTkRadioButton(
-                right, text=label, variable=mode_var, value=val,
-            ).pack(anchor="w", pady=1)
+        # Lista scrollavel
+        tl_frame = ctk.CTkFrame(right, fg_color="transparent")
+        tl_frame.pack(fill="x", pady=2)
+        self._tl_widget = tl_frame
+        self._refresh_target_list_ui(tl_frame, tl)
+
+        ctk.CTkButton(right, text="Limpar Lista", width=80, fg_color="transparent", border_width=1,
+                       command=lambda: self._clear_target_list(tl, tl_frame)).pack(pady=(2, 0))
 
         # Velocidade
         ctk.CTkLabel(right, text="Velocidade", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
@@ -910,9 +911,23 @@ class MainWindow:
         ctk.CTkEntry(us_row, textvariable=us_timeout, width=40).pack(side="left")
         ctk.CTkLabel(us_row, text="s", font=self.FONT_SMALL).pack(side="left")
 
+        # Spot Area
+        sp = cfg.setdefault("spot", {"enabled": False, "distance": 20})
+        ctk.CTkLabel(right, text="Spot Area", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
+        sp_row = ctk.CTkFrame(right, fg_color="transparent"); sp_row.pack(fill="x")
+        sp_enabled = ctk.BooleanVar(value=sp.get("enabled", False))
+        ctk.CTkCheckBox(sp_row, text="Ativar", variable=sp_enabled, width=20).pack(side="left")
+        ctk.CTkLabel(sp_row, text="Dist:", font=self.FONT_SMALL).pack(side="left", padx=(2, 4))
+        sp_dist = tk.IntVar(value=sp.get("distance", 20))
+        ctk.CTkSlider(sp_row, from_=5, to=50, number_of_steps=45, variable=sp_dist, width=100).pack(side="left")
+        ctk.CTkLabel(sp_row, text=f"{sp_dist.get()}", width=25, font=self.FONT_SMALL).pack(side="left")
+        def _upd_sp(val):
+            sp_row.winfo_children()[-1].configure(text=f"{int(float(val))}")
+        sp_dist.trace_add("write", lambda *a, v=sp_dist: _upd_sp(v.get()))
+
         ctk.CTkButton(
             right, text="Salvar", width=80,
-            command=lambda: self._save_attack_config(skill_vars, speed_var, mode_var, target_var, us_enabled, us_timeout),
+            command=lambda: self._save_attack_config(skill_vars, speed_var, us_enabled, us_timeout, sp_enabled, sp_dist),
         ).pack(anchor="w", pady=(12, 0))
 
     def _capture_target_name(self, target_var):
@@ -933,15 +948,51 @@ class MainWindow:
         except Exception:
             pass
 
-    def _save_attack_config(self, skill_vars, speed_var, mode_var, target_var, us_enabled, us_timeout):
+    def _add_target_to_list(self, tl, tl_mode):
+        sessions = SessionRegistry.get_all()
+        label = self._selected_window
+        if not label: return
+        session = sessions.get(label)
+        if not session or not session.get("pid"): return
+        try:
+            mr = MemoryReader(session["pid"])
+            name = mr.target_name
+            mr.close()
+            if name and not any(t["name"] == name for t in tl):
+                tl.append({"name": name, "mode": tl_mode.get()})
+                if hasattr(self, "_tl_widget"):
+                    self._refresh_target_list_ui(self._tl_widget, tl)
+        except Exception:
+            pass
+
+    def _refresh_target_list_ui(self, frame, tl):
+        for w in frame.winfo_children():
+            w.destroy()
+        for item in tl:
+            row = ctk.CTkFrame(frame, fg_color="transparent")
+            row.pack(fill="x", pady=1)
+            mode_color = "#88aa88" if item["mode"] == "attack" else "#cc8888"
+            ctk.CTkLabel(row, text=f"[{item['mode'][:3].upper()}]", width=40, text_color=mode_color, font=self.FONT_SMALL).pack(side="left")
+            ctk.CTkLabel(row, text=item["name"], anchor="w", font=self.FONT_SMALL).pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(row, text="X", width=22, height=18, fg_color="transparent", border_width=1, text_color="#cc4444",
+                          command=lambda i=item: self._remove_target(tl, i, frame)).pack(side="right")
+
+    def _remove_target(self, tl, item, frame):
+        if item in tl:
+            tl.remove(item)
+            self._refresh_target_list_ui(frame, tl)
+
+    def _clear_target_list(self, tl, frame):
+        tl.clear()
+        self._refresh_target_list_ui(frame, tl)
+
+    def _save_attack_config(self, skill_vars, speed_var, us_enabled, us_timeout, sp_enabled, sp_dist):
         cfg = self._attack_config
         cfg["keys"] = [v.get().strip() for v in skill_vars]
         cfg["speed"] = int(speed_var.get().replace("ms", ""))
-        cfg["target_filter"] = {
-            "mode": mode_var.get(),
-            "name": target_var.get().strip(),
-        }
+        cfg["target_list"] = cfg.get("target_list", [])
         cfg["unstuck"] = {"enabled": us_enabled.get(), "timeout": us_timeout.get()}
+        cfg["spot"] = {"enabled": sp_enabled.get(), "distance": sp_dist.get()}
         print(f"[GUI] Attack config salvo: {cfg}")
 
     def _show_potion_config(self):
@@ -1291,6 +1342,15 @@ class MainWindow:
                             self._char_hp_label.configure(text=f"{mr.hp:.0f}/{mr.max_hp}")
                             self._char_res_bar.set(mr.mana_pct / 100.0)
                             self._char_res_label.configure(text=f"{mr.mana_pct:.0f}%")
+                            self._char_name_label.configure(text=mr.char_name or "Char Info")
+                            # Atualiza HUD no painel direito
+                            self.right_panel.update_hud(
+                                name=mr.char_name or "",
+                                level=mr.level,
+                                hp_pct=mr.hp_pct,
+                                res_pct=mr.mana_pct,
+                                profession=mr.profession,
+                            )
                             self._target_hp_bar.set(mr.target_hp_pct / 100.0)
                             self._target_hp_label.configure(text=f"{mr.target_hp_pct:.0f}%")
 
@@ -1307,11 +1367,11 @@ class MainWindow:
                                 kt["kills"] += 1
 
                             current_name = mr.target_name
-                            self._target_name_label.configure(text=current_name or "---")
+                            self._target_name_label.configure(text=current_name or "")
 
                             kt["last_hp"] = current_hp
                             kt["last_name"] = current_name
-                            self._kill_label.configure(text=str(kt["kills"]))
+                            self._kill_label.configure(text=f"{kt['kills']}k")
                         except Exception:
                             pass
         self._poll_id = self.root.after(100, self._poll_dashboard)
@@ -1717,7 +1777,8 @@ class MainWindow:
             engine.stop()
         if hasattr(self, "_kill_track") and label in self._kill_track:
             self._kill_track[label]["kills"] = 0
-            self._kill_label.configure(text="0")
+        if hasattr(self, "_kill_label"):
+            self._kill_label.configure(text="0k")
 
     # =====================================================
     # Execucao
