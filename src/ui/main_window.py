@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import json
-import sys
-import threading
-import time
-import tkinter as tk
+import json, sys, threading, time, tkinter as tk
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
-import win32gui
+import win32gui, win32process
 
 from src.app.application import Application
 from src.config.settings import Settings
@@ -32,1757 +28,797 @@ from src.services.bot.scripts.sell import SellScript
 from src.services.bot.scripts.dr_lure import DRLureScript
 from src.shared.character_slots import CharacterSlot
 from src.ui.session_registry import SessionRegistry
-from src.ui.widgets.sidebar import Sidebar
-from src.ui.widgets.right_panel import RightPanel
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
 
+# Paleta
+BG = "#080B14"; PANEL = "#0F1525"; CARD = "#141C2F"; HOVER = "#1B2640"
+TEXT = "#E8EEF9"; TEXT2 = "#95A7C8"; TEXT3 = "#5D6A84"
+GREEN = "#22C55E"; BLUE = "#4F8CFF"; YELLOW = "#FACC15"; RED = "#FF4D4F"
+PURPLE = "#A855F7"; CYAN = "#38BDF8"
+
+COLORS = {"Attack": RED, "Potion": GREEN, "Pet": PURPLE, "Buff": YELLOW,
+          "Helper": BLUE, "Fairy": PURPLE, "Revive": RED, "Delete": TEXT3,
+          "BC": CYAN, "Hollow": PURPLE, "Sell": YELLOW, "DR Lure": PURPLE}
+
+ICONS = {"Attack": "\u2694", "Potion": "\u2697", "Pet": "\u2665", "Buff": "\u21E7",
+         "Helper": "\u2699", "Fairy": "\u2726", "Revive": "\u2715", "Delete": "\u2717",
+         "BC": "\u25C6", "Hollow": "\u25CE", "Sell": "\u25C8", "DR Lure": "\u25C9"}
+
+# Fontes — inicializadas via _init_fonts()
+FONT_H1 = FONT_H2 = FONT_H3 = FONT_TEXT = FONT_SMALL = FONT_MONO = None
+def _init_fonts():
+    global FONT_H1, FONT_H2, FONT_H3, FONT_TEXT, FONT_SMALL, FONT_MONO
+    FONT_H2 = ctk.CTkFont(family="Segoe UI", size=18, weight="bold")
+    FONT_H3 = ctk.CTkFont(family="Segoe UI", size=15, weight="bold")
+    FONT_TEXT = ctk.CTkFont(family="Segoe UI", size=13)
+    FONT_SMALL = ctk.CTkFont(family="Segoe UI", size=11)
+    FONT_MONO = ctk.CTkFont(family="Consolas", size=11)
+
 GUI_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "gui_settings.json"
 ACCOUNTS_FILE = Path(__file__).resolve().parents[2] / "accounts.json"
-
 _DEFAULTS = Settings()
-
-
-# =====================================================
-# Modelo de conta + persistencia
-# =====================================================
 
 @dataclass
 class Account:
-    label: str
-    username: str
-    password: str
-    server_name: str
-    character_slot: str
-    auto_login: bool = False
+    label: str; username: str; password: str; server_name: str
+    character_slot: str; auto_login: bool = False
 
-
-def load_accounts() -> list[Account]:
-    if not ACCOUNTS_FILE.exists():
-        return []
+def load_accounts():
+    if not ACCOUNTS_FILE.exists(): return []
     try:
         data = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
-        return [
-            Account(**{**item, "auto_login": item.get("auto_login", False)})
-            for item in data
-        ]
-    except Exception:
-        return []
+        return [Account(**{**d, "auto_login": d.get("auto_login", False)}) for d in data]
+    except: return []
 
+def save_accounts(acts):
+    try: ACCOUNTS_FILE.write_text(json.dumps([asdict(a) for a in acts], indent=2, ensure_ascii=False), encoding="utf-8")
+    except: pass
 
-def save_accounts(accounts: list[Account]):
-    data = [asdict(a) for a in accounts]
-    try:
-        ACCOUNTS_FILE.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-    except Exception as e:
-        print(f"[GUI] Aviso: nao foi possivel salvar as contas ({e})")
-
-
-# =====================================================
-# Log redirector
-# =====================================================
-
-class MultiAccountLogRedirector:
-
-    def __init__(self, widgets: list, original):
-        self.widgets = widgets
+class LogRedirector:
+    def __init__(self, widgets, original):
+        self.widgets = widgets if isinstance(widgets, list) else [widgets]
         self.original = original
-        self._labels: dict[int, str] = {}
-        self._buffers: dict[int, str] = {}
+        self._labels: dict[int, str] = {}; self._buffers: dict[int, str] = {}
         self._lock = threading.Lock()
-
-    def register(self, label: str):
-        with self._lock:
-            self._labels[threading.get_ident()] = label
-
+    def register(self, label):
+        with self._lock: self._labels[threading.get_ident()] = label
     def unregister(self):
-        with self._lock:
-            self._labels.pop(threading.get_ident(), None)
-            self._buffers.pop(threading.get_ident(), None)
-
-    def write(self, text: str):
+        with self._lock: self._labels.pop(threading.get_ident(), None); self._buffers.pop(threading.get_ident(), None)
+    def write(self, text):
         self.original.write(text)
         ident = threading.get_ident()
         with self._lock:
             label = self._labels.get(ident)
             buf = self._buffers.get(ident, "") + text
             lines = []
-            while "\n" in buf:
-                line, buf = buf.split("\n", 1)
-                lines.append(line)
+            while "\n" in buf: line, buf = buf.split("\n", 1); lines.append(line)
             self._buffers[ident] = buf
         for line in lines:
             prefixed = f"[{label}] {line}" if label else line
-            for widget in self.widgets:
-                widget.after(0, self._append, widget, prefixed + "\n")
+            for w in self.widgets:
+                w.after(0, self._append, w, prefixed + "\n")
+    def _append(self, w, t):
+        w.configure(state="normal"); w.insert("end", t); w.yview_moveto(1.0); w.configure(state="disabled")
+    def flush(self): self.original.flush()
 
-    def _append(self, widget, text: str):
-        widget.configure(state="normal")
-        widget.insert("end", text)
-        widget.yview_moveto(1.0)
-        widget.configure(state="disabled")
-
-    def flush(self):
-        self.original.flush()
-
-
-# =====================================================
-# Dialogo de conta
-# =====================================================
-
-class AccountDialog(ctk.CTkToplevel):
-
-    def __init__(self, parent, title: str, account: Account | None = None):
-        super().__init__(parent)
-        self.title(title)
-        self.resizable(False, False)
-        self.transient(parent)
-
-        # Centraliza no pai
-        parent.update_idletasks()
-        pw, ph = parent.winfo_width(), parent.winfo_height()
-        px, py = parent.winfo_x(), parent.winfo_y()
-        self.geometry(f"350x400+{px + (pw - 350) // 2}+{py + (ph - 400) // 2}")
-        self.result: Account | None = None
-
-        self.label_var = tk.StringVar(value=account.label if account else "")
-        self.username_var = tk.StringVar(value=account.username if account else "")
-        self.password_var = tk.StringVar(value=account.password if account else "")
-        self.server_var = tk.StringVar(value=account.server_name if account else _DEFAULTS.server_name)
-        self.slot_var = tk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
-        self.auto_login_var = ctk.BooleanVar(value=account.auto_login if account else False)
-
-        form = ctk.CTkFrame(self)
-        form.pack(fill="both", expand=True, padx=16, pady=16)
-
-        ctk.CTkLabel(form, text="Apelido:").grid(row=0, column=0, sticky="w", pady=4)
-        ctk.CTkEntry(form, textvariable=self.label_var, width=260).grid(row=0, column=1, pady=4, padx=(8, 0))
-
-        ctk.CTkLabel(form, text="Usuario:").grid(row=1, column=0, sticky="w", pady=4)
-        ctk.CTkEntry(form, textvariable=self.username_var, width=260).grid(row=1, column=1, pady=4, padx=(8, 0))
-
-        ctk.CTkLabel(form, text="Senha:").grid(row=2, column=0, sticky="w", pady=4)
-        ctk.CTkEntry(form, textvariable=self.password_var, show="*", width=260).grid(row=2, column=1, pady=4, padx=(8, 0))
-
-        ctk.CTkLabel(form, text="Servidor:").grid(row=3, column=0, sticky="w", pady=4)
-        ctk.CTkEntry(form, textvariable=self.server_var, width=260).grid(row=3, column=1, pady=4, padx=(8, 0))
-
-        ctk.CTkLabel(form, text="Personagem:").grid(row=4, column=0, sticky="w", pady=4)
-        ctk.CTkComboBox(
-            form, values=[CharacterSlot.LEFT, CharacterSlot.CENTER, CharacterSlot.RIGHT],
-            variable=self.slot_var, width=260, state="readonly",
-        ).grid(row=4, column=1, pady=4, padx=(8, 0))
-
-        ctk.CTkCheckBox(
-            form, text="Auto-login ao abrir o Bot", variable=self.auto_login_var,
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
-
-        btns = ctk.CTkFrame(form, fg_color="transparent")
-        btns.grid(row=6, column=0, columnspan=2, sticky="e", pady=(16, 0))
-        ctk.CTkButton(btns, text="Salvar", command=self._on_save).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(btns, text="Cancelar", fg_color="transparent", border_width=1, command=self.destroy).pack(side="right")
-
-        self.grab_set()
-        self.wait_window()
-
-    def _on_save(self):
-        label = self.label_var.get().strip()
-        username = self.username_var.get().strip()
-        if not label or not username or not self.password_var.get():
-            messagebox.showwarning("Campos obrigatorios", "Preencha ao menos apelido, usuario e senha.")
-            return
-        self.result = Account(
-            label=label, username=username, password=self.password_var.get(),
-            server_name=self.server_var.get().strip(), character_slot=self.slot_var.get(),
-            auto_login=self.auto_login_var.get(),
-        )
-        self.destroy()
-
-
-# =====================================================
-# Janela de Login (contas)
-# =====================================================
-
-class LoginWindow(ctk.CTkToplevel):
-
-    def __init__(self, controller):
-        super().__init__(controller.root)
-        self.controller = controller
-        self.title("Login — Contas")
-        self.resizable(True, True)
-        self.minsize(420, 350)
-        self.transient(controller.root)
-        controller._center_on_parent(self, 520, 480)
-
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+# ============================================================
+# SCRIPT CARD
+# ============================================================
+class ScriptCard(ctk.CTkFrame):
+    def __init__(self, parent, name, on_toggle, on_config, **kw):
+        super().__init__(parent, fg_color=CARD, corner_radius=12, border_width=1,
+                         border_color="#1A2540", width=190, height=100, **kw)
+        self.pack_propagate(False)
+        self.name = name
+        self._on_toggle = on_toggle
+        self._on_config = on_config
         self._build()
 
     def _build(self):
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        color = COLORS.get(self.name, TEXT2)
+        icon = ICONS.get(self.name, "?")
 
-        # Tabela de contas
-        self._table = ctk.CTkScrollableFrame(self)
-        self._table.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 4))
+        # Linha 1: icon + nome + settings
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.pack(fill="x", padx=10, pady=(12, 2))
+        ctk.CTkLabel(hdr, text=icon, font=ctk.CTkFont(size=22), text_color=color).pack(side="left")
+        ctk.CTkLabel(hdr, text=self.name, font=ctk.CTkFont(size=12, weight="bold"), text_color=TEXT).pack(side="left", padx=6)
+        ctk.CTkButton(hdr, text="\u2699", width=22, height=22, font=ctk.CTkFont(size=11),
+                      fg_color="transparent", hover_color=HOVER,
+                      command=lambda: self._on_config(self.name)).pack(side="right")
 
-        # Botoes
-        btns = ctk.CTkFrame(self, fg_color="transparent")
-        btns.grid(row=1, column=0, sticky="ew", padx=12, pady=(4, 12))
-        ctk.CTkButton(btns, text="Adicionar Conta", command=self._on_add).pack(side="left")
+        # Linha 2: switch + status
+        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom.pack(fill="x", padx=10, pady=(8, 10))
+        self._sw = ctk.CTkSwitch(bottom, text="", width=36, command=lambda: self._on_toggle(self.name, self._sw.get()))
+        self._sw.pack(side="left")
+        self._dot = ctk.CTkLabel(bottom, text="\u25CF", font=ctk.CTkFont(size=10), text_color=TEXT3)
+        self._dot.pack(side="right")
 
-        self._refresh_table()
+    def set_enabled(self, enabled: bool):
+        if self._sw.get() != enabled:
+            self._sw.select() if enabled else self._sw.deselect()
+        self._dot.configure(text_color=GREEN if enabled else TEXT3)
 
-    def _refresh_table(self):
-        for w in self._table.winfo_children():
-            w.destroy()
-
-        accounts = self.controller.accounts
-        if not accounts:
-            ctk.CTkLabel(
-                self._table,
-                text="Nenhuma conta cadastrada.\nClique em 'Adicionar Conta'.",
-            ).pack(expand=True, pady=30)
-            return
-
-        hdr = ctk.CTkFrame(self._table, fg_color="transparent")
-        hdr.pack(fill="x", pady=(4, 4))
-        ctk.CTkLabel(hdr, text="Conta", font=ctk.CTkFont(weight="bold"), width=100, anchor="w").pack(side="left")
-        ctk.CTkLabel(hdr, text="Servidor", font=ctk.CTkFont(weight="bold"), width=120, anchor="w").pack(side="left", padx=(8, 0))
-        ctk.CTkLabel(hdr, text="Usuario", font=ctk.CTkFont(weight="bold"), width=120, anchor="w").pack(side="left", padx=(8, 0))
-
-        ctk.CTkFrame(self._table, height=1, fg_color="#444444").pack(fill="x", pady=(0, 4))
-
-        for idx, account in enumerate(accounts):
-            self.controller._account_index[account.label] = idx
-            if account.label not in self.controller._login_vars:
-                self.controller._login_vars[account.label] = ctk.BooleanVar(value=False)
-
-            row = ctk.CTkFrame(self._table, fg_color="transparent")
-            row.pack(fill="x", pady=1)
-
-            var = self.controller._login_vars[account.label]
-            ctk.CTkCheckBox(
-                row, text="", variable=var, width=20,
-                command=lambda label=account.label: self.controller._on_checkbox_toggle(label),
-            ).pack(side="left")
-
-            ctk.CTkLabel(row, text=account.label, width=100, anchor="w").pack(side="left", padx=(4, 0))
-            ctk.CTkLabel(row, text=account.server_name, width=120, anchor="w").pack(side="left", padx=(8, 0))
-            ctk.CTkLabel(row, text=account.username, width=120, anchor="w").pack(side="left", padx=(8, 0))
-
-            ctk.CTkButton(
-                row, text="E", width=28, height=24,
-                command=lambda a=account: self._on_edit(a),
-                fg_color="transparent", border_width=1,
-            ).pack(side="right", padx=(4, 2))
-            ctk.CTkButton(
-                row, text="X", width=28, height=24,
-                command=lambda a=account: self._on_remove(a),
-                fg_color="transparent", border_width=1, text_color="#cc4444",
-            ).pack(side="right")
-
-    def _on_add(self):
-        self.controller._on_add_account()
-        self._refresh_table()
-
-    def _on_edit(self, account: Account):
-        self.controller._on_edit_inline(account)
-        self._refresh_table()
-
-    def _on_remove(self, account: Account):
-        self.controller._on_remove_inline(account)
-        self._refresh_table()
-
-    def _on_close(self):
-        self.controller._login_window = None
-        self.destroy()
-
-    def show(self):
-        self.deiconify()
-        self.lift()
-        self.focus_force()
-        self._refresh_table()
-
-
-# =====================================================
-# Janela de Configuracao
-# =====================================================
-
-class ConfigWindow(ctk.CTkToplevel):
-
-    def __init__(self, controller):
-        super().__init__(controller.root)
-        self.controller = controller
-        self.title("Configuracoes")
-        self.resizable(False, False)
-        self.transient(controller.root)
-        controller._center_on_parent(self, 500, 200)
-
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._build()
-
-    def _build(self):
-        frame = ctk.CTkFrame(self)
-        frame.pack(fill="both", expand=True, padx=16, pady=16)
-
-        ctk.CTkLabel(frame, text="Configuracoes", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", pady=(0, 12))
-
-        row = ctk.CTkFrame(frame, fg_color="transparent")
-        row.pack(fill="x", pady=4)
-        ctk.CTkLabel(row, text="Client (.bat/.exe):").pack(side="left")
-        ctk.CTkEntry(row, textvariable=self.controller._client_path, width=280).pack(side="left", padx=(8, 4))
-        ctk.CTkButton(row, text="Procurar", width=80, command=self.controller._browse_client_path).pack(side="left")
-
-        ctk.CTkLabel(
-            frame,
-            text="Demais configuracoes ficam em config.py e .env",
-            text_color="#888888",
-        ).pack(anchor="w", pady=(12, 0))
-
-        ctk.CTkButton(
-            frame, text="Fechar", command=self._on_close,
-            fg_color="transparent", border_width=1,
-        ).pack(pady=(16, 0))
-
-    def _on_close(self):
-        self.controller._config_window = None
-        self.controller._save_client_path()
-        self.destroy()
-
-    def show(self):
-        self.deiconify()
-        self.lift()
-        self.focus_force()
-
-
-# =====================================================
-# Janela de Licenca (Key)
-# =====================================================
-
-class KeyWindow(ctk.CTkToplevel):
-
-    def __init__(self, controller):
-        super().__init__(controller.root)
-        self.controller = controller
-        self.title("Licenca")
-        self.resizable(False, False)
-        self.transient(controller.root)
-        controller._center_on_parent(self, 440, 360)
-
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._build()
-
-    def _build(self):
-        f = ctk.CTkFrame(self)
-        f.pack(fill="both", expand=True, padx=20, pady=20)
-
-        ctk.CTkLabel(f, text="Licenciamento", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(0, 16))
-
-        kr = ctk.CTkFrame(f, fg_color="transparent"); kr.pack(fill="x", pady=4)
-        self._key_var = tk.StringVar()
-        ctk.CTkEntry(kr, textvariable=self._key_var, width=220, placeholder_text="TO-AAAAMMDD-HASH").pack(side="left", padx=(0, 8))
-        ctk.CTkButton(kr, text="Validar", command=self._on_validate).pack(side="left")
-
-        ctk.CTkButton(
-            f, text="Usar modo Demo (30 dias gratuitos)",
-            command=self._on_demo, fg_color="transparent", border_width=1,
-        ).pack(pady=(16, 20))
-
-        self._status_frame = ctk.CTkFrame(f); self._status_frame.pack(fill="x")
-        self._status_text = ctk.CTkLabel(self._status_frame, text="", font=ctk.CTkFont(size=12))
-        self._status_text.pack(anchor="w", padx=12, pady=12)
-
-        ctk.CTkFrame(f, height=1, fg_color="#444444").pack(fill="x", pady=(16, 4))
-        ctk.CTkLabel(f, text="Adquira: contato@loginto.app", text_color="#888888").pack()
-
-        ctk.CTkButton(
-            f, text="Fechar", command=self._on_close,
-            fg_color="transparent", border_width=1,
-        ).pack(pady=(12, 0))
-
-        self._refresh()
-
-    def _refresh(self):
-        ctrl = self.controller
-        ctrl._license.check(); info = ctrl._license.info
-        color = {"demo": "#aaaa00", "active": "#00aa00", "expired": "#aa0000"}.get(info.status, "#888888")
-        status = {"demo": "Demonstracao", "active": "Ativa", "expired": "Expirada"}.get(info.status, info.status)
-        self._status_text.configure(
-            text=f"Status: {status}\nDias restantes: {info.days_remaining}\nTipo: {info.tier.capitalize()}\nChave: {info.key or '---'}",
-            text_color=color,
-        )
-
-    def _on_validate(self):
-        key = self._key_var.get().strip()
-        if not key:
-            messagebox.showwarning("Chave vazia", "Insira uma chave."); return
-        ok, msg = self.controller._license.activate(key)
-        (messagebox.showinfo if ok else messagebox.showerror)("Licenca", msg)
-        self._key_var.set("")
-        self._refresh()
-        self.controller._refresh_license_status()
-
-    def _on_demo(self):
-        self.controller._license.activate("DEMO")
-        self._refresh()
-        self.controller._refresh_license_status()
-
-    def _on_close(self):
-        self.controller._key_window = None
-        self.destroy()
-
-    def show(self):
-        self.deiconify()
-        self.lift()
-        self.focus_force()
-        self._refresh()
-
-
-# =====================================================
-# Janela principal
-# =====================================================
-
+# ============================================================
+# MAIN WINDOW
+# ============================================================
 class MainWindow:
-
-    FEATURES = [
-        "Attack", "Potion", "Pet", "Buff",
-        "Helper", "Fairy", "Revive", "Delete",
-        "BC", "Hollow", "Sell", "DR Lure",
-    ]
+    FEATURES = ["Attack", "Potion", "Pet", "Buff", "Helper", "Fairy",
+                "Revive", "Delete", "BC", "Hollow", "Sell", "DR Lure"]
 
     def __init__(self):
         self.root = ctk.CTk()
-        self.root.title("Talisman Online - Auto Login")
-        self.root.geometry("900x600")
-        self.root.resizable(False, False)
+        self.root.title("Auto Login TO")
+        self.root.geometry("1200x740")
+        self.root.configure(fg_color=BG)
+        _init_fonts()
 
-        # Grid do root: topo (0) | main (1) | status (2)
-        self.root.grid_rowconfigure(0, weight=0)
-        self.root.grid_rowconfigure(1, weight=1)
-        self.root.grid_rowconfigure(2, weight=0)
-        self.root.grid_columnconfigure(0, weight=1)
-
-        self.accounts: list[Account] = load_accounts()
-        self._active_threads = 0
-        self._active_lock = threading.Lock()
+        self.accounts = load_accounts()
+        self._active_threads = 0; self._active_lock = threading.Lock()
         self._stop_events: dict[str, threading.Event] = {}
-        self._login_vars: dict[str, ctk.BooleanVar] = {}
-        self._account_index: dict[str, int] = {}
-        self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
-        self._license = LicenseService()
-
-        # Fontes
-        self.FONT = ctk.CTkFont(family="Segoe UI", size=12)
-        self.FONT_BOLD = ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
-        self.FONT_SMALL = ctk.CTkFont(family="Segoe UI", size=11)
-        self.FONT_MONO = ctk.CTkFont(family="Consolas", size=10)
-
-        self._selected_window: str | None = None
         self._feature_vars: dict[str, dict[str, ctk.BooleanVar]] = {}
         self._widget_states: dict[str, bool] = {}
+        self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
+        self._license = LicenseService()
         self._game_reader = GameReader()
-
-        self._login_window: LoginWindow | None = None
-        self._config_window: ConfigWindow | None = None
-        self._key_window: KeyWindow | None = None
+        self._selected_window: str | None = None
+        self._client_cards: dict[str, any] = {}
+        self._kill_track: dict = {}
+        self._script_cards: dict[str, ScriptCard] = {}
+        self._login_win = None; self._config_win = None
 
         self._build_top_bar()
-        self._build_main_area()
-        self._build_status_bar()
+        self._build_layout()
+        self._build_bottom_bar()
 
-        self.log_redirector = MultiAccountLogRedirector(
-            [self._log_tab_text], sys.stdout
-        )
+        self.log_redirector = LogRedirector(self._console, sys.stdout)
 
-        self._load_saved_client_path()
-
+        self._load_client_path()
         self.root.after(500, self._auto_start_accounts)
         self.root.after(1000, self._scan_for_game_windows)
+        self.root.after(1500, self._poll_loop)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    # =====================================================
-    # Top bar
-    # =====================================================
-
+    # ============================================================
+    # TOP BAR
+    # ============================================================
     def _build_top_bar(self):
-        top = ctk.CTkFrame(self.root, fg_color="transparent")
-        top.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 0))
-
+        bar = ctk.CTkFrame(self.root, fg_color=PANEL, height=48, corner_radius=0)
+        bar.pack(fill="x"); bar.pack_propagate(False)
+        ctk.CTkLabel(bar, text="\u25B6 AUTO LOGIN TO", font=FONT_H3, text_color=TEXT).pack(side="left", padx=16, pady=10)
         for label in ("List", "Config", "Login", "Pricing", "Help"):
-            ctk.CTkButton(
-                top, text=label,
-                command=lambda l=label: self._on_top_bar(l),
-                fg_color="transparent", hover_color="#3a3a3a",
-                width=60, height=28,
-                font=self.FONT_SMALL,
-            ).pack(side="left", padx=2)
-
-        ctk.CTkFrame(top, height=1, fg_color="#444444").pack(fill="x", pady=(4, 0))
-
-    def _on_top_bar(self, label: str):
-        if label == "Login":
-            self._open_login_window()
-        elif label == "Config":
-            self._open_config_window()
-        elif label == "Help":
-            self._show_help_dialog()
-        elif label == "Pricing":
-            self._show_pricing_dialog()
-        elif label == "List":
-            messagebox.showinfo("List", "Ordenacao de janelas em breve.")
-
-    def _open_login_window(self):
-        if self._login_window is None:
-            self._login_window = LoginWindow(self)
-        else:
-            self._login_window.show()
-
-    def _open_config_window(self):
-        if self._config_window is None:
-            self._config_window = ConfigWindow(self)
-        else:
-            self._config_window.show()
-
-    # =====================================================
-    # Pricing / Help dialogs
-    # =====================================================
-
-    def _center_on_parent(self, child, width: int, height: int):
-        """Centraliza uma janela filha em relacao a janela principal."""
-        self.root.update_idletasks()
-        px = self.root.winfo_x()
-        py = self.root.winfo_y()
-        pw = self.root.winfo_width()
-        ph = self.root.winfo_height()
-        x = px + (pw - width) // 2
-        y = py + (ph - height) // 2
-        child.geometry(f"{width}x{height}+{x}+{y}")
-
-    def _show_pricing_dialog(self):
-        d = ctk.CTkToplevel(self.root)
-        d.title("Pricing"); d.resizable(False, False); d.transient(self.root)
-        self._center_on_parent(d, 380, 340)
-        f = ctk.CTkFrame(d); f.pack(fill="both", expand=True, padx=20, pady=20)
-        ctk.CTkLabel(f, text="Planos", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(0, 16))
-        free = ctk.CTkFrame(f); free.pack(fill="x", pady=4)
-        ctk.CTkLabel(free, text="Gratuito", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=12, pady=(8, 4))
-        for t in ["Login automatico", "Configuracoes basicas", "1 conta simultanea"]:
-            ctk.CTkLabel(free, text=f"  - {t}", text_color="#aaaaaa").pack(anchor="w", padx=12)
-        prem = ctk.CTkFrame(f); prem.pack(fill="x", pady=4)
-        ctk.CTkLabel(prem, text="Premium", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=12, pady=(8, 4))
-        for t in ["Multiplas contas", "Todos os scripts", "Perfis personalizados", "Atualizacoes prioritarias", "Suporte dedicado"]:
-            ctk.CTkLabel(prem, text=f"  - {t}", text_color="#aaaaaa").pack(anchor="w", padx=12)
-        ctk.CTkLabel(f, text="Contato: contato@loginto.app", text_color="#888888").pack(pady=(16, 0))
-        ctk.CTkButton(f, text="Fechar", command=d.destroy).pack(pady=(12, 0))
-        d.grab_set(); d.wait_window()
-
-    def _show_help_dialog(self):
-        d = ctk.CTkToplevel(self.root)
-        d.title("Help / Sobre"); d.resizable(False, False); d.transient(self.root)
-        self._center_on_parent(d, 340, 260)
-        f = ctk.CTkFrame(d); f.pack(fill="both", expand=True, padx=20, pady=20)
-        ctk.CTkLabel(f, text="Auto Login TO", font=ctk.CTkFont(size=16, weight="bold")).pack()
-        ctk.CTkLabel(f, text="Versao 0.2.0", text_color="#888888").pack(pady=(2, 12))
-        ctk.CTkLabel(f, text="Automatizacao de login para Talisman Online").pack()
-        ctk.CTkFrame(f, height=1, fg_color="#444444").pack(fill="x", pady=12)
-        ctk.CTkButton(f, text="Verificar Atualizacao", command=self._check_for_updates).pack(pady=(0, 8))
-        ctk.CTkButton(f, text="Fechar", command=d.destroy, fg_color="transparent", border_width=1).pack()
-        d.grab_set(); d.wait_window()
-
-    def _check_for_updates(self):
-        try:
-            import urllib.request
-            url = "https://api.github.com/repos/anomalyco/opencode/releases/latest"
-            req = urllib.request.Request(url)
-            req.add_header("Accept", "application/vnd.github+json")
-            req.add_header("User-Agent", "LoginTO-UpdateChecker")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
-                latest = data.get("tag_name", "")
-            messagebox.showinfo("Atualizacao", f"Ultima: {latest}\nAtual: 0.2.0" if latest else "Nao foi possivel verificar.")
-        except Exception as e:
-            messagebox.showinfo("Atualizacao", f"Erro: {e}")
-
-    # =====================================================
-    # Area principal (3 colunas)
-    # =====================================================
-
-    def _build_main_area(self):
-        mf = ctk.CTkFrame(self.root, fg_color="transparent")
-        mf.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
-        mf.grid_columnconfigure(1, weight=1)
-        mf.grid_rowconfigure(0, weight=1)
-
-        # Centro — notebook (criado primeiro, sidebar depende dele)
-        self.center_frame = ctk.CTkFrame(mf, fg_color="transparent")
-        self.center_frame.grid(row=0, column=1, sticky="nsew")
-
-        self.tabview = ctk.CTkTabview(self.center_frame)
-        self.tabview.pack(fill="both", expand=True)
-        self.tabview.add("Dashboard")
-        self.tabview.add("Log")
-
-        self._dashboard_frame = self.tabview.tab("Dashboard")
-        self._log_tab_frame = self.tabview.tab("Log")
-
-        self._build_dashboard_content()
-        self._build_log_tab()
-
-        self.tabview.set("Dashboard")
-
-        # Sidebar (criado depois do notebook estar pronto)
-        sf = ctk.CTkFrame(mf, fg_color="transparent", width=120)
-        sf.grid(row=0, column=0, sticky="ns", padx=(0, 4))
-        sf.grid_propagate(False)
-        self.sidebar = Sidebar(sf, on_select=self._on_sidebar_select,
-                                on_toggle=self._on_sidebar_toggle)
-        self.sidebar.pack(fill="both", expand=True)
-
-        # Right panel
-        rf = ctk.CTkFrame(mf, width=180)
-        rf.grid(row=0, column=2, sticky="ns", padx=(4, 0))
-        rf.grid_propagate(False)
-        self.right_panel = RightPanel(
-            rf, on_select=self._on_right_panel_select,
-            on_action=self._on_right_panel_action,
-        )
-        self.right_panel.pack(fill="both", expand=True)
-
-    def _on_sidebar_select(self, label: str):
-        if label in ("Key", "Config", "Home"):
-            if label == "Key":
-                self._open_key_window()
-            elif label == "Config":
-                self._open_config_window()
-            elif label == "Home":
-                self.tabview.set("Dashboard")
-                self._char_frame.grid()
-                self._clear_feature_config()
-        else:
-            # Feature — mostra config no Dashboard
-            self.tabview.set("Dashboard")
-            self._char_frame.grid_remove()
-            self._highlight_feature(label)
-
-    def _on_sidebar_toggle(self, label: str, enabled: bool):
-        """Callback do switch On/Off na sidebar."""
-        win = self._selected_window
-        if win and win in self._feature_vars:
-            self._feature_vars[win][label].set(enabled)
-            self.sidebar._update_glow(label)
-
-    def _open_feature_window(self, label: str):
-        """Abre a janela de configuracao da feature (Attack, Potion, etc.)."""
-        method_name = f"_show_{label.lower().replace(' ', '_')}_config"
-        if hasattr(self, method_name):
-            # Abre em CTkToplevel
-            win = ctk.CTkToplevel(self.root)
-            win.title(f"Config — {label}")
-            win.geometry("400x500")
-            win.resizable(False, False)
-            win.transient(self.root)
-            self._center_on_parent(win, 400, 500)
-            win.grab_set()
-            win.wait_window()
-
-    # =====================================================
-    # Dashboard
-    # =====================================================
-
-    def _build_dashboard_content(self):
-        self._dashboard_frame.grid_columnconfigure(0, weight=1)
-        self._dashboard_frame.grid_rowconfigure(0, weight=0)  # Char
-        self._dashboard_frame.grid_rowconfigure(1, weight=0)  # Target
-        self._dashboard_frame.grid_rowconfigure(2, weight=1)  # Config (expande)
-        self._dashboard_frame.grid_rowconfigure(3, weight=0)  # Status
-
-        # Char Info
-        cf = ctk.CTkFrame(self._dashboard_frame)
-        cf.grid(row=0, column=0, sticky="ew", padx=6, pady=(4, 2))
-        cf.grid_columnconfigure(0, weight=1)
-        cf.grid_columnconfigure(2, weight=1)
-
-        # Linha unica: char info | target info
-        self._char_frame = cf  # referencia para mostrar/esconder
-        self._char_name_label = ctk.CTkLabel(cf, text="--", font=self.FONT_BOLD)
-        self._char_name_label.grid(row=0, column=0, sticky="w", padx=2)
-
-        # HP bar + Recurso bar
-        bars_frame = ctk.CTkFrame(cf, fg_color="transparent")
-        bars_frame.grid(row=1, column=0, sticky="ew", padx=2)
-        for name, bar_attr, lbl_attr in [
-            ("HP ", "_char_hp_bar", "_char_hp_label"),
-            ("Rec ", "_char_res_bar", "_char_res_label"),
-        ]:
-            r = ctk.CTkFrame(bars_frame, fg_color="transparent"); r.pack(fill="x")
-            ctk.CTkLabel(r, text=name, width=30, anchor="w", font=self.FONT_SMALL).pack(side="left")
-            bar = ctk.CTkProgressBar(r, width=120)
-            bar.pack(side="left", padx=2); bar.set(0)
-            lbl = ctk.CTkLabel(r, text="---", width=55, anchor="e", font=self.FONT_SMALL); lbl.pack(side="right")
-            setattr(self, bar_attr, bar)
-            setattr(self, lbl_attr, lbl)
-
-        # Target info (coluna direita)
-        ctk.CTkLabel(cf, text="Target", font=self.FONT_BOLD).grid(row=0, column=2, sticky="w", padx=2)
-        tgt_bars = ctk.CTkFrame(cf, fg_color="transparent")
-        tgt_bars.grid(row=1, column=2, sticky="ew", padx=2)
-
-        r = ctk.CTkFrame(tgt_bars, fg_color="transparent"); r.pack(fill="x")
-        ctk.CTkLabel(r, text="HP ", width=30, anchor="w", font=self.FONT_SMALL).pack(side="left")
-        self._target_hp_bar = ctk.CTkProgressBar(r, width=120, progress_color="#cc3333")
-        self._target_hp_bar.pack(side="left", padx=2); self._target_hp_bar.set(0)
-        self._target_hp_label = ctk.CTkLabel(r, text="---", width=55, anchor="e", font=self.FONT_SMALL)
-        self._target_hp_label.pack(side="right")
-
-        r2 = ctk.CTkFrame(tgt_bars, fg_color="transparent"); r2.pack(fill="x")
-        self._target_name_label = ctk.CTkLabel(r2, text="", anchor="w", font=self.FONT_SMALL)
-        self._target_name_label.pack(side="left")
-        self._kill_label = ctk.CTkLabel(r2, text=" 0k", font=self.FONT_SMALL)
-        self._kill_label.pack(side="right")
-
-        # Feature Config (parte inferior, expande)
-        self._feature_config_frame = ctk.CTkFrame(self._dashboard_frame)
-        self._feature_config_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=2)
-        self._feature_config_inner = ctk.CTkFrame(
-            self._feature_config_frame, fg_color="transparent",
-        )
-        self._feature_config_inner.pack(fill="both", expand=True, padx=4, pady=4)
-        ctk.CTkLabel(
-            self._feature_config_inner,
-            text="Selecione uma funcao na sidebar para configurar.",
-            text_color="#888888",
-        ).pack(expand=True)
-
-        # Status
-        self._dashboard_status = ctk.CTkLabel(
-            self._dashboard_frame,
-            text="Selecione um character no painel direito.",
-            text_color="#888888",
-        )
-        self._dashboard_status.grid(row=2, column=0, sticky="ew", padx=6, pady=(0, 2))
-
-    def _ensure_window_state(self, label: str):
-        if label not in self._feature_vars:
-            self._feature_vars[label] = {f: ctk.BooleanVar(value=False) for f in self.FEATURES}
-            self._widget_states[label] = False
-
-    def _on_right_panel_select(self, label: str):
-        self._selected_window = label
-        self._ensure_window_state(label)
-        self._refresh_dashboard()
-        self._start_dashboard_poll()
-        # Sincroniza switches da sidebar com feature vars
-        if label in self._feature_vars:
-            for f in self.FEATURES:
-                self.sidebar.set_enabled(f, self._feature_vars[label][f].get())
-
-    def _on_right_panel_action(self, label: str):
-        running = self.right_panel.running
-        self._widget_states[label] = running
-        if running:
-            self._start_bot_for_window(label)
-        else:
-            self._stop_bot_for_window(label)
-        self._refresh_dashboard()
-
-    def _refresh_dashboard(self):
-        label = self._selected_window
-        if label is None or label not in self._feature_vars:
-            self._dashboard_status.configure(text="Selecione um character no painel direito.")
-            self._char_hp_bar.set(0); self._char_hp_label.configure(text="---")
-            self._char_res_bar.set(0); self._char_res_label.configure(text="---")
-            self._target_hp_bar.set(0); self._target_hp_label.configure(text="---")
-            self._target_name_label.configure(text="")
-            return
-        running = self._widget_states.get(label, False)
-        sessions = SessionRegistry.get_all()
-        display = sessions.get(label, {}).get("display", label)
-        self._dashboard_status.configure(text=f"{display}  |  {'ATIVO' if running else 'PARADO'}")
-
-    def _clear_feature_config(self):
-        """Limpa o painel de config (Home)."""
-        self._char_frame.grid()
-        for w in self._feature_config_inner.winfo_children():
-            w.destroy()
-        ctk.CTkLabel(
-            self._feature_config_inner,
-            text="Selecione uma funcao na sidebar para configurar.",
-            text_color="#888888",
-        ).pack(expand=True)
-
-    def _highlight_feature(self, feature: str):
-        """Mostra a configuracao da feature. Esconde info do char."""
-        self._char_frame.grid_remove()
-        for w in self._feature_config_inner.winfo_children():
-            w.destroy()
-
-        method = getattr(
-            self, f"_show_{feature.lower().replace(' ', '_')}_config", None
-        )
-        if method:
-            method()
-        else:
-            ctk.CTkLabel(
-                self._feature_config_inner,
-                text=f"Configuracao de '{feature}' em breve.",
-                text_color="#888888",
-            ).pack(pady=12)
-
-    # =====================================================
-    # Feature Configs
-    # =====================================================
-
-    def _show_attack_config(self):
-        """Configuracao de Attack: skills + target filter + velocidade + unstuck."""
-        if not hasattr(self, "_attack_config"):
-            self._attack_config = {
-                "keys": ["1", "2", "3", "4", "5"],
-                "speed": 150,
-                "target_filter": {"mode": "all", "name": ""},
-            }
-        cfg = self._attack_config
-        tf = cfg.setdefault("target_filter", {"mode": "all", "name": ""})
-        us = cfg.setdefault("unstuck", {"enabled": False, "timeout": 10})
-
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Attack", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 2))
-
-        # Duas colunas: skills (esq) | target filter (dir)
-        cols = ctk.CTkFrame(inner, fg_color="transparent")
-        cols.pack(fill="both", expand=True)
-        cols.grid_columnconfigure(0, weight=1)
-        cols.grid_columnconfigure(1, weight=1)
-        cols.grid_rowconfigure(0, weight=1)
-
-        # Coluna esquerda — Skills
-        left = ctk.CTkFrame(cols, fg_color="transparent")
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        ctk.CTkLabel(left, text="Skills", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
-        skill_vars = []
-        for i in range(5):
-            row = ctk.CTkFrame(left, fg_color="transparent")
-            row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=f"Skill {i+1}:", width=55, anchor="w").pack(side="left")
-            var = tk.StringVar(value=cfg["keys"][i] if i < len(cfg["keys"]) else "")
-            ctk.CTkEntry(row, textvariable=var, width=60).pack(side="left", padx=(4, 0))
-            skill_vars.append(var)
-
-        # Coluna direita — scrollavel
-        right_scroll = ctk.CTkScrollableFrame(cols, fg_color="transparent", height=200)
-        right_scroll.grid(row=0, column=1, sticky="nsew")
-        right = right_scroll
-        ctk.CTkLabel(right, text="Target List", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(0, 2))
-
-        # Mode + Capturar
-        tl = cfg.setdefault("target_list", [])
-        add_row = ctk.CTkFrame(right, fg_color="transparent")
-        add_row.pack(fill="x", pady=2)
-        tl_mode = tk.StringVar(value="attack")
-        ctk.CTkComboBox(add_row, values=["attack", "ignore"], variable=tl_mode, width=65, state="readonly").pack(side="left")
-        ctk.CTkButton(add_row, text="Capturar", width=60, command=lambda: self._add_target_to_list(tl, tl_mode)).pack(side="left", padx=(4, 0))
-
-        # Lista scrollavel
-        tl_frame = ctk.CTkFrame(right, fg_color="transparent")
-        tl_frame.pack(fill="x", pady=2)
-        self._tl_widget = tl_frame
-        self._refresh_target_list_ui(tl_frame, tl)
-
-        ctk.CTkButton(right, text="Limpar Lista", width=80, fg_color="transparent", border_width=1,
-                       command=lambda: self._clear_target_list(tl, tl_frame)).pack(pady=(2, 0))
-
-        # Velocidade
-        ctk.CTkLabel(right, text="Velocidade", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
-        speeds = ["50ms", "100ms", "150ms", "200ms", "250ms"]
-        speed_var = tk.StringVar(value=f"{cfg['speed']}ms")
-        ctk.CTkComboBox(
-            right, values=speeds, variable=speed_var, width=130, state="readonly",
-        ).pack(anchor="w")
-
-        # Unstuck
-        ctk.CTkLabel(right, text="Unstuck", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
-        us_row = ctk.CTkFrame(right, fg_color="transparent"); us_row.pack(fill="x")
-        us_enabled = ctk.BooleanVar(value=us.get("enabled", False))
-        ctk.CTkCheckBox(us_row, text="Ativar", variable=us_enabled, width=20).pack(side="left")
-        ctk.CTkLabel(us_row, text="Timeout:", font=self.FONT_SMALL).pack(side="left", padx=(2, 4))
-        us_timeout = tk.IntVar(value=us.get("timeout", 10))
-        ctk.CTkEntry(us_row, textvariable=us_timeout, width=40).pack(side="left")
-        ctk.CTkLabel(us_row, text="s", font=self.FONT_SMALL).pack(side="left")
-
-        # Spot Area
-        sp = cfg.setdefault("spot", {"enabled": False, "distance": 20})
-        ctk.CTkLabel(right, text="Spot Area", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 2))
-        sp_row = ctk.CTkFrame(right, fg_color="transparent"); sp_row.pack(fill="x")
-        sp_enabled = ctk.BooleanVar(value=sp.get("enabled", False))
-        ctk.CTkCheckBox(sp_row, text="Ativar", variable=sp_enabled, width=20).pack(side="left")
-        ctk.CTkLabel(sp_row, text="Dist:", font=self.FONT_SMALL).pack(side="left", padx=(2, 4))
-        sp_dist = tk.IntVar(value=sp.get("distance", 20))
-        ctk.CTkSlider(sp_row, from_=5, to=50, number_of_steps=45, variable=sp_dist, width=100).pack(side="left")
-        ctk.CTkLabel(sp_row, text=f"{sp_dist.get()}", width=25, font=self.FONT_SMALL).pack(side="left")
-        def _upd_sp(val):
-            sp_row.winfo_children()[-1].configure(text=f"{int(float(val))}")
-        sp_dist.trace_add("write", lambda *a, v=sp_dist: _upd_sp(v.get()))
-
-        ctk.CTkButton(
-            right, text="Salvar", width=80,
-            command=lambda: self._save_attack_config(skill_vars, speed_var, us_enabled, us_timeout, sp_enabled, sp_dist),
-        ).pack(anchor="w", pady=(12, 0))
-
-    def _capture_target_name(self, target_var):
-        """Le o nome do alvo atual da memoria e preenche o campo."""
-        sessions = SessionRegistry.get_all()
-        label = self._selected_window
-        if label is None:
-            return
-        session = sessions.get(label)
-        if not session or not session.get("pid"):
-            return
-        try:
-            mr = MemoryReader(session["pid"])
-            name = mr.target_name
-            mr.close()
-            if name:
-                target_var.set(name)
-        except Exception:
-            pass
-
-    def _add_target_to_list(self, tl, tl_mode):
-        sessions = SessionRegistry.get_all()
-        label = self._selected_window
-        if not label: return
-        session = sessions.get(label)
-        if not session or not session.get("pid"): return
-        try:
-            mr = MemoryReader(session["pid"])
-            name = mr.target_name
-            mr.close()
-            if name and not any(t["name"] == name for t in tl):
-                tl.append({"name": name, "mode": tl_mode.get()})
-                if hasattr(self, "_tl_widget"):
-                    self._refresh_target_list_ui(self._tl_widget, tl)
-        except Exception:
-            pass
-
-    def _refresh_target_list_ui(self, frame, tl):
-        for w in frame.winfo_children():
-            w.destroy()
-        for item in tl:
-            row = ctk.CTkFrame(frame, fg_color="transparent")
-            row.pack(fill="x", pady=1)
-            mode_color = "#88aa88" if item["mode"] == "attack" else "#cc8888"
-            ctk.CTkLabel(row, text=f"[{item['mode'][:3].upper()}]", width=40, text_color=mode_color, font=self.FONT_SMALL).pack(side="left")
-            ctk.CTkLabel(row, text=item["name"], anchor="w", font=self.FONT_SMALL).pack(side="left", fill="x", expand=True)
-            ctk.CTkButton(row, text="X", width=22, height=18, fg_color="transparent", border_width=1, text_color="#cc4444",
-                          command=lambda i=item: self._remove_target(tl, i, frame)).pack(side="right")
-
-    def _remove_target(self, tl, item, frame):
-        if item in tl:
-            tl.remove(item)
-            self._refresh_target_list_ui(frame, tl)
-
-    def _clear_target_list(self, tl, frame):
-        tl.clear()
-        self._refresh_target_list_ui(frame, tl)
-
-    def _save_attack_config(self, skill_vars, speed_var, us_enabled, us_timeout, sp_enabled, sp_dist):
-        cfg = self._attack_config
-        cfg["keys"] = [v.get().strip() for v in skill_vars]
-        cfg["speed"] = int(speed_var.get().replace("ms", ""))
-        cfg["target_list"] = cfg.get("target_list", [])
-        cfg["unstuck"] = {"enabled": us_enabled.get(), "timeout": us_timeout.get()}
-        cfg["spot"] = {"enabled": sp_enabled.get(), "distance": sp_dist.get()}
-        print(f"[GUI] Attack config salvo: {cfg}")
-
-    def _show_potion_config(self):
-        """Configuracao de Potion: 4 tipos com atalho, checkbox e threshold."""
-        if not hasattr(self, "_potion_config"):
-            self._potion_config = {
-                "hp_potion": {"key": "2", "enabled": True, "threshold": 55},
-                "mana_potion": {"key": "3", "enabled": False, "threshold": 40},
-                "battle_hp": {"key": "4", "enabled": False, "threshold": 35},
-                "battle_mana": {"key": "5", "enabled": False, "threshold": 25},
-            }
-        cfg = self._potion_config
-
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Potion", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-
-        self._potion_vars = {}
-
-        for section_title, keys in [
-            ("", ["hp_potion", "mana_potion"]),
-            ("Battle Potions", ["battle_hp", "battle_mana"]),
-        ]:
-            if section_title:
-                ctk.CTkLabel(
-                    inner, text=section_title,
-                    font=self.FONT_SMALL,
-                ).pack(anchor="w", pady=(8, 2))
-
-            for key in keys:
-                item = cfg.setdefault(key, {"key": "", "enabled": False, "threshold": 50})
-                row = ctk.CTkFrame(inner, fg_color="transparent")
-                row.pack(fill="x", pady=1)
-
-                enabled_var = ctk.BooleanVar(value=item.get("enabled", False))
-                ctk.CTkCheckBox(
-                    row, text="", variable=enabled_var, width=20,
-                ).pack(side="left")
-
-                names = {
-                    "hp_potion": "HP Potion", "mana_potion": "Mana Potion",
-                    "battle_hp": "Battle HP", "battle_mana": "Battle Mana",
-                }
-                ctk.CTkLabel(row, text=names[key], width=80, anchor="w").pack(side="left", padx=(4, 4))
-
-                ctk.CTkLabel(row, text="Tecla:", font=self.FONT_SMALL).pack(side="left")
-                key_var = tk.StringVar(value=item.get("key", ""))
-                ctk.CTkEntry(row, textvariable=key_var, width=45).pack(side="left", padx=(2, 6))
-
-                ctk.CTkLabel(row, text="HP% <", font=self.FONT_SMALL).pack(side="left")
-                thr_var = tk.IntVar(value=item.get("threshold", 50))
-                ctk.CTkEntry(row, textvariable=thr_var, width=40).pack(side="left", padx=(2, 2))
-                ctk.CTkLabel(row, text="%", font=self.FONT_SMALL).pack(side="left")
-
-                self._potion_vars[key] = (enabled_var, key_var, thr_var)
-
-        ctk.CTkButton(
-            inner, text="Salvar", width=80,
-            command=self._save_potion_config,
-        ).pack(pady=(12, 4))
-
-    def _save_potion_config(self):
-        cfg = self._potion_config
-        for key, (enabled_var, key_var, thr_var) in self._potion_vars.items():
-            cfg[key] = {
-                "key": key_var.get().strip(),
-                "enabled": enabled_var.get(),
-                "threshold": thr_var.get(),
-            }
-        print(f"[GUI] Potion config salvo: {cfg}")
-
-    def _show_pet_config(self):
-        """Configuracao de Pet: keybind Pet + Pet Food + intervalo."""
-        if not hasattr(self, "_pet_config"):
-            self._pet_config = {"pet_key": "7", "food_key": "3", "interval_min": 30}
-        cfg = self._pet_config
-
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Pet", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-
-        r1 = ctk.CTkFrame(inner, fg_color="transparent"); r1.pack(fill="x", pady=2)
-        ctk.CTkLabel(r1, text="Pet:", width=70, anchor="w").pack(side="left")
-        pet_var = tk.StringVar(value=cfg.get("pet_key", "7"))
-        ctk.CTkEntry(r1, textvariable=pet_var, width=60).pack(side="left", padx=(8, 0))
-
-        r2 = ctk.CTkFrame(inner, fg_color="transparent"); r2.pack(fill="x", pady=2)
-        ctk.CTkLabel(r2, text="Pet Food:", width=70, anchor="w").pack(side="left")
-        food_var = tk.StringVar(value=cfg.get("food_key", "3"))
-        ctk.CTkEntry(r2, textvariable=food_var, width=60).pack(side="left", padx=(8, 0))
-
-        r3 = ctk.CTkFrame(inner, fg_color="transparent"); r3.pack(fill="x", pady=2)
-        ctk.CTkLabel(r3, text="Intervalo:", width=70, anchor="w").pack(side="left")
-        interval_var = tk.IntVar(value=cfg.get("interval_min", 30))
-        ctk.CTkSlider(r3, from_=5, to=50, number_of_steps=9, variable=interval_var, width=150).pack(side="left", padx=(8, 0))
-        ctk.CTkLabel(r3, text=f"{interval_var.get()} min", width=50).pack(side="left", padx=(4, 0))
-        # Atualiza label ao mover slider
-        def _update_slider_label(val):
-            r3.winfo_children()[-1].configure(text=f"{int(float(val))} min")
-        interval_var.trace_add("write", lambda *a, v=interval_var: _update_slider_label(v.get()))
-
-        # Status
-        status_text = "Status: --"
-        sessions = SessionRegistry.get_all()
-        label = self._selected_window
-        if label:
-            session = sessions.get(label)
-            if session and session.get("pid"):
-                try:
-                    mr = MemoryReader(session["pid"])
-                    status_text = f"Pet: {'Vivo' if mr.pet_alive else 'Morto / Sem pet'}"
-                    mr.close()
-                except Exception:
-                    pass
-        ctk.CTkLabel(inner, text=status_text, font=self.FONT_SMALL).pack(anchor="w", pady=(8, 0))
-
-        ctk.CTkButton(
-            inner, text="Salvar", width=80,
-            command=lambda: self._save_pet_config(pet_var, food_var, interval_var),
-        ).pack(pady=(12, 4))
-
-    def _save_pet_config(self, pet_var, food_var, interval_var):
-        cfg = self._pet_config
-        cfg["pet_key"] = pet_var.get().strip()
-        cfg["food_key"] = food_var.get().strip()
-        cfg["interval_min"] = int(interval_var.get())
-        print(f"[GUI] Pet config salvo: {cfg}")
-
-    def _show_buff_config(self):
-        """Configuracao de Buff: 3 skills + Self Buff com timer."""
-        if not hasattr(self, "_buff_config"):
-            self._buff_config = {
-                "skills": [
-                    {"key": "4", "enabled": True},
-                    {"key": "5", "enabled": False},
-                    {"key": "6", "enabled": False},
-                ],
-                "self_buff": {"enabled": False, "interval_min": 15},
-            }
-        cfg = self._buff_config
-        skills = cfg.setdefault("skills", [{"key": "4", "enabled": True}, {"key": "5", "enabled": False}, {"key": "6", "enabled": False}])
-        while len(skills) < 3:
-            skills.append({"key": "", "enabled": False})
-        sb = cfg.setdefault("self_buff", {"enabled": False, "interval_min": 15})
-
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Buff", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-
-        skill_vars = []
-        for i in range(3):
-            sk = skills[i]
-            row = ctk.CTkFrame(inner, fg_color="transparent")
-            row.pack(fill="x", pady=2)
-
-            enabled_var = ctk.BooleanVar(value=sk.get("enabled", False))
-            ctk.CTkCheckBox(row, text="", variable=enabled_var, width=20).pack(side="left")
-
-            ctk.CTkLabel(row, text=f"Buff {i+1}:", width=50, anchor="w").pack(side="left", padx=(2, 4))
-            key_var = tk.StringVar(value=sk.get("key", ""))
-            ctk.CTkEntry(row, textvariable=key_var, width=50).pack(side="left")
-            skill_vars.append((enabled_var, key_var))
-
-        # Self Buff
-        ctk.CTkLabel(inner, text="Self Buff", font=self.FONT_SMALL).pack(anchor="w", pady=(10, 2))
-        sb_row = ctk.CTkFrame(inner, fg_color="transparent")
-        sb_row.pack(fill="x", pady=2)
-
-        sb_enabled = ctk.BooleanVar(value=sb.get("enabled", False))
-        ctk.CTkCheckBox(sb_row, text="Ativar", variable=sb_enabled, width=20).pack(side="left")
-
-        ctk.CTkLabel(sb_row, text="Buff every:", width=65, anchor="w").pack(side="left", padx=(4, 4))
-        sb_interval = tk.IntVar(value=sb.get("interval_min", 15))
-        ctk.CTkSlider(sb_row, from_=1, to=30, number_of_steps=29, variable=sb_interval, width=120).pack(side="left")
-        ctk.CTkLabel(sb_row, text=f"{sb_interval.get()} min", width=40).pack(side="left", padx=(4, 0))
-        def _upd_sb(val):
-            sb_row.winfo_children()[-1].configure(text=f"{int(float(val))} min")
-        sb_interval.trace_add("write", lambda *a, v=sb_interval: _upd_sb(v.get()))
-
-        ctk.CTkButton(
-            inner, text="Salvar", width=80,
-            command=lambda: self._save_buff_config(skill_vars, sb_enabled, sb_interval),
-        ).pack(pady=(12, 4))
-
-    def _save_buff_config(self, skill_vars, sb_enabled, sb_interval):
-        cfg = self._buff_config
-        cfg["skills"] = [{"key": v[1].get().strip(), "enabled": v[0].get()} for v in skill_vars]
-        cfg["self_buff"] = {"enabled": sb_enabled.get(), "interval_min": int(sb_interval.get())}
-        print(f"[GUI] Buff config salvo: {cfg}")
-
-    def _show_helper_config(self):
-        """Helper: 3 slots com keybind, delay, every X kills."""
-        if not hasattr(self, "_helper_config"):
-            self._helper_config = {
-                "slots": [
-                    {"key": "", "enabled": False, "delay_ms": 500, "every_kills": 10},
-                    {"key": "", "enabled": False, "delay_ms": 500, "every_kills": 20},
-                    {"key": "", "enabled": False, "delay_ms": 500, "every_kills": 30},
-                ]
-            }
-        cfg = self._helper_config
-        slots = cfg.setdefault("slots", [])
-        while len(slots) < 3:
-            slots.append({"key": "", "enabled": False, "delay_ms": 500, "every_kills": 10})
-
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Helper", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-
-        slot_vars = []
-        for i in range(3):
-            sk = slots[i]
-            row = ctk.CTkFrame(inner, fg_color="transparent")
-            row.pack(fill="x", pady=2)
-            en = ctk.BooleanVar(value=sk.get("enabled", False))
-            ctk.CTkCheckBox(row, text="", variable=en, width=20).pack(side="left")
-            ctk.CTkLabel(row, text=f"Slot {i+1}:", width=40, anchor="w", font=self.FONT_SMALL).pack(side="left", padx=(2, 2))
-            kv = tk.StringVar(value=sk.get("key", ""))
-            ctk.CTkEntry(row, textvariable=kv, width=40).pack(side="left")
-            ctk.CTkLabel(row, text="ms", font=self.FONT_SMALL).pack(side="left", padx=(2, 2))
-            dv = tk.IntVar(value=sk.get("delay_ms", 500))
-            ctk.CTkEntry(row, textvariable=dv, width=40).pack(side="left")
-            ctk.CTkLabel(row, text="a cada", font=self.FONT_SMALL).pack(side="left", padx=(4, 2))
-            ek = tk.IntVar(value=sk.get("every_kills", 10))
-            ctk.CTkEntry(row, textvariable=ek, width=35).pack(side="left")
-            ctk.CTkLabel(row, text="kills", font=self.FONT_SMALL).pack(side="left", padx=(2, 0))
-            slot_vars.append((en, kv, dv, ek))
-
-        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_helper_config(slot_vars)).pack(pady=(12, 4))
-
-    def _save_helper_config(self, slot_vars):
-        cfg = self._helper_config
-        cfg["slots"] = [{"key": v[1].get().strip(), "enabled": v[0].get(), "delay_ms": v[2].get(), "every_kills": v[3].get()} for v in slot_vars]
-        print(f"[GUI] Helper config salvo: {cfg}")
-
-    def _show_fairy_config(self):
-        if not hasattr(self, "_fairy_config"):
-            self._fairy_config = {"skills": [{"key": "8", "enabled": True}, {"key": "9", "enabled": False}, {"key": "0", "enabled": False}], "heal_key": "8", "self_heal": {"enabled": False, "hp_pct": 50}}
-        cfg = self._fairy_config
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Fairy", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        skill_vars = []
-        for i in range(3):
-            sk = cfg["skills"][i] if i < len(cfg["skills"]) else {"key": "", "enabled": False}
-            row = ctk.CTkFrame(inner, fg_color="transparent"); row.pack(fill="x", pady=2)
-            en = ctk.BooleanVar(value=sk.get("enabled", False))
-            ctk.CTkCheckBox(row, text="", variable=en, width=20).pack(side="left")
-            ctk.CTkLabel(row, text=f"Skill {i+1}:", width=50, anchor="w").pack(side="left", padx=(2, 4))
-            kv = tk.StringVar(value=sk.get("key", ""))
-            ctk.CTkEntry(row, textvariable=kv, width=50).pack(side="left")
-            skill_vars.append((en, kv))
-        ctk.CTkLabel(inner, text="Self Heal", font=self.FONT_SMALL).pack(anchor="w", pady=(8, 2))
-        sh = cfg.setdefault("self_heal", {"enabled": False, "hp_pct": 50})
-        sh_row = ctk.CTkFrame(inner, fg_color="transparent"); sh_row.pack(fill="x", pady=2)
-        sh_en = ctk.BooleanVar(value=sh.get("enabled", False))
-        ctk.CTkCheckBox(sh_row, text="Ativar", variable=sh_en, width=20).pack(side="left")
-        ctk.CTkLabel(sh_row, text="Heal key:", font=self.FONT_SMALL).pack(side="left", padx=(2, 4))
-        hk = tk.StringVar(value=cfg.get("heal_key", "8"))
-        ctk.CTkEntry(sh_row, textvariable=hk, width=40).pack(side="left")
-        ctk.CTkLabel(sh_row, text="HP <", font=self.FONT_SMALL).pack(side="left", padx=(4, 2))
-        hpv = tk.IntVar(value=sh.get("hp_pct", 50))
-        ctk.CTkEntry(sh_row, textvariable=hpv, width=35).pack(side="left")
-        ctk.CTkLabel(sh_row, text="%", font=self.FONT_SMALL).pack(side="left")
-        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_fairy_config(skill_vars, sh_en, hk, hpv)).pack(pady=(12, 4))
-
-    def _save_fairy_config(self, skill_vars, sh_en, hk, hpv):
-        cfg = self._fairy_config
-        cfg["skills"] = [{"key": v[1].get().strip(), "enabled": v[0].get()} for v in skill_vars]
-        cfg["heal_key"] = hk.get().strip()
-        cfg["self_heal"] = {"enabled": sh_en.get(), "hp_pct": hpv.get()}
-
-    def _show_revive_config(self):
-        if not hasattr(self, "_revive_config"):
-            self._revive_config = {"jackstraw_key": ""}
-        cfg = self._revive_config
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Revive", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        r = ctk.CTkFrame(inner, fg_color="transparent"); r.pack(fill="x", pady=2)
-        ctk.CTkLabel(r, text="Jackstraw:", width=70, anchor="w").pack(side="left")
-        jk = tk.StringVar(value=cfg.get("jackstraw_key", ""))
-        ctk.CTkEntry(r, textvariable=jk, width=60).pack(side="left", padx=(8, 0))
-        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_revive_config(jk)).pack(pady=(12, 4))
-
-    def _save_revive_config(self, jk):
-        self._revive_config["jackstraw_key"] = jk.get().strip()
-
-    def _show_sell_config(self):
-        if not hasattr(self, "_sell_config"):
-            self._sell_config = {"interval_min": 30}
-        cfg = self._sell_config
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Sell", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
-
-    def _show_delete_config(self):
-        if not hasattr(self, "_delete_config"):
-            self._delete_config = {"interval_min": 15}
-        cfg = self._delete_config
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Delete", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
-
-    def _show_bc_config(self):
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="BC", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
-
-    def _show_hollow_config(self):
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="Hollow", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        ctk.CTkLabel(inner, text="Configuracao completa em breve.", text_color="#888888").pack(pady=12)
-
-    def _show_dr_lure_config(self):
-        if not hasattr(self, "_drlure_config"):
-            self._drlure_config = {"key": "8", "interval_sec": 30}
-        cfg = self._drlure_config
-        inner = self._feature_config_inner
-        ctk.CTkLabel(inner, text="DR Lure", font=self.FONT_BOLD).pack(anchor="w", pady=(0, 4))
-        r1 = ctk.CTkFrame(inner, fg_color="transparent"); r1.pack(fill="x", pady=2)
-        ctk.CTkLabel(r1, text="Tecla:", width=60, anchor="w").pack(side="left")
-        kv = tk.StringVar(value=cfg.get("key", "8"))
-        ctk.CTkEntry(r1, textvariable=kv, width=60).pack(side="left", padx=(8, 0))
-        r2 = ctk.CTkFrame(inner, fg_color="transparent"); r2.pack(fill="x", pady=2)
-        ctk.CTkLabel(r2, text="Intervalo:", width=60, anchor="w").pack(side="left")
-        iv = tk.IntVar(value=cfg.get("interval_sec", 30))
-        ctk.CTkEntry(r2, textvariable=iv, width=60).pack(side="left", padx=(8, 0))
-        ctk.CTkLabel(r2, text="s").pack(side="left")
-        ctk.CTkButton(inner, text="Salvar", width=80, command=lambda: self._save_drlure_config(kv, iv)).pack(pady=(12, 4))
-
-    def _save_drlure_config(self, kv, iv):
-        self._drlure_config["key"] = kv.get().strip()
-        self._drlure_config["interval_sec"] = iv.get()
-
-    def _start_dashboard_poll(self):
-        if hasattr(self, "_poll_id") and self._poll_id:
-            self.root.after_cancel(self._poll_id)
-        self._poll_id = self.root.after(100, self._poll_dashboard)
-
-    def _poll_dashboard(self):
-        label = self._selected_window
-        if label is not None:
-            sessions = SessionRegistry.get_all()
-            session = sessions.get(label)
-            if session:
-                pid = session.get("pid")
-                if pid:
-                    mr = self._get_memory_reader(label, pid)
-                    if mr:
-                        try:
-                            self._char_hp_bar.set(mr.hp_pct / 100.0)
-                            self._char_hp_label.configure(text=f"{mr.hp:.0f}/{mr.max_hp}")
-                            self._char_res_bar.set(mr.mana_pct / 100.0)
-                            self._char_res_label.configure(text=f"{mr.mana_pct:.0f}%")
-                            self._char_name_label.configure(text=mr.char_name or "Char Info")
-                            # Atualiza HUD no painel direito
-                            self.right_panel.update_hud(
-                                name=mr.char_name or "",
-                                level=mr.level,
-                                hp_pct=mr.hp_pct,
-                                res_pct=mr.mana_pct,
-                                profession=mr.profession,
-                            )
-                            self._target_hp_bar.set(mr.target_hp_pct / 100.0)
-                            self._target_hp_label.configure(text=f"{mr.target_hp_pct:.0f}%")
-
-                            # Kill counter: detecta quando um mob morre
-                            if not hasattr(self, "_kill_track"):
-                                self._kill_track: dict = {}
-                            if label not in self._kill_track:
-                                self._kill_track[label] = {"last_hp": 0, "last_name": "", "kills": 0}
-                            kt = self._kill_track[label]
-                            current_hp = mr.target_hp
-                            current_name = mr.target_name
-                            # Mob morreu: tinha HP > 0 com nome, agora HP == 0 com mesmo nome
-                            if kt["last_hp"] > 0 and current_hp == 0 and current_name and kt["last_name"] == current_name:
-                                kt["kills"] += 1
-
-                            current_name = mr.target_name
-                            self._target_name_label.configure(text=current_name or "")
-
-                            kt["last_hp"] = current_hp
-                            kt["last_name"] = current_name
-                            self._kill_label.configure(text=f"{kt['kills']}k")
-                        except Exception:
-                            pass
-        self._poll_id = self.root.after(100, self._poll_dashboard)
-
-    def _get_memory_reader(self, label: str, pid: int) -> MemoryReader | None:
-        if not hasattr(self, "_memory_readers"):
-            self._memory_readers: dict[str, MemoryReader] = {}
-            self._mr_failed: set[str] = set()
-
-        if label in self._mr_failed:
-            return None
-
-        if label not in self._memory_readers:
-            try:
-                self._memory_readers[label] = MemoryReader(pid)
-            except Exception:
-                self._mr_failed.add(label)
-                return None
-
-        return self._memory_readers[label]
-
-    # =====================================================
-    # Log tab (dentro do notebook)
-    # =====================================================
-
-    def _build_log_tab(self):
-        self._log_tab_frame.grid_columnconfigure(0, weight=1)
-        self._log_tab_frame.grid_rowconfigure(0, weight=1)
-
-        self._log_tab_text = ctk.CTkTextbox(self._log_tab_frame, font=self.FONT_MONO)
-        self._log_tab_text.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
-        self._log_tab_text.configure(state="disabled")
-
-    # =====================================================
-    # Key — janela separada (sidebar)
-    # =====================================================
-
-    def _open_key_window(self):
-        if self._key_window is None:
-            self._key_window = KeyWindow(self)
-        else:
-            self._key_window.show()
-
-    def _refresh_license_status(self):
+            ctk.CTkButton(bar, text=label, font=FONT_SMALL, fg_color="transparent",
+                         hover_color=HOVER, height=30, width=60,
+                         command=lambda l=label: self._on_top_menu(l)).pack(side="right", padx=2)
+        for name, color in [("Online", GREEN), ("Scripts", BLUE)]:
+            frame = ctk.CTkFrame(bar, fg_color="transparent"); frame.pack(side="right", padx=12)
+            ctk.CTkLabel(frame, text="\u25CF", font=ctk.CTkFont(size=8), text_color=color).pack(side="left", padx=(0,4))
+            lbl = ctk.CTkLabel(frame, text=f"0 {name}", font=FONT_SMALL, text_color=color); lbl.pack(side="left")
+            setattr(self, f"_ind_{name.lower()}", lbl)
+
+    def _on_top_menu(self, label):
+        if label == "Login": self._open_login()
+        elif label == "Config": self._open_config()
+        elif label == "Pricing": self._show_pricing()
+        elif label == "Help": self._show_help()
+
+    # ============================================================
+    # LAYOUT: Scripts grid (esq) | Right panel (dir)
+    # ============================================================
+    def _build_layout(self):
+        main = ctk.CTkFrame(self.root, fg_color="transparent")
+        main.pack(fill="both", expand=True)
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_columnconfigure(1, weight=0)
+        main.grid_rowconfigure(0, weight=1)
+
+        # Scripts Grid (left)
+        self._scripts_container = ctk.CTkFrame(main, fg_color="transparent")
+        self._scripts_container.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
+
+        ctk.CTkLabel(self._scripts_container, text="SCRIPTS", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+        ctk.CTkFrame(self._scripts_container, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+
+        self._cards_grid = ctk.CTkFrame(self._scripts_container, fg_color="transparent")
+        self._cards_grid.pack(fill="both", expand=True, pady=4)
+
+        for i, feat in enumerate(self.FEATURES):
+            card = ScriptCard(self._cards_grid, feat,
+                            on_toggle=self._on_script_toggle,
+                            on_config=self._open_script_config)
+            row = i // 3; col = i % 3
+            card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+            self._script_cards[feat] = card
+
+        for c in range(3): self._cards_grid.grid_columnconfigure(c, weight=1)
+
+        # Right Panel
+        self._right = ctk.CTkFrame(main, fg_color=PANEL, width=280)
+        self._right.grid(row=0, column=1, sticky="ns")
+        self._right.grid_rowconfigure(0, weight=8)
+        self._right.grid_rowconfigure(1, weight=2)
+        self._right.grid_columnconfigure(0, weight=1)
+        self._build_clients()
+        self._build_console()
+
+    def _build_clients(self):
+        f = ctk.CTkFrame(self._right, fg_color="transparent")
+        f.grid(row=0, column=0, sticky="nsew")
+        f.grid_columnconfigure(0, weight=1); f.grid_rowconfigure(0, weight=0); f.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(f, text="CLIENTS", font=FONT_SMALL, text_color=TEXT3).grid(row=0, column=0, sticky="w", padx=8, pady=(8,2))
+        self._clients_scroll = ctk.CTkScrollableFrame(f, fg_color="transparent")
+        self._clients_scroll.grid(row=1, column=0, sticky="nsew", padx=4, pady=2)
+        self._clients_scroll.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(self._clients_scroll, text="No clients", font=FONT_SMALL, text_color=TEXT3).pack(expand=True, pady=20)
+
+    def _build_console(self):
+        f = ctk.CTkFrame(self._right, fg_color="transparent")
+        f.grid(row=1, column=0, sticky="nsew")
+        hdr = ctk.CTkFrame(f, fg_color="transparent"); hdr.pack(fill="x", padx=8, pady=(2,1))
+        ctk.CTkLabel(hdr, text="CONSOLE", font=FONT_SMALL, text_color=TEXT3).pack(side="left")
+        ctk.CTkButton(hdr, text="Clear", width=40, height=18, font=ctk.CTkFont(size=9),
+                      fg_color="transparent", border_width=1, border_color=TEXT3, command=self._clear_console).pack(side="right")
+        self._console = ctk.CTkTextbox(f, font=FONT_MONO, fg_color=BG, border_width=0)
+        self._console.pack(fill="both", expand=True, padx=8, pady=(1,4)); self._console.configure(state="disabled")
+
+    def _clear_console(self):
+        self._console.configure(state="normal"); self._console.delete("1.0","end"); self._console.configure(state="disabled")
+
+    # ============================================================
+    # BOTTOM BAR
+    # ============================================================
+    def _build_bottom_bar(self):
+        bar = ctk.CTkFrame(self.root, fg_color=PANEL, height=26, corner_radius=0)
+        bar.pack(fill="x"); bar.pack_propagate(False)
+        ctk.CTkLabel(bar, text="v0.3.0", font=ctk.CTkFont(size=10), text_color=TEXT3).pack(side="left", padx=12, pady=4)
+        self._license_label = ctk.CTkLabel(bar, text="", font=ctk.CTkFont(size=10), text_color=TEXT3)
+        self._license_label.pack(side="right", padx=12, pady=4)
+        self._refresh_license()
+
+    def _refresh_license(self):
         self._license.check(); info = self._license.info
-        color = {"demo": "#aaaa00", "active": "#00aa00", "expired": "#aa0000"}.get(info.status, "#888888")
-        tier = info.tier.capitalize(); days = info.days_remaining
-        if hasattr(self, "_license_label"):
-            self._license_label.configure(text=f"Licenca: {tier} ({days}d)", text_color=color)
-        if hasattr(self, "_key_window") and self._key_window:
-            self._key_window._refresh()
+        c = {"demo": YELLOW, "active": GREEN, "expired": RED}.get(info.status, TEXT3)
+        self._license_label.configure(text=f"License: {info.tier.capitalize()} ({info.days_remaining}d)", text_color=c)
 
-    # =====================================================
-    # Log area (rodape)
-    # =====================================================
+    # ============================================================
+    # SCRIPT TOGGLE & CONFIG
+    # ============================================================
+    def _on_script_toggle(self, name, enabled):
+        win = self._selected_window
+        if win and hasattr(self, "_feature_vars") and win in self._feature_vars:
+            if name not in self._feature_vars[win]:
+                self._feature_vars[win][name] = ctk.BooleanVar(value=False)
+            self._feature_vars[win][name].set(enabled)
+        if name in self._script_cards:
+            self._script_cards[name].set_enabled(enabled)
 
-    def _clear_log(self):
-        self._log_tab_text.configure(state="normal")
-        self._log_tab_text.delete("1.0", "end")
-        self._log_tab_text.configure(state="disabled")
+    def _open_script_config(self, name):
+        method = getattr(self, f"_cfg_{name.lower().replace(' ', '_')}", None)
+        if not method:
+            method = self._cfg_generic
+        method(name)
 
-    # =====================================================
-    # Status bar
-    # =====================================================
+    def _cfg_window(self, title, width, height, build_fn):
+        d = ctk.CTkToplevel(self.root); d.title(f"{title} Config"); d.configure(fg_color=BG)
+        d.resizable(False, False); d.transient(self.root)
+        self.root.update_idletasks()
+        pw, ph = self.root.winfo_width(), self.root.winfo_height()
+        px, py = self.root.winfo_x(), self.root.winfo_y()
+        d.geometry(f"{width}x{height}+{px+(pw-width)//2}+{py+(ph-height)//2}")
+        build_fn(d)
+        d.grab_set(); d.wait_window()
 
-    def _build_status_bar(self):
-        bar = ctk.CTkFrame(self.root, fg_color="#1a1a1a", height=28)
-        bar.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 4))
-        bar.grid_propagate(False)
-        self._license_label = ctk.CTkLabel(bar, text="", text_color="#888888")
-        self._license_label.pack(side="right", padx=8)
-        self._refresh_license_status()
+    def _cfg_generic(self, name):
+        self._cfg_window(name, 350, 200, lambda d: (
+            ctk.CTkLabel(d, text=name, font=FONT_H2, text_color=TEXT).pack(pady=20),
+            ctk.CTkLabel(d, text="Config em breve...", font=FONT_SMALL, text_color=TEXT3).pack()
+        ))
 
-    # =====================================================
-    # Persistencia
-    # =====================================================
+    def _cfg_attack(self, name):
+        if not hasattr(self, "_attack_config"):
+            self._attack_config = {"keys":["1","2","3","4","5"],"speed":150,"target_list":[],
+                                   "unstuck":{"enabled":False,"timeout":10},"spot":{"enabled":False,"distance":20}}
+        cfg = self._attack_config
+        def build(d):
+            inner = ctk.CTkScrollableFrame(d, fg_color="transparent"); inner.pack(fill="both", expand=True, padx=12, pady=8)
+            ctk.CTkLabel(inner, text="Attack", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+            ctk.CTkFrame(inner, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+            # Skills
+            ctk.CTkLabel(inner, text="Skills", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w")
+            sv = []; sr = ctk.CTkFrame(inner, fg_color="transparent"); sr.pack(fill="x", pady=2)
+            for i in range(5):
+                r = ctk.CTkFrame(sr, fg_color="transparent"); r.pack(fill="x", pady=1)
+                ctk.CTkLabel(r, text=f"Skill {i+1}:", width=55, font=FONT_SMALL).pack(side="left")
+                v = tk.StringVar(value=cfg["keys"][i] if i<len(cfg["keys"]) else "")
+                ctk.CTkEntry(r, textvariable=v, width=50, font=FONT_SMALL).pack(side="left", padx=4); sv.append(v)
+            # Speed
+            ctk.CTkLabel(inner, text="Speed", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(6,2))
+            sp = tk.StringVar(value=f"{cfg['speed']}ms")
+            ctk.CTkComboBox(inner, values=["50ms","100ms","150ms","200ms","250ms"], variable=sp, width=120, font=FONT_SMALL).pack(anchor="w")
+            # Target List
+            ctk.CTkLabel(inner, text="Target List", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(6,2))
+            tl = cfg.setdefault("target_list",[])
+            tr = ctk.CTkFrame(inner, fg_color="transparent"); tr.pack(fill="x")
+            mode = tk.StringVar(value="attack")
+            ctk.CTkComboBox(tr, values=["attack","ignore"], variable=mode, width=65, font=FONT_SMALL).pack(side="left")
+            ctk.CTkButton(tr, text="Capture", width=60, font=FONT_SMALL, command=lambda: self._capture_target(tl,mode,inner)).pack(side="left", padx=4)
+            ctk.CTkButton(tr, text="Clear", width=50, font=FONT_SMALL, fg_color="transparent", border_width=1,
+                         command=lambda: (tl.clear(), build(d))).pack(side="left", padx=4)
+            for item in tl:
+                r = ctk.CTkFrame(inner, fg_color="transparent"); r.pack(fill="x", pady=1)
+                c = GREEN if item["mode"]=="attack" else RED
+                ctk.CTkLabel(r, text=f"[{item['mode'][:3].upper()}]", width=40, font=FONT_SMALL, text_color=c).pack(side="left")
+                ctk.CTkLabel(r, text=item["name"], font=FONT_SMALL).pack(side="left", fill="x", expand=True)
+                ctk.CTkButton(r, text="X", width=20, height=18, font=ctk.CTkFont(size=9), fg_color="transparent", border_width=1,
+                             command=lambda i=item: (tl.remove(i), build(d))).pack(side="right")
+            # Unstuck
+            us = cfg.setdefault("unstuck",{"enabled":False,"timeout":10})
+            ctk.CTkLabel(inner, text="Unstuck", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(6,2))
+            ur = ctk.CTkFrame(inner, fg_color="transparent"); ur.pack(fill="x")
+            ue = ctk.BooleanVar(value=us.get("enabled",False))
+            ctk.CTkCheckBox(ur, text="Enable", variable=ue, font=FONT_SMALL).pack(side="left")
+            ctk.CTkLabel(ur, text="Timeout:", font=FONT_SMALL).pack(side="left", padx=4)
+            ut = tk.IntVar(value=us.get("timeout",10))
+            ctk.CTkEntry(ur, textvariable=ut, width=40, font=FONT_SMALL).pack(side="left", padx=2)
+            ctk.CTkLabel(ur, text="s", font=FONT_SMALL).pack(side="left")
+            # Spot
+            spot = cfg.setdefault("spot",{"enabled":False,"distance":20})
+            ctk.CTkLabel(inner, text="Spot Area", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(6,2))
+            sr2 = ctk.CTkFrame(inner, fg_color="transparent"); sr2.pack(fill="x")
+            se = ctk.BooleanVar(value=spot.get("enabled",False))
+            ctk.CTkCheckBox(sr2, text="Enable", variable=se, font=FONT_SMALL).pack(side="left")
+            ctk.CTkLabel(sr2, text="Dist:", font=FONT_SMALL).pack(side="left", padx=4)
+            sd = tk.IntVar(value=spot.get("distance",20))
+            ctk.CTkEntry(sr2, textvariable=sd, width=40, font=FONT_SMALL).pack(side="left", padx=2)
+            # Save
+            ctk.CTkButton(inner, text="Save", font=FONT_SMALL, width=80,
+                         command=lambda: self._save_attack(sv,sp,ue,ut,se,sd,d)).pack(pady=(12,4))
+        self._cfg_window("Attack", 420, 550, build)
 
-    def _load_saved_client_path(self):
-        if not GUI_SETTINGS_FILE.exists():
-            return
+    def _capture_target(self, tl, mode, parent):
+        sessions = SessionRegistry.get_all()
+        w = self._selected_window
+        if not w: return
+        s = sessions.get(w)
+        if not s or not s.get("pid"): return
+        try:
+            mr = MemoryReader(s["pid"]); name = mr.target_name; mr.close()
+            if name and not any(t["name"]==name for t in tl):
+                tl.append({"name":name,"mode":mode.get()})
+        except: pass
+
+    def _save_attack(self, sv, sp, ue, ut, se, sd, d):
+        cfg = self._attack_config
+        cfg["keys"]=[v.get().strip() for v in sv]
+        cfg["speed"]=int(sp.get().replace("ms",""))
+        cfg["unstuck"]={"enabled":ue.get(),"timeout":ut.get()}
+        cfg["spot"]={"enabled":se.get(),"distance":sd.get()}
+        d.destroy()
+
+    def _cfg_potion(self, name):
+        if not hasattr(self, "_potion_config"):
+            self._potion_config = {"hp_potion":{"key":"2","enabled":True,"threshold":55},
+                                   "mana_potion":{"key":"3","enabled":False,"threshold":40},
+                                   "battle_hp":{"key":"4","enabled":False,"threshold":35},
+                                   "battle_mana":{"key":"5","enabled":False,"threshold":25}}
+        cfg = self._potion_config
+        def build(d):
+            inner = ctk.CTkScrollableFrame(d, fg_color="transparent"); inner.pack(fill="both", expand=True, padx=12, pady=8)
+            ctk.CTkLabel(inner, text="Potion", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+            ctk.CTkFrame(inner, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+            pv = {}
+            for k, lb in [("hp_potion","HP"),("mana_potion","Mana"),("battle_hp","Battle HP"),("battle_mana","Battle Mana")]:
+                it = cfg.setdefault(k,{"key":"","enabled":False,"threshold":50})
+                r = ctk.CTkFrame(inner, fg_color="transparent"); r.pack(fill="x", pady=2)
+                en = ctk.BooleanVar(value=it.get("enabled",False))
+                ctk.CTkCheckBox(r, text="", variable=en, width=20).pack(side="left")
+                ctk.CTkLabel(r, text=lb, width=75, font=FONT_SMALL).pack(side="left", padx=2)
+                ctk.CTkLabel(r, text="Key:", font=FONT_SMALL).pack(side="left")
+                kv = tk.StringVar(value=it.get("key",""))
+                ctk.CTkEntry(r, textvariable=kv, width=40, font=FONT_SMALL).pack(side="left", padx=2)
+                ctk.CTkLabel(r, text="HP<%", font=FONT_SMALL).pack(side="left", padx=4)
+                tv = tk.IntVar(value=it.get("threshold",50))
+                ctk.CTkEntry(r, textvariable=tv, width=35, font=FONT_SMALL).pack(side="left", padx=2)
+                pv[k] = (en, kv, tv)
+            ctk.CTkButton(inner, text="Save", font=FONT_SMALL, width=80,
+                         command=lambda: self._save_potion(pv, d)).pack(pady=(12,4))
+        self._cfg_window("Potion", 400, 350, build)
+
+    def _save_potion(self, pv, d):
+        for k, (en, kv, tv) in pv.items():
+            self._potion_config[k] = {"key":kv.get().strip(),"enabled":en.get(),"threshold":tv.get()}
+        d.destroy()
+
+    def _cfg_pet(self, name):
+        if not hasattr(self, "_pet_config"):
+            self._pet_config = {"pet_key":"7","food_key":"3","interval_min":30}
+        cfg = self._pet_config
+        def build(d):
+            inner = ctk.CTkFrame(d, fg_color="transparent"); inner.pack(fill="both", expand=True, padx=12, pady=12)
+            ctk.CTkLabel(inner, text="Pet", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+            ctk.CTkFrame(inner, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+            for lb, k, dv in [("Pet Key:","pet_key","7"),("Food Key:","food_key","3"),("Interval (min):","interval_min","30")]:
+                r = ctk.CTkFrame(inner, fg_color="transparent"); r.pack(fill="x", pady=3)
+                ctk.CTkLabel(r, text=lb, width=100, font=FONT_SMALL).pack(side="left")
+                v = tk.StringVar(value=str(cfg.get(k,dv)))
+                ctk.CTkEntry(r, textvariable=v, width=70, font=FONT_SMALL).pack(side="left", padx=4)
+                setattr(inner, f"_pv_{k}", v)
+            ctk.CTkButton(inner, text="Save", font=FONT_SMALL, width=80,
+                         command=lambda: self._save_pet(inner, d)).pack(pady=(12,4))
+        self._cfg_window("Pet", 320, 250, build)
+
+    def _save_pet(self, inner, d):
+        self._pet_config = {"pet_key": getattr(inner,"_pv_pet_key").get().strip(),
+                           "food_key": getattr(inner,"_pv_food_key").get().strip(),
+                           "interval_min": int(getattr(inner,"_pv_interval_min").get() or 30)}
+        d.destroy()
+
+    def _cfg_buff(self, name):
+        if not hasattr(self, "_buff_config"):
+            self._buff_config = {"skills":[{"key":"4","enabled":True},{"key":"5","enabled":False},{"key":"6","enabled":False}],
+                                 "self_buff":{"enabled":False,"interval_min":15}}
+        cfg = self._buff_config
+        def build(d):
+            inner = ctk.CTkFrame(d, fg_color="transparent"); inner.pack(fill="both", expand=True, padx=12, pady=12)
+            ctk.CTkLabel(inner, text="Buff", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+            ctk.CTkFrame(inner, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+            skills = cfg.setdefault("skills",[{"key":"4","enabled":True},{"key":"5","enabled":False},{"key":"6","enabled":False}])
+            while len(skills)<3: skills.append({"key":"","enabled":False})
+            sv = []
+            for i in range(3):
+                sk = skills[i]
+                r = ctk.CTkFrame(inner, fg_color="transparent"); r.pack(fill="x", pady=2)
+                en = ctk.BooleanVar(value=sk.get("enabled",False))
+                ctk.CTkCheckBox(r, text="", variable=en, width=20).pack(side="left")
+                ctk.CTkLabel(r, text=f"Buff {i+1}:", width=50, font=FONT_SMALL).pack(side="left", padx=2)
+                kv = tk.StringVar(value=sk.get("key",""))
+                ctk.CTkEntry(r, textvariable=kv, width=50, font=FONT_SMALL).pack(side="left", padx=2); sv.append((en,kv))
+            sb = cfg.setdefault("self_buff",{"enabled":False,"interval_min":15})
+            ctk.CTkLabel(inner, text="Self Buff", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(8,2))
+            sr = ctk.CTkFrame(inner, fg_color="transparent"); sr.pack(fill="x")
+            sbe = ctk.BooleanVar(value=sb.get("enabled",False))
+            ctk.CTkCheckBox(sr, text="Enable", variable=sbe, font=FONT_SMALL).pack(side="left")
+            ctk.CTkLabel(sr, text="Every:", font=FONT_SMALL).pack(side="left", padx=4)
+            sbi = tk.IntVar(value=sb.get("interval_min",15))
+            ctk.CTkEntry(sr, textvariable=sbi, width=40, font=FONT_SMALL).pack(side="left", padx=2)
+            ctk.CTkLabel(sr, text="min", font=FONT_SMALL).pack(side="left")
+            ctk.CTkButton(inner, text="Save", font=FONT_SMALL, width=80,
+                         command=lambda: self._save_buff(sv,sbe,sbi,d)).pack(pady=(12,4))
+        self._cfg_window("Buff", 350, 320, build)
+
+    def _save_buff(self, sv, sbe, sbi, d):
+        self._buff_config["skills"] = [{"key":v[1].get().strip(),"enabled":v[0].get()} for v in sv]
+        self._buff_config["self_buff"] = {"enabled":sbe.get(),"interval_min":sbi.get()}
+        d.destroy()
+
+    # ============================================================
+    # LOGIN / WINDOWS / PERSISTENCE / POLLING / BOT ENGINE
+    # ============================================================
+    def _open_login(self):
+        if not hasattr(self, "_login_win") or not self._login_win or not self._login_win.winfo_exists():
+            self._login_win = self._create_login_win()
+        else: self._login_win.deiconify(); self._login_win.lift(); self._login_win.focus_force()
+
+    def _create_login_win(self):
+        d = ctk.CTkToplevel(self.root); d.title("Login — Contas"); d.geometry("520x440")
+        d.configure(fg_color=BG); d.resizable(False, False); d.transient(self.root)
+        d.protocol("WM_DELETE_WINDOW", lambda: setattr(self, "_login_win", None) or d.destroy())
+        self.root.update_idletasks(); pw,ph = self.root.winfo_width(), self.root.winfo_height()
+        px,py = self.root.winfo_x(), self.root.winfo_y()
+        d.geometry(f"520x440+{px+(pw-520)//2}+{py+(ph-440)//2}")
+        f = ctk.CTkFrame(d, fg_color="transparent"); f.pack(fill="both", expand=True, padx=12, pady=12)
+        ctk.CTkLabel(f, text="Accounts", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+        ctk.CTkFrame(f, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+        table = ctk.CTkScrollableFrame(f, fg_color="transparent", height=280); table.pack(fill="both", expand=True, pady=4)
+        btn_row = ctk.CTkFrame(f, fg_color="transparent"); btn_row.pack(fill="x", pady=(4,0))
+        ctk.CTkButton(btn_row, text="Add Account", font=FONT_SMALL, command=lambda: self._add_account(table)).pack(side="left")
+
+        def refresh():
+            for w in table.winfo_children(): w.destroy()
+            if not hasattr(self, "_account_index"): self._account_index = {}
+            if not hasattr(self, "_login_vars"): self._login_vars = {}
+            if not self.accounts:
+                ctk.CTkLabel(table, text="No accounts", font=FONT_SMALL, text_color=TEXT3).pack(expand=True, pady=30)
+                return
+            for idx, acc in enumerate(self.accounts):
+                self._account_index[acc.label] = idx
+                if acc.label not in self._login_vars: self._login_vars[acc.label] = ctk.BooleanVar(value=False)
+                row = ctk.CTkFrame(table, fg_color="transparent"); row.pack(fill="x", pady=1)
+                var = self._login_vars[acc.label]
+                ctk.CTkCheckBox(row, text="", variable=var, width=20,
+                               command=lambda l=acc.label: self._on_login_toggle(l)).pack(side="left")
+                ctk.CTkLabel(row, text=acc.label, width=80, font=FONT_SMALL).pack(side="left", padx=4)
+                ctk.CTkLabel(row, text=acc.server_name, width=90, font=FONT_SMALL, text_color=TEXT2).pack(side="left", padx=4)
+                ctk.CTkLabel(row, text=acc.username, width=90, font=FONT_SMALL, text_color=TEXT2).pack(side="left", padx=4)
+                ctk.CTkButton(row, text="E", width=24, height=20, font=ctk.CTkFont(size=9), fg_color="transparent", border_width=1,
+                             command=lambda a=acc: self._edit_account(a, refresh)).pack(side="right", padx=2)
+                ctk.CTkButton(row, text="X", width=24, height=20, font=ctk.CTkFont(size=9), fg_color="transparent", border_width=1,
+                             command=lambda a=acc: self._remove_account(a, refresh)).pack(side="right")
+        refresh()
+        d._refresh = refresh
+        return d
+
+    def _add_account(self, table):
+        dlg = AccountDialog(self.root, "Add Account")
+        if dlg.result: self.accounts.append(dlg.result); save_accounts(self.accounts)
+        if hasattr(self, "_login_win") and self._login_win and hasattr(self._login_win, "_refresh"):
+            self._login_win._refresh()
+
+    def _edit_account(self, acc, refresh):
+        idx = self._account_index.get(acc.label, 0)
+        dlg = AccountDialog(self.root, "Edit Account", self.accounts[idx])
+        if dlg.result:
+            old = acc.label; self.accounts[idx] = dlg.result; save_accounts(self.accounts)
+            if dlg.result.label != old: self._stop_login_thread(old)
+            refresh()
+            if dlg.result.auto_login: self._start_login_thread(dlg.result.label)
+
+    def _remove_account(self, acc, refresh):
+        if not messagebox.askyesno("Remove", f"Remove {acc.label}?"): return
+        self._stop_login_thread(acc.label)
+        idx = self._account_index.get(acc.label)
+        if idx is not None: del self.accounts[idx]
+        save_accounts(self.accounts); refresh()
+
+    def _on_login_toggle(self, label):
+        if not hasattr(self, "_login_vars"): return
+        var = self._login_vars.get(label)
+        if var is None: return
+        if var.get(): self._start_login_thread(label)
+        else: self._stop_login_thread(label)
+
+    def _open_config(self):
+        if not hasattr(self, "_config_win") or not self._config_win or not self._config_win.winfo_exists():
+            d = ctk.CTkToplevel(self.root); d.title("Settings"); d.geometry("500x200")
+            d.configure(fg_color=BG); d.resizable(False, False); d.transient(self.root)
+            d.protocol("WM_DELETE_WINDOW", lambda: (setattr(self, "_config_win", None), self._save_client_path(), d.destroy()))
+            self.root.update_idletasks(); pw,ph = self.root.winfo_width(), self.root.winfo_height()
+            px,py = self.root.winfo_x(), self.root.winfo_y()
+            d.geometry(f"500x200+{px+(pw-500)//2}+{py+(ph-200)//2}")
+            f = ctk.CTkFrame(d, fg_color="transparent"); f.pack(fill="both", expand=True, padx=16, pady=16)
+            ctk.CTkLabel(f, text="Settings", font=FONT_H3, text_color=TEXT).pack(anchor="w", pady=(0,8))
+            ctk.CTkFrame(f, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+            r = ctk.CTkFrame(f, fg_color="transparent"); r.pack(fill="x", pady=4)
+            ctk.CTkLabel(r, text="Client:", font=FONT_SMALL, width=60).pack(side="left")
+            ctk.CTkEntry(r, textvariable=self._client_path, font=FONT_SMALL).pack(side="left", fill="x", expand=True, padx=4)
+            ctk.CTkButton(r, text="Browse", font=FONT_SMALL, width=70, command=lambda: self._browse_client()).pack(side="left")
+            self._config_win = d
+        else: self._config_win.deiconify(); self._config_win.lift(); self._config_win.focus_force()
+
+    def _browse_client(self):
+        p = filedialog.askopenfilename(title="Select client", filetypes=[("Executables","*.exe;*.bat;*.cmd"),("All","*.*")])
+        if p: self._client_path.set(p)
+
+    def _show_pricing(self):
+        d = ctk.CTkToplevel(self.root); d.title("Pricing"); d.configure(fg_color=BG)
+        d.resizable(False,False); d.transient(self.root)
+        self.root.update_idletasks(); pw,ph = self.root.winfo_width(), self.root.winfo_height()
+        px,py = self.root.winfo_x(), self.root.winfo_y()
+        d.geometry(f"360x320+{px+(pw-360)//2}+{py+(ph-320)//2}")
+        f = ctk.CTkFrame(d, fg_color="transparent"); f.pack(fill="both", expand=True, padx=16, pady=16)
+        ctk.CTkLabel(f, text="Plans", font=FONT_H3, text_color=TEXT).pack(pady=(0,12))
+        for tier, color, items in [("Free",GREEN,["Login","Basic configs","1 account"]),
+                                    ("Premium",BLUE,["Multi accounts","All scripts","Profiles","Priority updates"])]:
+            ctk.CTkLabel(f, text=tier, font=ctk.CTkFont(weight="bold"), text_color=color).pack(anchor="w")
+            for i in items: ctk.CTkLabel(f, text=f"  - {i}", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w")
+            ctk.CTkFrame(f, height=8, fg_color="transparent").pack()
+        ctk.CTkLabel(f, text="Contact: contato@loginto.app", font=FONT_SMALL, text_color=TEXT3).pack(pady=(8,0))
+        ctk.CTkButton(f, text="Close", command=d.destroy).pack(pady=(8,0))
+        d.grab_set(); d.wait_window()
+
+    def _show_help(self):
+        d = ctk.CTkToplevel(self.root); d.title("Help"); d.configure(fg_color=BG)
+        d.resizable(False,False); d.transient(self.root)
+        self.root.update_idletasks(); pw,ph = self.root.winfo_width(), self.root.winfo_height()
+        px,py = self.root.winfo_x(), self.root.winfo_y()
+        d.geometry(f"300x200+{px+(pw-300)//2}+{py+(ph-200)//2}")
+        f = ctk.CTkFrame(d, fg_color="transparent"); f.pack(fill="both", expand=True, padx=16, pady=16)
+        ctk.CTkLabel(f, text="Auto Login TO", font=FONT_H3, text_color=TEXT).pack()
+        ctk.CTkLabel(f, text="v0.3.0", font=FONT_SMALL, text_color=TEXT3).pack()
+        ctk.CTkLabel(f, text="Automation for Talisman Online", font=FONT_SMALL, text_color=TEXT2).pack(pady=(8,0))
+        ctk.CTkButton(f, text="Close", command=d.destroy).pack(pady=(12,0))
+        d.grab_set(); d.wait_window()
+
+    def _load_client_path(self):
+        if not GUI_SETTINGS_FILE.exists(): return
         try:
             data = json.loads(GUI_SETTINGS_FILE.read_text(encoding="utf-8"))
             self._client_path.set(data.get("client_path", _DEFAULTS.client_path))
-        except Exception:
-            pass
+        except: pass
 
     def _save_client_path(self):
-        try:
-            GUI_SETTINGS_FILE.write_text(
-                json.dumps({"client_path": self._client_path.get()}, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
+        try: GUI_SETTINGS_FILE.write_text(json.dumps({"client_path":self._client_path.get()}, indent=2, ensure_ascii=False), encoding="utf-8")
+        except: pass
 
     def _on_close(self):
         self._save_client_path()
-        for ev in list(self._stop_events.values()):
-            ev.set()
+        for ev in list(self._stop_events.values()): ev.set()
         if hasattr(self, "_memory_readers"):
             for mr in self._memory_readers.values():
-                try:
-                    mr.close()
-                except Exception:
-                    pass
+                try: mr.close()
+                except: pass
         self.root.destroy()
 
-    # =====================================================
-    # Gerenciamento de contas
-    # =====================================================
+    # ============================================================
+    # POLLING
+    # ============================================================
+    def _poll_loop(self):
+        sessions = SessionRegistry.get_all()
+        online = 0
+        existing = set(self._client_cards.keys()); current = set(sessions.keys())
+        for label in current - existing:
+            s = sessions[label]; display = s.get("display", label)
+            card = ctk.CTkFrame(self._clients_scroll, fg_color=CARD, corner_radius=8, border_width=1, border_color="#1A2540")
+            card.pack(fill="x", pady=2, padx=2)
+            hdr = ctk.CTkFrame(card, fg_color="transparent"); hdr.pack(fill="x", padx=8, pady=(6,0))
+            ctk.CTkLabel(hdr, text=display, font=FONT_SMALL, text_color=TEXT).pack(side="left")
+            dot = ctk.CTkLabel(hdr, text="\u25CF", font=ctk.CTkFont(size=8), text_color=TEXT3); dot.pack(side="right")
+            hp_bar = ctk.CTkProgressBar(card, height=5, progress_color=GREEN); hp_bar.pack(fill="x", padx=8, pady=(2,0)); hp_bar.set(0)
+            mp_bar = ctk.CTkProgressBar(card, height=5, progress_color=BLUE); mp_bar.pack(fill="x", padx=8, pady=2); mp_bar.set(0)
+            self._client_cards[label] = {"frame":card,"dot":dot,"hp":hp_bar,"mp":mp_bar}
 
-    def _browse_client_path(self):
-        path = filedialog.askopenfilename(
-            title="Selecione o executavel/launcher",
-            filetypes=[("Executaveis", "*.exe;*.bat;*.cmd"), ("Todos", "*.*")],
-        )
-        if path:
-            self._client_path.set(path)
+        for label in existing - current:
+            c = self._client_cards.pop(label)
+            c["frame"].destroy()
 
-    def _on_add_account(self):
-        d = AccountDialog(self.root, "Adicionar Conta")
-        if d.result:
-            self.accounts.append(d.result)
-            save_accounts(self.accounts)
+        if self._client_cards:
+            for w in self._clients_scroll.winfo_children():
+                if isinstance(w, ctk.CTkLabel): w.pack_forget(); break
 
-    def _on_edit_inline(self, account: Account):
-        idx = self._account_index.get(account.label)
-        if idx is None:
-            return
-        old_label = account.label
-        d = AccountDialog(self.root, "Editar Conta", self.accounts[idx])
-        if d.result:
-            if d.result.label != old_label:
-                self._stop_login_thread(old_label)
-            self.accounts[idx] = d.result
-            save_accounts(self.accounts)
-            if d.result.auto_login:
-                self._start_login_thread(d.result.label)
+        for label, info in sessions.items():
+            cd = self._client_cards.get(label)
+            if not cd: continue
+            pid = info.get("pid")
+            if pid:
+                try:
+                    mr = self._get_memory_reader(label, pid)
+                    if mr:
+                        cd["hp"].set(mr.hp_pct/100.0); cd["mp"].set(mr.mana_pct/100.0)
+                        cd["dot"].configure(text_color=GREEN); online += 1
+                except: pass
 
-    def _on_remove_inline(self, account: Account):
-        if not messagebox.askyesno("Remover Conta", f"Remover '{account.label}'?"):
-            return
-        self._stop_login_thread(account.label)
-        idx = self._account_index.get(account.label)
-        if idx is not None:
-            del self.accounts[idx]
-        save_accounts(self.accounts)
+        self._ind_online.configure(text=f"{online} Online")
+        scripts = sum(1 for v in self._widget_states.values() if v)
+        self._ind_scripts.configure(text=f"{scripts} Scripts")
+        self.root.after(500, self._poll_loop)
 
-    # =====================================================
-    # Login / relogging
-    # =====================================================
+    def _get_memory_reader(self, label, pid):
+        if not hasattr(self, "_memory_readers"): self._memory_readers = {}; self._mr_failed = set()
+        if label in self._mr_failed: return None
+        if label not in self._memory_readers:
+            try: self._memory_readers[label] = MemoryReader(pid)
+            except: self._mr_failed.add(label); return None
+        return self._memory_readers[label]
 
-    def _on_checkbox_toggle(self, label: str):
-        var = self._login_vars.get(label)
-        if var is None:
-            return
-        if var.get():
-            self._start_login_thread(label)
-        else:
-            self._stop_login_thread(label)
+    # ============================================================
+    # LOGIN / SCAN / BOT ENGINE
+    # ============================================================
+    def _auto_start_accounts(self):
+        if not hasattr(self, "_account_index"): self._account_index = {}
+        for idx, acc in enumerate(self.accounts): self._account_index[acc.label] = idx
+        for acc in self.accounts:
+            if acc.auto_login: self._start_login_thread(acc.label)
 
-    def _start_login_thread(self, label: str):
-        if label not in self._account_index:
-            return
-        if label in self._stop_events and not self._stop_events[label].is_set():
-            return
-        client_path = self._client_path.get().strip()
-        if not client_path:
-            messagebox.showwarning("Client nao informado", "Informe o caminho do client.")
-            var = self._login_vars.get(label)
-            if var:
-                self.root.after(0, lambda: var.set(False))
-            return
+    def _scan_for_game_windows(self):
+        from src.infrastructure.window.service import WindowService
+        ws = WindowService()
+        existing = SessionRegistry.get_all()
+        for label, info in list(existing.items()):
+            if label.startswith("ext_") and info.get("hwnd"):
+                if not win32gui.IsWindow(info["hwnd"]): SessionRegistry.unregister(label)
+        all_hwnds = ws._list_windows()
+        tracked = {s["hwnd"] for s in existing.values() if s.get("hwnd")}
+        for hwnd in all_hwnds:
+            if hwnd in tracked: continue
+            pid = ws._get_window_pid(hwnd)
+            if not pid: continue
+            try:
+                mr = MemoryReader(pid); name = mr.char_name; mr.close()
+                if name:
+                    try: win32gui.SetWindowText(hwnd, name)
+                    except: pass
+                    SessionRegistry.register(f"ext_{hwnd}", hwnd, pid, display=name)
+            except: pass
+        self.root.after(5000, self._scan_for_game_windows)
+
+    def _start_login_thread(self, label):
+        if not hasattr(self, "_account_index"): return
+        if label not in self._account_index: return
+        if label in self._stop_events and not self._stop_events[label].is_set(): return
+        cp = self._client_path.get().strip()
+        if not cp: return
         self._save_client_path()
         with self._active_lock:
-            if self._active_threads == 0:
-                self._clear_log()
-                sys.stdout = self.log_redirector
+            if self._active_threads == 0: sys.stdout = self.log_redirector
             self._active_threads += 1
-        stop_event = threading.Event()
-        self._stop_events[label] = stop_event
-        account = self.accounts[self._account_index[label]]
-        threading.Thread(
-            target=self._run_account_loop,
-            args=(account, client_path, stop_event),
-            daemon=True,
-        ).start()
+        se = threading.Event(); self._stop_events[label] = se
+        acc = self.accounts[self._account_index[label]]
+        threading.Thread(target=self._run_account_loop, args=(acc, cp, se), daemon=True).start()
 
-    def _stop_login_thread(self, label: str):
+    def _stop_login_thread(self, label):
         ev = self._stop_events.pop(label, None)
-        if ev:
-            ev.set()
+        if ev: ev.set()
 
-    def _run_account_loop(self, account: Account, client_path: str, stop_event: threading.Event):
+    def _run_account_loop(self, account, client_path, stop_event):
         self.log_redirector.register(account.label)
         try:
             while not stop_event.is_set():
                 app = None
                 try:
-                    settings = replace(Settings(),
-                        username=account.username, password=account.password,
-                        server_name=account.server_name, character_slot=account.character_slot,
-                        client_path=client_path, account_label=account.label)
-                    app = Application(settings=settings)
-                    app.start()
-                    hwnd = app.container.session.hwnd
-                    if hwnd is None:
-                        raise RuntimeError("Login concluido mas sem handle de janela.")
-                    pid = app.container.session.pid
-                    # Le o nome real do personagem da memoria
-                    char_name = account.label
+                    s = replace(Settings(), username=account.username, password=account.password,
+                               server_name=account.server_name, character_slot=account.character_slot,
+                               client_path=client_path, account_label=account.label)
+                    app = Application(settings=s); app.start()
+                    hwnd = app.container.session.hwnd; pid = app.container.session.pid
+                    if hwnd is None: raise RuntimeError("No window")
+                    cn = account.label
                     if pid:
-                        try:
-                            tmp_mr = MemoryReader(pid)
-                            char_name = tmp_mr.char_name or account.label
-                            tmp_mr.close()
-                        except Exception:
-                            pass
-                    SessionRegistry.register(
-                        account.label, hwnd, pid, display=char_name,
-                    )
-                    # Renomeia a janela do jogo com o nome real
-                    try:
-                        win32gui.SetWindowText(hwnd, char_name)
-                    except Exception:
-                        pass
-                    print(f"[{account.label}] Login concluido — {char_name}")
-                    self._monitor_game_window(hwnd, account.label, stop_event)
-
+                        try: tmp = MemoryReader(pid); cn = tmp.char_name or account.label; tmp.close()
+                        except: pass
+                    SessionRegistry.register(account.label, hwnd, pid, display=cn)
+                    try: win32gui.SetWindowText(hwnd, cn)
+                    except: pass
+                    while not stop_event.is_set():
+                        if not win32gui.IsWindow(hwnd): break
+                        time.sleep(2.0)
                 except Exception as e:
-                    print(f"[{account.label}] Erro: {e}")
-                    if stop_event.wait(5.0):
-                        break
+                    print(f"[{account.label}] Error: {e}")
+                    if stop_event.wait(5.0): break
                 finally:
                     SessionRegistry.unregister(account.label)
                     if app:
                         try: app.shutdown()
-                        except Exception: pass
+                        except: pass
         finally:
             self.log_redirector.unregister()
             self._on_account_finished(account.label)
 
-    def _monitor_game_window(self, hwnd: int, label: str, stop_event: threading.Event):
-        while not stop_event.is_set():
-            if not win32gui.IsWindow(hwnd):
-                return
-            time.sleep(2.0)
-
-    def _on_account_finished(self, label: str):
-        def _uncheck():
-            var = self._login_vars.get(label)
-            if var: var.set(False)
-        self.root.after(0, _uncheck)
+    def _on_account_finished(self, label):
         self._stop_bot_for_window(label)
         if hasattr(self, "_memory_readers"):
-            mr = self._memory_readers.pop(label, None)
-            if mr:
-                mr.close()
-            if hasattr(self, "_mr_failed"):
-                self._mr_failed.discard(label)
+            self._memory_readers.pop(label, None)
+            if hasattr(self, "_mr_failed"): self._mr_failed.discard(label)
         with self._active_lock:
             self._active_threads -= 1
-            remaining = self._active_threads
-        if remaining <= 0:
-            self.root.after(0, self._restore_stdout)
+            if self._active_threads <= 0:
+                self.root.after(0, lambda: setattr(sys, "stdout", self.log_redirector.original))
 
-    def _restore_stdout(self):
-        sys.stdout = self.log_redirector.original
-
-    def _auto_start_accounts(self):
-        for account in self.accounts:
-            if account.auto_login:
-                var = self._login_vars.get(account.label)
-                if var is not None:
-                    var.set(True)
-                    self._start_login_thread(account.label)
-
-    def _scan_for_game_windows(self):
-        """Detecta janelas do jogo ja abertas. So registra se
-        conseguir ler o char_name via MemoryReader — isso garante
-        que e realmente o processo do jogo."""
-
-        from src.infrastructure.window.service import WindowService
-
-        ws = WindowService()
-        existing = SessionRegistry.get_all()
-
-        for label, info in list(existing.items()):
-            if label.startswith("ext_") and info.get("hwnd"):
-                if not win32gui.IsWindow(info["hwnd"]):
-                    SessionRegistry.unregister(label)
-
-        all_hwnds = ws._list_windows()
-        tracked = {s["hwnd"] for s in existing.values() if s.get("hwnd")}
-
-        for hwnd in all_hwnds:
-            if hwnd in tracked:
-                continue
-
-            pid = ws._get_window_pid(hwnd)
-
-            char_name = None
-            if pid:
-                try:
-                    mr = MemoryReader(pid)
-                    char_name = mr.char_name
-                    mr.close()
-                except Exception:
-                    continue  # nao e o processo do jogo
-
-            if not char_name:
-                continue  # so registra se leu nome real
-
-            label = f"ext_{hwnd}"
-
-            try:
-                win32gui.SetWindowText(hwnd, char_name)
-            except Exception:
-                pass
-
-            SessionRegistry.register(label, hwnd, pid, display=char_name)
-            print(f"[GUI] Janela detectada: {char_name}")
-
-        self.root.after(5000, self._scan_for_game_windows)
-
-    # =====================================================
-    # Bot Engine
-    # =====================================================
-
-    def _get_or_create_bot_engine(self, label: str) -> BotEngine:
-        if not hasattr(self, "_bot_engines"):
-            self._bot_engines: dict[str, BotEngine] = {}
-
-        # Garante que as configs existam
-        if not hasattr(self, "_attack_config"):
-            self._attack_config = {
-                "keys": ["1","2","3","4","5"], "speed": 150,
-                "target_filter": {"mode": "all", "name": ""},
-            }
-        if not hasattr(self, "_potion_config"):
-            self._potion_config = {
-                "hp_potion": {"key": "2", "enabled": True, "threshold": 55},
-                "mana_potion": {"key": "3", "enabled": False, "threshold": 40},
-                "battle_hp": {"key": "4", "enabled": False, "threshold": 35},
-                "battle_mana": {"key": "5", "enabled": False, "threshold": 25},
-            }
-        if not hasattr(self, "_pet_config"):
-            self._pet_config = {"pet_key": "7", "food_key": "3", "interval_min": 30}
-        if not hasattr(self, "_buff_config"):
-            self._buff_config = {
-                "skills": [{"key": "4", "enabled": True}, {"key": "5", "enabled": False}, {"key": "6", "enabled": False}],
-                "self_buff": {"enabled": False, "interval_min": 15},
-            }
-        if not hasattr(self, "_helper_config"):
-            self._helper_config = {"slots": [{"key": "", "enabled": False, "delay_ms": 500, "every_kills": 10}] * 3}
-        if not hasattr(self, "_fairy_config"):
-            self._fairy_config = {"skills": [{"key": "8", "enabled": True}, {"key": "9", "enabled": False}, {"key": "0", "enabled": False}], "heal_key": "8", "self_heal": {"enabled": False, "hp_pct": 50}}
-        if not hasattr(self, "_revive_config"):
-            self._revive_config = {"jackstraw_key": ""}
-        if not hasattr(self, "_drlure_config"):
-            self._drlure_config = {"key": "8", "interval_sec": 30}
-
+    def _get_or_create_bot_engine(self, label):
+        if not hasattr(self, "_bot_engines"): self._bot_engines = {}
         if label not in self._bot_engines:
             engine = BotEngine()
-            engine.register(PetFoodScript(config=self._pet_config))
-            engine.register(AttackScript(config=self._attack_config))
-            engine.register(PotionScript(config=self._potion_config))
-            engine.register(BuffScript(config=self._buff_config))
-            engine.register(HelperScript(config=self._helper_config))
-            engine.register(FairyScript(config=self._fairy_config))
-            engine.register(ReviveScript(config=self._revive_config))
-            engine.register(DeleteScript())
-            engine.register(BCScript())
-            engine.register(HollowScript())
-            engine.register(SellScript())
-            engine.register(DRLureScript(config=self._drlure_config))
+            engine.register(PetFoodScript(config=getattr(self,"_pet_config",{})))
+            engine.register(AttackScript(config=getattr(self,"_attack_config",{})))
+            engine.register(PotionScript(config=getattr(self,"_potion_config",{})))
+            engine.register(BuffScript(config=getattr(self,"_buff_config",{})))
+            engine.register(HelperScript(config=getattr(self,"_helper_config",{})))
+            engine.register(FairyScript(config=getattr(self,"_fairy_config",{})))
+            engine.register(ReviveScript(config=getattr(self,"_revive_config",{})))
+            engine.register(DeleteScript()); engine.register(BCScript())
+            engine.register(HollowScript()); engine.register(SellScript()); engine.register(DRLureScript())
             self._bot_engines[label] = engine
         return self._bot_engines[label]
 
-    def _start_bot_for_window(self, label: str):
-        sessions = SessionRegistry.get_all()
-        s = sessions.get(label)
-        if s is None or not s.get("hwnd"):
-            return
+    def _start_bot_for_window(self, label):
+        sessions = SessionRegistry.get_all(); s = sessions.get(label)
+        if not s or not s.get("hwnd"): return
         hwnd = s["hwnd"]; pid = s.get("pid")
         engine = self._get_or_create_bot_engine(label)
-        if engine.is_running:
-            return
+        if engine.is_running: return
         from src.infrastructure.window.service import WindowService
         from src.infrastructure.vision.service import VisionService
         from src.infrastructure.input.service import InputService
         ws = WindowService(); vs = VisionService(window_service=ws); ins = InputService()
         mr = self._get_memory_reader(label, pid) if pid else None
-        # Passa callback de kill count
-        engine._kill_track_cb = lambda: self._kill_track.get(label, {}).get("kills", 0) if hasattr(self, "_kill_track") else 0
-        engine.start(hwnd, ins, vs, ws, self._game_reader, mr, self._feature_vars.get(label))
+        engine.start(hwnd, ins, vs, ws, self._game_reader, mr,
+                     self._feature_vars.get(label) if hasattr(self,"_feature_vars") else {})
 
-    def _stop_bot_for_window(self, label: str):
-        if not hasattr(self, "_bot_engines"):
-            return
+    def _stop_bot_for_window(self, label):
+        if not hasattr(self, "_bot_engines"): return
         engine = self._bot_engines.get(label)
-        if engine:
-            engine.stop()
-        if hasattr(self, "_kill_track") and label in self._kill_track:
-            self._kill_track[label]["kills"] = 0
-        if hasattr(self, "_kill_label"):
-            self._kill_label.configure(text="0k")
+        if engine: engine.stop()
 
-    # =====================================================
-    # Execucao
-    # =====================================================
-
-    def run(self):
-        self.root.mainloop()
+    def run(self): self.root.mainloop()
