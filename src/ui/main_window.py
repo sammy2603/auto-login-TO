@@ -6,7 +6,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
-import win32gui, win32process
+import win32gui, win32process, win32api, win32con
 
 from src.app.application import Application
 from src.config.settings import Settings
@@ -75,6 +75,109 @@ def load_accounts():
 def save_accounts(acts):
     try: ACCOUNTS_FILE.write_text(json.dumps([asdict(a) for a in acts], indent=2, ensure_ascii=False), encoding="utf-8")
     except: pass
+
+
+class AccountDialog:
+    """
+    Formulário de adicionar/editar conta. Bloqueia (via wait_window)
+    até o usuário salvar ou cancelar; o resultado fica em .result
+    (None se cancelado).
+    """
+
+    def __init__(self, parent, title: str, account: "Account | None" = None):
+        self.result: Account | None = None
+
+        d = ctk.CTkToplevel(parent)
+        d.title(title)
+        d.geometry("420x520")
+        d.configure(fg_color=BG)
+        d.resizable(False, False)
+        d.transient(parent)
+
+        parent.update_idletasks()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        px, py = parent.winfo_x(), parent.winfo_y()
+        d.geometry(f"420x520+{px + (pw - 420) // 2}+{py + (ph - 520) // 2}")
+
+        outer = ctk.CTkFrame(d, fg_color="transparent")
+        outer.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(outer, text=title, font=FONT_H3, text_color=TEXT).pack(anchor="w")
+        ctk.CTkFrame(outer, height=1, fg_color="#1A2540").pack(fill="x", pady=(6, 16))
+
+        self.label_var = ctk.StringVar(value=account.label if account else "")
+        self.username_var = ctk.StringVar(value=account.username if account else "")
+        self.password_var = ctk.StringVar(value=account.password if account else "")
+        self.server_var = ctk.StringVar(value=account.server_name if account else "")
+        self.slot_var = ctk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
+        self.auto_var = ctk.BooleanVar(value=account.auto_login if account else False)
+
+        self._field(outer, "Apelido da conta", self.label_var)
+        self._field(outer, "Usuário", self.username_var)
+        self._field(outer, "Senha", self.password_var, show="*")
+        self._field(outer, "Servidor", self.server_var)
+
+        slot_frame = ctk.CTkFrame(outer, fg_color="transparent")
+        slot_frame.pack(fill="x", pady=(0, 14))
+        ctk.CTkLabel(slot_frame, text="Personagem", font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(0, 4))
+        ctk.CTkOptionMenu(
+            slot_frame, variable=self.slot_var,
+            values=[CharacterSlot.LEFT, CharacterSlot.CENTER, CharacterSlot.RIGHT],
+            font=FONT_TEXT, fg_color=CARD, button_color=HOVER, button_hover_color=BLUE,
+            dropdown_fg_color=CARD, dropdown_text_color=TEXT, text_color=TEXT,
+        ).pack(fill="x")
+
+        ctk.CTkCheckBox(
+            outer, text="Login automático ao abrir o programa",
+            variable=self.auto_var, font=FONT_SMALL, text_color=TEXT2,
+        ).pack(anchor="w", pady=(16, 0))
+
+        btn_row = ctk.CTkFrame(outer, fg_color="transparent")
+        btn_row.pack(fill="x", side="bottom", pady=(20, 0))
+        ctk.CTkButton(
+            btn_row, text="Cancelar", font=FONT_SMALL, fg_color="transparent", border_width=1,
+            border_color=TEXT3, text_color=TEXT2, hover_color=HOVER, width=90,
+            command=d.destroy,
+        ).pack(side="right")
+        ctk.CTkButton(
+            btn_row, text="Salvar", font=FONT_SMALL, fg_color=GREEN, hover_color="#1B9E4B",
+            width=90, command=lambda: self._save(d),
+        ).pack(side="right", padx=(0, 8))
+
+        d.grab_set()
+        d.wait_window()
+
+    def _field(self, parent, label, var, show=None):
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="x", pady=(0, 14))
+        ctk.CTkLabel(frame, text=label, font=FONT_SMALL, text_color=TEXT2).pack(anchor="w", pady=(0, 4))
+        entry = ctk.CTkEntry(
+            frame, textvariable=var, font=FONT_TEXT,
+            fg_color=CARD, border_color="#1A2540", text_color=TEXT,
+        )
+        if show:
+            entry.configure(show=show)
+        entry.pack(fill="x")
+
+    def _save(self, dialog):
+        label = self.label_var.get().strip()
+        username = self.username_var.get().strip()
+
+        if not label or not username or not self.password_var.get():
+            messagebox.showwarning(
+                "Campos obrigatórios", "Preencha ao menos apelido, usuário e senha."
+            )
+            return
+
+        self.result = Account(
+            label=label,
+            username=username,
+            password=self.password_var.get(),
+            server_name=self.server_var.get().strip(),
+            character_slot=self.slot_var.get(),
+            auto_login=self.auto_var.get(),
+        )
+        dialog.destroy()
 
 class LogRedirector:
     def __init__(self, widgets, original):
@@ -220,6 +323,26 @@ class MainWindow:
         self._scripts_container.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
 
         ctk.CTkLabel(self._scripts_container, text="SCRIPTS", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+
+        self._editing_label = ctk.CTkLabel(
+            self._scripts_container,
+            text="Nenhuma conta selecionada — clique num client à direita",
+            font=FONT_SMALL,
+            text_color=TEXT3,
+        )
+        self._editing_label.pack(anchor="w", pady=(2, 0))
+
+        self._bot_toggle_btn = ctk.CTkButton(
+            self._scripts_container,
+            text="Start Scripts",
+            state="disabled",
+            fg_color=GREEN,
+            hover_color="#1B9E4B",
+            height=32,
+            command=self._toggle_bot_for_selected,
+        )
+        self._bot_toggle_btn.pack(anchor="w", pady=(6, 0))
+
         ctk.CTkFrame(self._scripts_container, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
 
         self._cards_grid = ctk.CTkFrame(self._scripts_container, fg_color="transparent")
@@ -503,40 +626,74 @@ class MainWindow:
         else: self._login_win.deiconify(); self._login_win.lift(); self._login_win.focus_force()
 
     def _create_login_win(self):
-        d = ctk.CTkToplevel(self.root); d.title("Login — Contas"); d.geometry("520x440")
+        d = ctk.CTkToplevel(self.root); d.title("Login — Contas"); d.geometry("620x480")
         d.configure(fg_color=BG); d.resizable(False, False); d.transient(self.root)
         d.protocol("WM_DELETE_WINDOW", lambda: setattr(self, "_login_win", None) or d.destroy())
         self.root.update_idletasks(); pw,ph = self.root.winfo_width(), self.root.winfo_height()
         px,py = self.root.winfo_x(), self.root.winfo_y()
-        d.geometry(f"520x440+{px+(pw-520)//2}+{py+(ph-440)//2}")
-        f = ctk.CTkFrame(d, fg_color="transparent"); f.pack(fill="both", expand=True, padx=12, pady=12)
-        ctk.CTkLabel(f, text="Accounts", font=FONT_H3, text_color=TEXT).pack(anchor="w")
-        ctk.CTkFrame(f, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
-        table = ctk.CTkScrollableFrame(f, fg_color="transparent", height=280); table.pack(fill="both", expand=True, pady=4)
-        btn_row = ctk.CTkFrame(f, fg_color="transparent"); btn_row.pack(fill="x", pady=(4,0))
-        ctk.CTkButton(btn_row, text="Add Account", font=FONT_SMALL, command=lambda: self._add_account(table)).pack(side="left")
+        d.geometry(f"620x480+{px+(pw-620)//2}+{py+(ph-480)//2}")
+
+        f = ctk.CTkFrame(d, fg_color="transparent"); f.pack(fill="both", expand=True, padx=16, pady=16)
+        ctk.CTkLabel(f, text="Contas", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+        ctk.CTkFrame(f, height=1, fg_color="#1A2540").pack(fill="x", pady=(4, 10))
+
+        # Larguras de coluna compartilhadas entre cabeçalho e linhas,
+        # pra tudo alinhar certinho.
+        COL_CHECK, COL_LABEL, COL_SERVER, COL_USER, COL_SLOT = 26, 110, 120, 130, 70
+
+        header = ctk.CTkFrame(f, fg_color="transparent")
+        header.pack(fill="x", padx=4)
+        ctk.CTkLabel(header, text="", width=COL_CHECK).pack(side="left")
+        for text, w in (("APELIDO", COL_LABEL), ("SERVIDOR", COL_SERVER),
+                        ("USUÁRIO", COL_USER), ("PERSONAGEM", COL_SLOT)):
+            ctk.CTkLabel(header, text=text, width=w, font=FONT_SMALL, text_color=TEXT3,
+                        anchor="w").pack(side="left", padx=4)
+
+        table = ctk.CTkScrollableFrame(f, fg_color="transparent", height=300)
+        table.pack(fill="both", expand=True, pady=(6, 4))
+
+        btn_row = ctk.CTkFrame(f, fg_color="transparent"); btn_row.pack(fill="x", pady=(8, 0))
+        ctk.CTkButton(btn_row, text="+ Add Account", font=FONT_SMALL, fg_color=GREEN,
+                     hover_color="#1B9E4B", command=lambda: self._add_account(table)).pack(side="left")
 
         def refresh():
             for w in table.winfo_children(): w.destroy()
             if not hasattr(self, "_account_index"): self._account_index = {}
             if not hasattr(self, "_login_vars"): self._login_vars = {}
             if not self.accounts:
-                ctk.CTkLabel(table, text="No accounts", font=FONT_SMALL, text_color=TEXT3).pack(expand=True, pady=30)
+                ctk.CTkLabel(table, text="Nenhuma conta cadastrada ainda", font=FONT_SMALL,
+                            text_color=TEXT3).pack(expand=True, pady=40)
                 return
             for idx, acc in enumerate(self.accounts):
                 self._account_index[acc.label] = idx
                 if acc.label not in self._login_vars: self._login_vars[acc.label] = ctk.BooleanVar(value=False)
-                row = ctk.CTkFrame(table, fg_color="transparent"); row.pack(fill="x", pady=1)
                 var = self._login_vars[acc.label]
-                ctk.CTkCheckBox(row, text="", variable=var, width=20,
+
+                row = ctk.CTkFrame(table, fg_color=CARD, corner_radius=6,
+                                   border_width=1, border_color="#1A2540")
+                row.pack(fill="x", pady=3)
+                inner = ctk.CTkFrame(row, fg_color="transparent")
+                inner.pack(fill="x", padx=4, pady=6)
+
+                ctk.CTkCheckBox(inner, text="", variable=var, width=COL_CHECK,
                                command=lambda l=acc.label: self._on_login_toggle(l)).pack(side="left")
-                ctk.CTkLabel(row, text=acc.label, width=80, font=FONT_SMALL).pack(side="left", padx=4)
-                ctk.CTkLabel(row, text=acc.server_name, width=90, font=FONT_SMALL, text_color=TEXT2).pack(side="left", padx=4)
-                ctk.CTkLabel(row, text=acc.username, width=90, font=FONT_SMALL, text_color=TEXT2).pack(side="left", padx=4)
-                ctk.CTkButton(row, text="E", width=24, height=20, font=ctk.CTkFont(size=9), fg_color="transparent", border_width=1,
-                             command=lambda a=acc: self._edit_account(a, refresh)).pack(side="right", padx=2)
-                ctk.CTkButton(row, text="X", width=24, height=20, font=ctk.CTkFont(size=9), fg_color="transparent", border_width=1,
-                             command=lambda a=acc: self._remove_account(a, refresh)).pack(side="right")
+                ctk.CTkLabel(inner, text=acc.label, width=COL_LABEL, font=FONT_SMALL,
+                            text_color=TEXT, anchor="w").pack(side="left", padx=4)
+                ctk.CTkLabel(inner, text=acc.server_name or "—", width=COL_SERVER, font=FONT_SMALL,
+                            text_color=TEXT2, anchor="w").pack(side="left", padx=4)
+                ctk.CTkLabel(inner, text=acc.username, width=COL_USER, font=FONT_SMALL,
+                            text_color=TEXT2, anchor="w").pack(side="left", padx=4)
+                ctk.CTkLabel(inner, text=acc.character_slot, width=COL_SLOT, font=FONT_SMALL,
+                            text_color=TEXT2, anchor="w").pack(side="left", padx=4)
+
+                ctk.CTkButton(inner, text="Remover", width=64, height=22, font=FONT_SMALL,
+                             fg_color="transparent", border_width=1, border_color=RED,
+                             text_color=RED, hover_color=HOVER,
+                             command=lambda a=acc: self._remove_account(a, refresh)).pack(side="right", padx=(4, 0))
+                ctk.CTkButton(inner, text="Editar", width=56, height=22, font=FONT_SMALL,
+                             fg_color="transparent", border_width=1, border_color=TEXT3,
+                             text_color=TEXT2, hover_color=HOVER,
+                             command=lambda a=acc: self._edit_account(a, refresh)).pack(side="right")
         refresh()
         d._refresh = refresh
         return d
@@ -654,11 +811,20 @@ class MainWindow:
             card = ctk.CTkFrame(self._clients_scroll, fg_color=CARD, corner_radius=8, border_width=1, border_color="#1A2540")
             card.pack(fill="x", pady=2, padx=2)
             hdr = ctk.CTkFrame(card, fg_color="transparent"); hdr.pack(fill="x", padx=8, pady=(6,0))
-            ctk.CTkLabel(hdr, text=display, font=FONT_SMALL, text_color=TEXT).pack(side="left")
+            name_lbl = ctk.CTkLabel(hdr, text=display, font=FONT_SMALL, text_color=TEXT); name_lbl.pack(side="left")
             dot = ctk.CTkLabel(hdr, text="\u25CF", font=ctk.CTkFont(size=8), text_color=TEXT3); dot.pack(side="right")
             hp_bar = ctk.CTkProgressBar(card, height=5, progress_color=GREEN); hp_bar.pack(fill="x", padx=8, pady=(2,0)); hp_bar.set(0)
             mp_bar = ctk.CTkProgressBar(card, height=5, progress_color=BLUE); mp_bar.pack(fill="x", padx=8, pady=2); mp_bar.set(0)
-            self._client_cards[label] = {"frame":card,"dot":dot,"hp":hp_bar,"mp":mp_bar}
+            self._client_cards[label] = {"frame":card,"dot":dot,"hp":hp_bar,"mp":mp_bar,"name_lbl":name_lbl}
+
+            # Clique único: seleciona a conta (define qual conta os
+            # cards de SCRIPTS à esquerda estão editando).
+            # Duplo clique: traz a janela do jogo dessa conta pra frente.
+            # Precisa bindar em todos os sub-widgets, não só no frame,
+            # porque cliques em widgets filhos não propagam pro pai.
+            for widget in (card, hdr, name_lbl, dot):
+                widget.bind("<Button-1>", lambda e, l=label: self._select_client_card(l))
+                widget.bind("<Double-Button-1>", lambda e, l=label: self._focus_client_window(l))
 
         for label in existing - current:
             c = self._client_cards.pop(label)
@@ -683,7 +849,129 @@ class MainWindow:
         self._ind_online.configure(text=f"{online} Online")
         scripts = sum(1 for v in self._widget_states.values() if v)
         self._ind_scripts.configure(text=f"{scripts} Scripts")
+        self._refresh_bot_toggle_button()
         self.root.after(500, self._poll_loop)
+
+    def _select_client_card(self, label: str):
+        """
+        Seleciona qual conta os cards de SCRIPTS (à esquerda) estão
+        editando. Atualiza o destaque visual do card e o indicador de
+        texto acima da lista de scripts.
+        """
+        # Remove destaque do card selecionado anteriormente
+        prev = self._client_cards.get(self._selected_window)
+        if prev:
+            prev["frame"].configure(border_color="#1A2540", border_width=1)
+
+        self._selected_window = label
+
+        card = self._client_cards.get(label)
+        if card:
+            card["frame"].configure(border_color=BLUE, border_width=2)
+
+        sessions = SessionRegistry.get_all()
+        display = sessions.get(label, {}).get("display", label)
+        self._editing_label.configure(
+            text=f"Editando: {display}", text_color=TEXT2
+        )
+
+        self._refresh_bot_toggle_button()
+
+    def _refresh_bot_toggle_button(self):
+        """
+        Atualiza o texto/estado do botão Start/Stop Scripts conforme
+        a conta selecionada e se o motor de scripts dela já está
+        rodando ou não.
+        """
+
+        label = self._selected_window
+
+        if not label:
+            self._bot_toggle_btn.configure(state="disabled", text="Start Scripts", fg_color=GREEN)
+            return
+
+        self._bot_toggle_btn.configure(state="normal")
+
+        engine = getattr(self, "_bot_engines", {}).get(label)
+        running = bool(engine and engine.is_running)
+
+        if running:
+            self._bot_toggle_btn.configure(text="Stop Scripts", fg_color="#8b0000", hover_color="#a00000")
+        else:
+            self._bot_toggle_btn.configure(text="Start Scripts", fg_color=GREEN, hover_color="#1B9E4B")
+
+    def _toggle_bot_for_selected(self):
+        """
+        Liga ou desliga os scripts habilitados para a conta atualmente
+        selecionada (o card com destaque azul).
+        """
+
+        label = self._selected_window
+
+        if not label:
+            return
+
+        engine = getattr(self, "_bot_engines", {}).get(label)
+        running = bool(engine and engine.is_running)
+
+        if running:
+            self._stop_bot_for_window(label)
+        else:
+            self._start_bot_for_window(label)
+
+        self._refresh_bot_toggle_button()
+
+    def _focus_client_window(self, label: str):
+        """
+        Traz a janela do jogo dessa conta pra frente. Também seleciona
+        o card (duplo clique implica clique).
+        """
+        self._select_client_card(label)
+
+        sessions = SessionRegistry.get_all()
+        hwnd = sessions.get(label, {}).get("hwnd")
+
+        if not hwnd:
+            return
+
+        self._bring_window_to_front(hwnd)
+
+    @staticmethod
+    def _bring_window_to_front(hwnd: int):
+        """
+        Traz uma janela pra primeiro plano. O Windows restringe qual
+        processo pode roubar o foco (SetForegroundWindow "puro" costuma
+        falhar silenciosamente se a nossa própria janela não está em
+        primeiro plano) -- por isso usamos o truque de anexar a thread
+        de input à thread da janela em foco antes de chamar.
+        """
+        try:
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+
+            win32gui.SetForegroundWindow(hwnd)
+            return
+        except Exception:
+            pass
+
+        # Fallback: anexa a thread de input da janela atualmente em
+        # primeiro plano à nossa, o que contorna a restrição do
+        # Windows contra "roubo" de foco.
+        try:
+            fg_hwnd = win32gui.GetForegroundWindow()
+            fg_thread, _ = win32process.GetWindowThreadProcessId(fg_hwnd)
+            target_thread, _ = win32process.GetWindowThreadProcessId(hwnd)
+            current_thread = win32api.GetCurrentThreadId()
+
+            win32process.AttachThreadInput(current_thread, fg_thread, True)
+            try:
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                win32gui.SetForegroundWindow(hwnd)
+                win32gui.BringWindowToTop(hwnd)
+            finally:
+                win32process.AttachThreadInput(current_thread, fg_thread, False)
+        except Exception as e:
+            print(f"[GUI] Aviso: não foi possível focar a janela ({e})")
 
     def _get_memory_reader(self, label, pid):
         if not hasattr(self, "_memory_readers"): self._memory_readers = {}; self._mr_failed = set()
