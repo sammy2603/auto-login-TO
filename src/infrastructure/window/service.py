@@ -239,6 +239,19 @@ class WindowService:
 
         win32gui.SetWindowText(self.hwnd, title)
 
+    @staticmethod
+    def set_title_for_hwnd(hwnd: int, title: str):
+        """
+        Igual a set_title, mas recebe o hwnd explicitamente em vez de
+        usar a janela conectada nesta instância. Necessário quando uma
+        única instância de WindowService é compartilhada entre várias
+        janelas/sessões (ex: AutomationController), já que nesse caso
+        não existe "a janela conectada" -- cada chamada opera na
+        janela indicada.
+        """
+
+        win32gui.SetWindowText(hwnd, title)
+
     # =====================================================
     # Implementação interna (Win32)
     # =====================================================

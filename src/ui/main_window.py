@@ -6,26 +6,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
-import win32gui, win32process, win32api, win32con
+import win32gui
 
 from src.app.application import Application
+from src.app.automation_controller import AutomationController
 from src.config.settings import Settings
 from src.services.license.service import LicenseService
-from src.services.game.game_reader import GameReader
 from src.services.game.memory_reader import MemoryReader
-from src.services.bot.bot_engine import BotEngine
-from src.services.bot.scripts.attack import AttackScript
-from src.services.bot.scripts.potion import PotionScript
-from src.services.bot.scripts.pet_food import PetScript as PetFoodScript
-from src.services.bot.scripts.buff import BuffScript
-from src.services.bot.scripts.helper import HelperScript
-from src.services.bot.scripts.fairy import FairyScript
-from src.services.bot.scripts.revive import ReviveScript
-from src.services.bot.scripts.delete import DeleteScript
-from src.services.bot.scripts.bc import BCScript
-from src.services.bot.scripts.hollow import HollowScript
-from src.services.bot.scripts.sell import SellScript
-from src.services.bot.scripts.dr_lure import DRLureScript
 from src.shared.character_slots import CharacterSlot
 from src.ui.session_registry import SessionRegistry
 
@@ -266,7 +253,7 @@ class MainWindow:
         self._widget_states: dict[str, bool] = {}
         self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
         self._license = LicenseService()
-        self._game_reader = GameReader()
+        self.controller = AutomationController()
         self._selected_window: str | None = None
         self._client_cards: dict[str, any] = {}
         self._kill_track: dict = {}
@@ -892,8 +879,7 @@ class MainWindow:
 
         self._bot_toggle_btn.configure(state="normal")
 
-        engine = getattr(self, "_bot_engines", {}).get(label)
-        running = bool(engine and engine.is_running)
+        running = self.controller.is_running(label)
 
         if running:
             self._bot_toggle_btn.configure(text="Stop Scripts", fg_color="#8b0000", hover_color="#a00000")
@@ -911,8 +897,7 @@ class MainWindow:
         if not label:
             return
 
-        engine = getattr(self, "_bot_engines", {}).get(label)
-        running = bool(engine and engine.is_running)
+        running = self.controller.is_running(label)
 
         if running:
             self._stop_bot_for_window(label)
@@ -934,52 +919,10 @@ class MainWindow:
         if not hwnd:
             return
 
-        self._bring_window_to_front(hwnd)
-
-    @staticmethod
-    def _bring_window_to_front(hwnd: int):
-        """
-        Traz uma janela pra primeiro plano. O Windows restringe qual
-        processo pode roubar o foco (SetForegroundWindow "puro" costuma
-        falhar silenciosamente se a nossa própria janela não está em
-        primeiro plano) -- por isso usamos o truque de anexar a thread
-        de input à thread da janela em foco antes de chamar.
-        """
-        try:
-            if win32gui.IsIconic(hwnd):
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-
-            win32gui.SetForegroundWindow(hwnd)
-            return
-        except Exception:
-            pass
-
-        # Fallback: anexa a thread de input da janela atualmente em
-        # primeiro plano à nossa, o que contorna a restrição do
-        # Windows contra "roubo" de foco.
-        try:
-            fg_hwnd = win32gui.GetForegroundWindow()
-            fg_thread, _ = win32process.GetWindowThreadProcessId(fg_hwnd)
-            target_thread, _ = win32process.GetWindowThreadProcessId(hwnd)
-            current_thread = win32api.GetCurrentThreadId()
-
-            win32process.AttachThreadInput(current_thread, fg_thread, True)
-            try:
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-                win32gui.SetForegroundWindow(hwnd)
-                win32gui.BringWindowToTop(hwnd)
-            finally:
-                win32process.AttachThreadInput(current_thread, fg_thread, False)
-        except Exception as e:
-            print(f"[GUI] Aviso: não foi possível focar a janela ({e})")
+        self.controller.focus_window(hwnd)
 
     def _get_memory_reader(self, label, pid):
-        if not hasattr(self, "_memory_readers"): self._memory_readers = {}; self._mr_failed = set()
-        if label in self._mr_failed: return None
-        if label not in self._memory_readers:
-            try: self._memory_readers[label] = MemoryReader(pid)
-            except: self._mr_failed.add(label); return None
-        return self._memory_readers[label]
+        return self.controller.get_memory_reader(label, pid)
 
     # ============================================================
     # LOGIN / SCAN / BOT ENGINE
@@ -991,8 +934,7 @@ class MainWindow:
             if acc.auto_login: self._start_login_thread(acc.label)
 
     def _scan_for_game_windows(self):
-        from src.infrastructure.window.service import WindowService
-        ws = WindowService()
+        ws = self.controller.window_service
         existing = SessionRegistry.get_all()
         for label, info in list(existing.items()):
             if label.startswith("ext_") and info.get("hwnd"):
@@ -1006,8 +948,7 @@ class MainWindow:
             try:
                 mr = MemoryReader(pid); name = mr.char_name; mr.close()
                 if name:
-                    try: win32gui.SetWindowText(hwnd, name)
-                    except: pass
+                    self.controller.rename_window(hwnd, name)
                     SessionRegistry.register(f"ext_{hwnd}", hwnd, pid, display=name)
             except: pass
         self.root.after(5000, self._scan_for_game_windows)
@@ -1047,8 +988,7 @@ class MainWindow:
                         try: tmp = MemoryReader(pid); cn = tmp.char_name or account.label; tmp.close()
                         except: pass
                     SessionRegistry.register(account.label, hwnd, pid, display=cn)
-                    try: win32gui.SetWindowText(hwnd, cn)
-                    except: pass
+                    self.controller.rename_window(hwnd, cn)
                     while not stop_event.is_set():
                         if not win32gui.IsWindow(hwnd): break
                         time.sleep(2.0)
@@ -1065,48 +1005,40 @@ class MainWindow:
             self._on_account_finished(account.label)
 
     def _on_account_finished(self, label):
-        self._stop_bot_for_window(label)
-        if hasattr(self, "_memory_readers"):
-            self._memory_readers.pop(label, None)
-            if hasattr(self, "_mr_failed"): self._mr_failed.discard(label)
+        self.controller.forget_session(label)
         with self._active_lock:
             self._active_threads -= 1
             if self._active_threads <= 0:
                 self.root.after(0, lambda: setattr(sys, "stdout", self.log_redirector.original))
 
-    def _get_or_create_bot_engine(self, label):
-        if not hasattr(self, "_bot_engines"): self._bot_engines = {}
-        if label not in self._bot_engines:
-            engine = BotEngine()
-            engine.register(PetFoodScript(config=getattr(self,"_pet_config",{})))
-            engine.register(AttackScript(config=getattr(self,"_attack_config",{})))
-            engine.register(PotionScript(config=getattr(self,"_potion_config",{})))
-            engine.register(BuffScript(config=getattr(self,"_buff_config",{})))
-            engine.register(HelperScript(config=getattr(self,"_helper_config",{})))
-            engine.register(FairyScript(config=getattr(self,"_fairy_config",{})))
-            engine.register(ReviveScript(config=getattr(self,"_revive_config",{})))
-            engine.register(DeleteScript()); engine.register(BCScript())
-            engine.register(HollowScript()); engine.register(SellScript()); engine.register(DRLureScript())
-            self._bot_engines[label] = engine
-        return self._bot_engines[label]
+    def _current_script_configs(self):
+        """
+        Configuração atual de cada script, editada via os diálogos da
+        sidebar. É estado de apresentação (a GUI é quem edita), por
+        isso continua vivendo aqui -- o Controller só recebe e repassa
+        pros scripts na hora de ligar o motor.
+        """
+        return {
+            "pet": getattr(self, "_pet_config", {}),
+            "attack": getattr(self, "_attack_config", {}),
+            "potion": getattr(self, "_potion_config", {}),
+            "buff": getattr(self, "_buff_config", {}),
+            "helper": getattr(self, "_helper_config", {}),
+            "fairy": getattr(self, "_fairy_config", {}),
+            "revive": getattr(self, "_revive_config", {}),
+        }
 
     def _start_bot_for_window(self, label):
         sessions = SessionRegistry.get_all(); s = sessions.get(label)
         if not s or not s.get("hwnd"): return
         hwnd = s["hwnd"]; pid = s.get("pid")
-        engine = self._get_or_create_bot_engine(label)
-        if engine.is_running: return
-        from src.infrastructure.window.service import WindowService
-        from src.infrastructure.vision.service import VisionService
-        from src.infrastructure.input.service import InputService
-        ws = WindowService(); vs = VisionService(window_service=ws); ins = InputService()
-        mr = self._get_memory_reader(label, pid) if pid else None
-        engine.start(hwnd, ins, vs, ws, self._game_reader, mr,
-                     self._feature_vars.get(label) if hasattr(self,"_feature_vars") else {})
+        self.controller.start_scripts(
+            label, hwnd, pid,
+            self._feature_vars.get(label) if hasattr(self, "_feature_vars") else {},
+            self._current_script_configs(),
+        )
 
     def _stop_bot_for_window(self, label):
-        if not hasattr(self, "_bot_engines"): return
-        engine = self._bot_engines.get(label)
-        if engine: engine.stop()
+        self.controller.stop_scripts(label)
 
     def run(self): self.root.mainloop()
