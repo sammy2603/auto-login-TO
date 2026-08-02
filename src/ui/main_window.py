@@ -13,6 +13,7 @@ from src.app.automation_controller import AutomationController
 from src.config.settings import Settings
 from src.services.license.service import LicenseService
 from src.services.game.memory_reader import MemoryReader
+from src.services.bot.script_registry import ScriptRegistry
 from src.shared.character_slots import CharacterSlot
 from src.ui.session_registry import SessionRegistry
 
@@ -25,13 +26,19 @@ TEXT = "#E8EEF9"; TEXT2 = "#95A7C8"; TEXT3 = "#5D6A84"
 GREEN = "#22C55E"; BLUE = "#4F8CFF"; YELLOW = "#FACC15"; RED = "#FF4D4F"
 PURPLE = "#A855F7"; CYAN = "#38BDF8"
 
-COLORS = {"Attack": RED, "Potion": GREEN, "Pet": PURPLE, "Buff": YELLOW,
-          "Helper": BLUE, "Fairy": PURPLE, "Revive": RED, "Delete": TEXT3,
-          "BC": CYAN, "Hollow": PURPLE, "Sell": YELLOW, "DR Lure": PURPLE}
+# Traduz a 'category' semântica de cada script (definida em
+# script_registry.py, sem depender da UI) pra uma cor concreta desta
+# paleta. Novos scripts com uma categoria já existente ganham cor
+# automaticamente -- só precisa de entrada nova aqui se vier uma
+# categoria nova.
+CATEGORY_COLORS = {
+    "combat": RED, "support": GREEN, "companion": PURPLE,
+    "highlight": YELLOW, "utility": BLUE, "special": CYAN, "neutral": TEXT3,
+}
 
-ICONS = {"Attack": "\u2694", "Potion": "\u2697", "Pet": "\u2665", "Buff": "\u21E7",
-         "Helper": "\u2699", "Fairy": "\u2726", "Revive": "\u2715", "Delete": "\u2717",
-         "BC": "\u25C6", "Hollow": "\u25CE", "Sell": "\u25C8", "DR Lure": "\u25C9"}
+_SCRIPTS = ScriptRegistry.all()
+COLORS = {d.display_name: CATEGORY_COLORS.get(d.category, TEXT2) for d in _SCRIPTS}
+ICONS = {d.display_name: d.icon for d in _SCRIPTS}
 
 # Fontes — inicializadas via _init_fonts()
 FONT_H1 = FONT_H2 = FONT_H3 = FONT_TEXT = FONT_SMALL = FONT_MONO = None
@@ -236,8 +243,7 @@ class ScriptCard(ctk.CTkFrame):
 # MAIN WINDOW
 # ============================================================
 class MainWindow:
-    FEATURES = ["Attack", "Potion", "Pet", "Buff", "Helper", "Fairy",
-                "Revive", "Delete", "BC", "Hollow", "Sell", "DR Lure"]
+    FEATURES = [d.display_name for d in _SCRIPTS]
 
     def __init__(self):
         self.root = ctk.CTk()

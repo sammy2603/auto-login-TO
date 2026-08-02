@@ -11,18 +11,7 @@ from src.infrastructure.input.service import InputService
 from src.services.game.game_reader import GameReader
 from src.services.game.memory_reader import MemoryReader
 from src.services.bot.bot_engine import BotEngine
-from src.services.bot.scripts.attack import AttackScript
-from src.services.bot.scripts.potion import PotionScript
-from src.services.bot.scripts.pet_food import PetScript as PetFoodScript
-from src.services.bot.scripts.buff import BuffScript
-from src.services.bot.scripts.helper import HelperScript
-from src.services.bot.scripts.fairy import FairyScript
-from src.services.bot.scripts.revive import ReviveScript
-from src.services.bot.scripts.delete import DeleteScript
-from src.services.bot.scripts.bc import BCScript
-from src.services.bot.scripts.hollow import HollowScript
-from src.services.bot.scripts.sell import SellScript
-from src.services.bot.scripts.dr_lure import DRLureScript
+from src.services.bot.script_registry import ScriptRegistry
 
 
 class AutomationController:
@@ -78,18 +67,9 @@ class AutomationController:
 
             engine = BotEngine()
 
-            engine.register(PetFoodScript(config=script_configs.get("pet", {})))
-            engine.register(AttackScript(config=script_configs.get("attack", {})))
-            engine.register(PotionScript(config=script_configs.get("potion", {})))
-            engine.register(BuffScript(config=script_configs.get("buff", {})))
-            engine.register(HelperScript(config=script_configs.get("helper", {})))
-            engine.register(FairyScript(config=script_configs.get("fairy", {})))
-            engine.register(ReviveScript(config=script_configs.get("revive", {})))
-            engine.register(DeleteScript())
-            engine.register(BCScript())
-            engine.register(HollowScript())
-            engine.register(SellScript())
-            engine.register(DRLureScript())
+            for descriptor in ScriptRegistry.all():
+                config = script_configs.get(descriptor.key, {}) if descriptor.has_config else None
+                engine.register(ScriptRegistry.create_instance(descriptor.key, config))
 
             self._bot_engines[label] = engine
 
