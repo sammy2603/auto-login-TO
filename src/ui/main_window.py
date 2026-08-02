@@ -15,7 +15,6 @@ from src.services.license.service import LicenseService
 from src.services.game.memory_reader import MemoryReader
 from src.services.bot.script_registry import ScriptRegistry
 from src.shared.character_slots import CharacterSlot
-from src.ui.session_registry import SessionRegistry
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
@@ -260,6 +259,16 @@ class MainWindow:
         self._client_path = tk.StringVar(value=_DEFAULTS.client_path)
         self._license = LicenseService()
         self.controller = AutomationController()
+
+        # Assina eventos do núcleo de automação -- em vez de esperar o
+        # próximo ciclo do polling (até 500ms), a UI reage na hora
+        # quando um script liga/desliga. Publish() pode vir de
+        # qualquer thread, então o callback só agenda o trabalho real
+        # de volta pra thread principal via root.after().
+        self.controller.events.subscribe("bot.started", self._on_bot_state_event)
+        self.controller.events.subscribe("bot.stopped", self._on_bot_state_event)
+        self.controller.events.subscribe("session.registered", self._on_session_event)
+        self.controller.events.subscribe("session.unregistered", self._on_session_event)
         self._selected_window: str | None = None
         self._client_cards: dict[str, any] = {}
         self._kill_track: dict = {}
@@ -495,7 +504,7 @@ class MainWindow:
         self._cfg_window("Attack", 420, 550, build)
 
     def _capture_target(self, tl, mode, parent):
-        sessions = SessionRegistry.get_all()
+        sessions = self.controller.get_sessions()
         w = self._selected_window
         if not w: return
         s = sessions.get(w)
@@ -796,7 +805,7 @@ class MainWindow:
     # POLLING
     # ============================================================
     def _poll_loop(self):
-        sessions = SessionRegistry.get_all()
+        sessions = self.controller.state.get_all_sessions()
         online = 0
         existing = set(self._client_cards.keys()); current = set(sessions.keys())
         for label in current - existing:
@@ -836,7 +845,9 @@ class MainWindow:
                     mr = self._get_memory_reader(label, pid)
                     if mr:
                         cd["hp"].set(mr.hp_pct/100.0); cd["mp"].set(mr.mana_pct/100.0)
-                        cd["dot"].configure(text_color=GREEN); online += 1
+                        # Verde = script rodando, azul = online mas parado
+                        cd["dot"].configure(text_color=GREEN if info.get("scripts_running") else BLUE)
+                        online += 1
                 except: pass
 
         self._ind_online.configure(text=f"{online} Online")
@@ -862,13 +873,28 @@ class MainWindow:
         if card:
             card["frame"].configure(border_color=BLUE, border_width=2)
 
-        sessions = SessionRegistry.get_all()
+        sessions = self.controller.get_sessions()
         display = sessions.get(label, {}).get("display", label)
         self._editing_label.configure(
             text=f"Editando: {display}", text_color=TEXT2
         )
 
         self._refresh_bot_toggle_button()
+
+    def _on_session_event(self, label: str, **_ignored):
+        """
+        Chamado pelo EventBus quando uma sessão conecta/desconecta.
+        """
+        print(f"[EventBus] Sessão atualizada: {label}")
+
+    def _on_bot_state_event(self, label: str):
+        """
+        Chamado pelo EventBus quando um script liga/desliga (evento
+        'bot.started'/'bot.stopped'). Pode vir de qualquer thread --
+        só agenda a atualização real do widget na thread principal.
+        """
+        print(f"[EventBus] Script atualizado: {label}")
+        self.root.after(0, self._refresh_bot_toggle_button)
 
     def _refresh_bot_toggle_button(self):
         """
@@ -919,7 +945,7 @@ class MainWindow:
         """
         self._select_client_card(label)
 
-        sessions = SessionRegistry.get_all()
+        sessions = self.controller.get_sessions()
         hwnd = sessions.get(label, {}).get("hwnd")
 
         if not hwnd:
@@ -941,10 +967,10 @@ class MainWindow:
 
     def _scan_for_game_windows(self):
         ws = self.controller.window_service
-        existing = SessionRegistry.get_all()
+        existing = self.controller.get_sessions()
         for label, info in list(existing.items()):
             if label.startswith("ext_") and info.get("hwnd"):
-                if not win32gui.IsWindow(info["hwnd"]): SessionRegistry.unregister(label)
+                if not win32gui.IsWindow(info["hwnd"]): self.controller.unregister_session(label)
         all_hwnds = ws._list_windows()
         tracked = {s["hwnd"] for s in existing.values() if s.get("hwnd")}
         for hwnd in all_hwnds:
@@ -955,7 +981,7 @@ class MainWindow:
                 mr = MemoryReader(pid); name = mr.char_name; mr.close()
                 if name:
                     self.controller.rename_window(hwnd, name)
-                    SessionRegistry.register(f"ext_{hwnd}", hwnd, pid, display=name)
+                    self.controller.register_session(f"ext_{hwnd}", hwnd, pid, display=name)
             except: pass
         self.root.after(5000, self._scan_for_game_windows)
 
@@ -993,7 +1019,7 @@ class MainWindow:
                     if pid:
                         try: tmp = MemoryReader(pid); cn = tmp.char_name or account.label; tmp.close()
                         except: pass
-                    SessionRegistry.register(account.label, hwnd, pid, display=cn)
+                    self.controller.register_session(account.label, hwnd, pid, display=cn)
                     self.controller.rename_window(hwnd, cn)
                     while not stop_event.is_set():
                         if not win32gui.IsWindow(hwnd): break
@@ -1002,7 +1028,7 @@ class MainWindow:
                     print(f"[{account.label}] Error: {e}")
                     if stop_event.wait(5.0): break
                 finally:
-                    SessionRegistry.unregister(account.label)
+                    self.controller.unregister_session(account.label)
                     if app:
                         try: app.shutdown()
                         except: pass
@@ -1035,7 +1061,7 @@ class MainWindow:
         }
 
     def _start_bot_for_window(self, label):
-        sessions = SessionRegistry.get_all(); s = sessions.get(label)
+        sessions = self.controller.get_sessions(); s = sessions.get(label)
         if not s or not s.get("hwnd"): return
         hwnd = s["hwnd"]; pid = s.get("pid")
         self.controller.start_scripts(

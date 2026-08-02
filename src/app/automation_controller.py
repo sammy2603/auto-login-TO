@@ -12,6 +12,9 @@ from src.services.game.game_reader import GameReader
 from src.services.game.memory_reader import MemoryReader
 from src.services.bot.bot_engine import BotEngine
 from src.services.bot.script_registry import ScriptRegistry
+from src.shared.event_bus import EventBus
+from src.app.state_manager import StateManager
+from src.ui.session_registry import SessionRegistry
 
 
 class AutomationController:
@@ -44,9 +47,36 @@ class AutomationController:
 
         self.game_reader = GameReader()
 
+        self.events = EventBus()
+
+        # Publica eventos de sessão (conta conectada/desconectada)
+        # através do EventBus compartilhado.
+        SessionRegistry.bind_event_bus(self.events)
+
+        self.state = StateManager(self)
+
         self._bot_engines: dict[str, BotEngine] = {}
         self._memory_readers: dict[str, MemoryReader] = {}
         self._memory_reader_failed: set[str] = set()
+
+    # =====================================================
+    # Sessões (contas conectadas)
+    # =====================================================
+
+    def register_session(self, label: str, hwnd: int, pid: int | None = None,
+                          display: str | None = None):
+        SessionRegistry.register(label, hwnd, pid, display=display)
+
+    def unregister_session(self, label: str):
+        SessionRegistry.unregister(label)
+
+    def get_sessions(self) -> dict:
+        """
+        Estado combinado de todas as sessões (conexão + se os scripts
+        estão rodando). Ver StateManager para o porquê de combinar as
+        duas fontes numa visão só.
+        """
+        return self.state.get_all_sessions()
 
     # =====================================================
     # Bot Engine (scripts de gameplay)
@@ -102,6 +132,8 @@ class AutomationController:
             feature_vars,
         )
 
+        self.events.publish("bot.started", label=label)
+
         return True
 
     def stop_scripts(self, label: str):
@@ -110,6 +142,7 @@ class AutomationController:
 
         if engine:
             engine.stop()
+            self.events.publish("bot.stopped", label=label)
 
     def is_running(self, label: str) -> bool:
 
@@ -144,6 +177,9 @@ class AutomationController:
         engine = self._bot_engines.pop(label, None)
         if engine:
             engine.stop()
+            self.events.publish("bot.stopped", label=label)
+
+        self.events.publish("session.forgotten", label=label)
 
         self._memory_readers.pop(label, None)
         self._memory_reader_failed.discard(label)
