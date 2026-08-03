@@ -93,7 +93,7 @@ class BotEngine:
                 if not self._running:
                     break
                 var = feature_enabled.get(script.name)
-                if var is not None and not var.get():
+                if var is None or not var.get():
                     continue
                 try:
                     acted = script.tick(

@@ -413,12 +413,14 @@ class MainWindow:
     # ============================================================
     def _on_script_toggle(self, name, enabled):
         win = self._selected_window
-        if win and hasattr(self, "_feature_vars") and win in self._feature_vars:
-            if name not in self._feature_vars[win]:
-                self._feature_vars[win][name] = ctk.BooleanVar(value=False)
-            self._feature_vars[win][name].set(enabled)
+        if win:
+            vars_for_win = self._feature_vars.setdefault(win, {})
+            if name not in vars_for_win:
+                vars_for_win[name] = ctk.BooleanVar(value=False)
+            vars_for_win[name].set(enabled)
         if name in self._script_cards:
             self._script_cards[name].set_enabled(enabled)
+        self._refresh_bot_toggle_button()
 
     def _open_script_config(self, name):
         method = getattr(self, f"_cfg_{name.lower().replace(' ', '_')}", None)
@@ -896,11 +898,23 @@ class MainWindow:
         print(f"[EventBus] Script atualizado: {label}")
         self.root.after(0, self._refresh_bot_toggle_button)
 
+    def _has_enabled_scripts(self, label: str) -> bool:
+        """
+        Verdadeiro se ao menos um script está ligado (switch do card)
+        para a conta indicada.
+        """
+        vars_for_label = self._feature_vars.get(label, {})
+        return any(v.get() for v in vars_for_label.values())
+
     def _refresh_bot_toggle_button(self):
         """
         Atualiza o texto/estado do botão Start/Stop Scripts conforme
         a conta selecionada e se o motor de scripts dela já está
         rodando ou não.
+
+        Enquanto rodando, o botão sempre fica clicável (pra permitir
+        parar). Parado, só fica clicável se houver ao menos um script
+        ligado -- não faz sentido "iniciar" sem nenhum script ativo.
         """
 
         label = self._selected_window
@@ -909,14 +923,13 @@ class MainWindow:
             self._bot_toggle_btn.configure(state="disabled", text="Start Scripts", fg_color=GREEN)
             return
 
-        self._bot_toggle_btn.configure(state="normal")
-
         running = self.controller.is_running(label)
 
         if running:
-            self._bot_toggle_btn.configure(text="Stop Scripts", fg_color="#8b0000", hover_color="#a00000")
+            self._bot_toggle_btn.configure(state="normal", text="Stop Scripts", fg_color="#8b0000", hover_color="#a00000")
         else:
-            self._bot_toggle_btn.configure(text="Start Scripts", fg_color=GREEN, hover_color="#1B9E4B")
+            state = "normal" if self._has_enabled_scripts(label) else "disabled"
+            self._bot_toggle_btn.configure(state=state, text="Start Scripts", fg_color=GREEN, hover_color="#1B9E4B")
 
     def _toggle_bot_for_selected(self):
         """
@@ -1061,6 +1074,12 @@ class MainWindow:
         }
 
     def _start_bot_for_window(self, label):
+        if not self._has_enabled_scripts(label):
+            messagebox.showwarning(
+                "Nenhum script ativo",
+                "Ligue pelo menos um script (Attack, Potion, etc.) antes de iniciar."
+            )
+            return
         sessions = self.controller.get_sessions(); s = sessions.get(label)
         if not s or not s.get("hwnd"): return
         hwnd = s["hwnd"]; pid = s.get("pid")
