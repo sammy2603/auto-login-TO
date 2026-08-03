@@ -21,7 +21,9 @@ FASE 3 - Melhorias (EM ANDAMENTO)
 [x] GameReader (leitura de HP/recurso por analise de pixels)
 [x] Dashboard polling (1s) para leitura em tempo real
 [ ] Logger estruturado
-[ ] Testes
+[x] Testes do nucleo de automacao (BotEngine, ScriptRegistry,
+    SessionRegistry, StateManager, EventBus) - 54 testes
+[ ] Testes dos workflows (login/servidor/personagem) e da GUI
 [ ] Sistema de plugins
 [ ] Scripts reais do bot (Attack, Potion, Pet Food, etc.)
 

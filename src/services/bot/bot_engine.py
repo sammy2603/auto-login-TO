@@ -49,6 +49,19 @@ class BotEngine:
     def is_running(self) -> bool:
         return self._running
 
+    @staticmethod
+    def is_script_enabled(script_name: str, feature_enabled: dict) -> bool:
+        """
+        Um script só roda se houver uma flag registrada pra ele E ela
+        estiver ligada.
+
+        Ausência de flag significa DESLIGADO (default seguro). Tratar
+        "sem estado registrado" como ligado já fez todo script -- Attack
+        inclusive -- rodar com o switch do card desligado.
+        """
+        var = feature_enabled.get(script_name)
+        return var is not None and bool(var.get())
+
     def _loop(self, hwnd, input_service, vision_service, window_service,
               game_reader, memory_reader, feature_enabled):
         print(f"[BotEngine] Iniciado para hwnd={hwnd}")
@@ -92,8 +105,7 @@ class BotEngine:
             for script in scripts:
                 if not self._running:
                     break
-                var = feature_enabled.get(script.name)
-                if var is not None and not var.get():
+                if not self.is_script_enabled(script.name, feature_enabled):
                     continue
                 try:
                     acted = script.tick(

@@ -1,3 +1,79 @@
+## 2026-08-03
+
+### Corrigido — scripts rodavam com o switch desligado
+
+- Sintoma: ao selecionar um client e clicar em **Start Scripts**, o
+  Attack (e todos os outros) executava mesmo com o switch do card
+  desligado -- ou seja, o bot atacava sem ninguém ter pedido.
+- Duas causas encadeadas:
+  1. `bot_engine.py` tratava a AUSÊNCIA de flag como "ligado por
+     padrão" (`if var is not None and not var.get(): continue` --
+     quando `var` era `None`, o script rodava).
+  2. `main_window._on_script_toggle` nunca criava o dict
+     `_feature_vars[win]`, porque a condição `win in self._feature_vars`
+     jamais era verdadeira. Nenhum script chegava a ter flag
+     registrada, então todos caíam no caso `None` acima.
+- Correção: default seguro (sem flag = desligado), `setdefault` no
+  toggle, botão **Start Scripts** desabilitado enquanto nenhum script
+  estiver ligado, e um messagebox de aviso como guard defensivo em
+  `_start_bot_for_window`.
+- PR: https://github.com/sammy2603/auto-login-TO/pull/1
+
+Status:
+🟢 Funcionando
+
+### Concluído — Suíte de testes do núcleo
+
+- Os 4 arquivos em `tests/` estavam VAZIOS (0 bytes) e o `pytest` não
+  estava instalado nem declarado. Cobertura real era zero -- foi
+  exatamente por isso que o bug acima passou.
+- 54 testes cobrindo `BotEngine`, `ScriptRegistry`, `SessionRegistry`,
+  `StateManager` e `EventBus`. Rodam em ~2s, **sem** win32, OpenCV,
+  Tkinter ou cliente do jogo aberto.
+- Refactor mínimo pra viabilizar: o gating saiu de dentro do `_loop`
+  pro método estático `BotEngine.is_script_enabled()`. A regra que
+  causou o bug agora é uma função pura, testável direto.
+- Os testes de regressão foram VALIDADOS reintroduzindo o bug de
+  propósito: 4 falham (incluindo o de integração do loop), 8 passam.
+  Teste de regressão que não falha com o bug presente não vale nada.
+- Escolhas de teste que valem registro:
+  - `conftest.Flag` é um dublê de `ctk.BooleanVar` (só precisa de
+    `.get()`), o que mantém a suíte livre de Tkinter -- que exigiria
+    display e root window.
+  - `SessionRegistry` guarda estado em atributos de CLASSE, então é
+    global ao processo. Uma fixture `autouse` limpa
+    `_sessions`/`_observers`/`_event_bus` entre os testes, mexendo em
+    privados de propósito (não há reset público).
+  - `test_name_da_instancia_bate_com_o_display_name` amarra as duas
+    pontas do gating: o `script.name` que o engine casa e o
+    `display_name` que a GUI usa pra montar as flags. Se divergirem, o
+    script nunca liga (ou nunca desliga) -- e nada mais no sistema
+    reclamaria.
+- `pytest` foi pro novo `requirements-dev.txt` (não pro
+  `requirements.txt`) pra manter o runtime enxuto. `pytest.ini` fixa
+  `pythonpath = .` e `testpaths = tests`.
+- Os 4 arquivos vazios originais (`test_application.py`,
+  `test_container.py`, `test_game_client.py`, `test_login_workflow.py`)
+  foram MANTIDOS vazios: cobrem workflows/container, que exigem win32 e
+  dublês bem mais pesados. Ficam como próximo passo declarado no
+  BACKLOG.
+
+Status:
+🟢 Funcionando
+
+### Observações pendentes (não tratadas nesta rodada)
+
+- `src/ui/widgets/sidebar.py` e `src/ui/widgets/right_panel.py` são
+  **código morto** -- nada os importa. Ambos têm lógica própria de
+  Start/Stop, o que atrapalhou o diagnóstico do bug acima (a leitura
+  natural é achar que são a UI real, mas quem monta a tela é o
+  `main_window.py` direto).
+- `AGENTS.md` está desatualizado: a seção "Key files" ainda lista
+  `main.py`, `window_utils.py`, `vision.py` e `input_utils.py` como
+  arquivos centrais, mas os três últimos foram removidos na Fase 2.
+- 4 scripts continuam stubs que retornam `False`: BC, Sell, Hollow,
+  Delete.
+
 ## 2026-08-01 (4)
 
 ### Concluído — StateManager
