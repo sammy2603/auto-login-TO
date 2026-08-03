@@ -22,6 +22,12 @@ This repository automates the login flow for Talisman Online on Windows. It uses
 ## Verification
 Before considering work complete, verify changes with:
 - python -m compileall .
+- python -m pytest
+
+The test suite covers the automation core (BotEngine, ScriptRegistry,
+SessionRegistry, StateManager, EventBus) and runs without win32, OpenCV,
+Tkinter or a running game client. Install dev dependencies with
+`pip install -r requirements-dev.txt`.
 
 When relevant, also validate against the existing tooling:
 - python tools/find_window_title.py
