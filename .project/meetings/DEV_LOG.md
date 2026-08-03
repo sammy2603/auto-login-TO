@@ -94,8 +94,15 @@ Status:
 - `AGENTS.md` está desatualizado: a seção "Key files" ainda lista
   `main.py`, `window_utils.py`, `vision.py` e `input_utils.py` como
   arquivos centrais, mas os três últimos foram removidos na Fase 2.
-- 4 scripts continuam stubs que retornam `False`: BC, Sell, Hollow,
-  Delete.
+- 5 scripts continuam stubs que retornam `False`: BC, Sell, Hollow,
+  Delete e DR Lure.
+- `DR Lure` foi REDUZIDO a stub de propósito. A implementação anterior
+  (apertar a tecla "8" a cada 30s) não correspondia ao que o script
+  deve fazer: manter distância de determinados bosses e conduzi-los
+  pelo mapa segurando o aggro, pra que outros personagens ataquem em
+  segurança (kiting). Aguarda implementação externa -- vai exigir
+  controle de movimento e leitura contínua da distância até o boss,
+  que nenhum script faz hoje.
 
 ## 2026-08-01 (4)
 

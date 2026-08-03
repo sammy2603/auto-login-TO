@@ -87,10 +87,9 @@ ou workflows diretamente.
 Todos em `src/services/bot/scripts/`, registrados em
 `script_registry.py`.
 
-Implementados: attack, potion, pet_food, buff, helper, fairy, revive,
-dr_lure
+Implementados: attack, potion, pet_food, buff, helper, fairy, revive
 
-Stubs (retornam `False`): bc, hollow, sell, delete
+Stubs (retornam `False`): bc, hollow, sell, delete, dr_lure
 
 Para adicionar um script: criar a classe (com `name` e `tick()`,
 conforme o protocolo `BotScript`) e adicionar UMA linha em
