@@ -14,7 +14,10 @@ from src.services.bot.bot_engine import BotEngine
 from src.services.bot.script_registry import ScriptRegistry
 from src.shared.event_bus import EventBus
 from src.app.state_manager import StateManager
+from src.infrastructure.logging import get_logger
 from src.ui.session_registry import SessionRegistry
+
+logger = get_logger(__name__)
 
 
 class AutomationController:
@@ -130,6 +133,7 @@ class AutomationController:
             self.game_reader,
             memory_reader,
             feature_vars,
+            session_label=label,
         )
 
         self.events.publish("bot.started", label=label)
@@ -201,8 +205,8 @@ class AutomationController:
 
         try:
             self.window_service.set_title_for_hwnd(hwnd, title)
-        except Exception as e:
-            print(f"[AutomationController] Aviso: não foi possível renomear a janela ({e})")
+        except Exception:
+            logger.warning("Não foi possível renomear a janela", exc_info=True)
 
     @staticmethod
     def _bring_window_to_front(hwnd: int):
@@ -236,5 +240,5 @@ class AutomationController:
                 win32gui.BringWindowToTop(hwnd)
             finally:
                 win32process.AttachThreadInput(current_thread, fg_thread, False)
-        except Exception as e:
-            print(f"[AutomationController] Aviso: não foi possível focar a janela ({e})")
+        except Exception:
+            logger.warning("Não foi possível focar a janela", exc_info=True)

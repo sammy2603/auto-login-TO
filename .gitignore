@@ -5,3 +5,4 @@ accounts.json
 !templates/.gitkeep
 __pycache__/
 *.pyc
+logs/

@@ -2,6 +2,10 @@ from __future__ import annotations
 import threading
 import time
 
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class GameClient:
     """
@@ -51,7 +55,7 @@ class GameClient:
 
         self.session.launched = True
 
-        print(f"[GameClient] PID: {self.session.pid}")
+        logger.debug("Processo iniciado (PID %s)", self.session.pid)
         return process
 
     # =====================================================
@@ -81,9 +85,7 @@ class GameClient:
 
         if self.session.launched and not self.session.connected:
 
-            print(
-                "[GameClient] Aguardando nova janela após o lançamento..."
-            )
+            logger.info("Aguardando nova janela após o lançamento...")
 
             hwnd, pid = self.window.connect_new_window(
                 timeout=timeout,
@@ -97,9 +99,7 @@ class GameClient:
 
         if self.session.pid is not None:
 
-            print(
-                f"[GameClient] Conectando pelo PID {self.session.pid}..."
-            )
+            logger.info("Conectando pelo PID %s...", self.session.pid)
 
             self.window.connect(
                 pid=self.session.pid,
@@ -108,9 +108,7 @@ class GameClient:
 
         else:
 
-            print(
-                "[GameClient] Conectando pelo título..."
-            )
+            logger.info("Conectando pelo título...")
 
             self.window.connect(
                 title_substring=title_substring,
@@ -150,8 +148,8 @@ class GameClient:
         """
         try:
             self.window.set_title(title)
-        except Exception as e:
-            print(f"[GameClient] Aviso: não foi possível renomear a janela ({e})")
+        except Exception:
+            logger.warning("Não foi possível renomear a janela", exc_info=True)
 
     # =====================================================
     # Vision

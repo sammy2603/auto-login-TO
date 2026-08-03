@@ -4,6 +4,10 @@ import time
 import threading
 from typing import Protocol
 
+from src.infrastructure.logging import get_logger, session_context
+
+logger = get_logger(__name__)
+
 
 class BotScript(Protocol):
     name: str
@@ -30,10 +34,12 @@ class BotEngine:
                 self._scripts.remove(script)
 
     def start(self, hwnd, input_service, vision_service, window_service,
-              game_reader, memory_reader=None, feature_enabled=None):
+              game_reader, memory_reader=None, feature_enabled=None,
+              session_label: str = ""):
         if self._running:
             return
         self._running = True
+        self._session_label = session_label
         self._thread = threading.Thread(
             target=self._loop,
             args=(hwnd, input_service, vision_service, window_service,
@@ -64,7 +70,15 @@ class BotEngine:
 
     def _loop(self, hwnd, input_service, vision_service, window_service,
               game_reader, memory_reader, feature_enabled):
-        print(f"[BotEngine] Iniciado para hwnd={hwnd}")
+        # A thread do motor e propria, entao comeca sem contexto: sem
+        # isto, todo log de script sairia sem dizer de qual conta veio.
+        with session_context(getattr(self, "_session_label", "")):
+            self._run(hwnd, input_service, vision_service, window_service,
+                      game_reader, memory_reader, feature_enabled)
+
+    def _run(self, hwnd, input_service, vision_service, window_service,
+             game_reader, memory_reader, feature_enabled):
+        logger.info("Motor de scripts iniciado (hwnd=%s)", hwnd)
 
         from src.services.game.game_reader import CharInfo, TargetInfo
 
@@ -117,9 +131,9 @@ class BotEngine:
                     )
                     if acted:
                         time.sleep(0.1)
-                except Exception as e:
-                    print(f"[BotEngine] Erro no script '{script.name}': {e}")
+                except Exception:
+                    logger.exception("Erro no script '%s'", script.name)
 
             time.sleep(0.4)
 
-        print(f"[BotEngine] Parado para hwnd={hwnd}")
+        logger.info("Motor de scripts parado (hwnd=%s)", hwnd)

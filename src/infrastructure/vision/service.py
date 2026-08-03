@@ -7,6 +7,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class VisionService:
     """
@@ -26,10 +30,11 @@ class VisionService:
 
     def _warn_missing_once(self, template: str):
         if template not in self._warned_missing:
-            print(
-                f"[VisionService] Aviso: template '{template}.png' não "
-                f"existe em '{self.templates_dir}'. Ignorando essa "
-                f"verificação até o arquivo ser criado."
+            logger.warning(
+                "Template '%s.png' não existe em '%s'. Ignorando essa "
+                "verificação até o arquivo ser criado.",
+                template,
+                self.templates_dir,
             )
             self._warned_missing.add(template)
 

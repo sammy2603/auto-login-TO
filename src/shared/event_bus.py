@@ -3,6 +3,10 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class EventBus:
     """
@@ -49,5 +53,5 @@ class EventBus:
         for callback in callbacks:
             try:
                 callback(**data)
-            except Exception as e:
-                print(f"[EventBus] Erro no assinante de '{event_name}': {e}")
+            except Exception:
+                logger.exception("Erro no assinante de '%s'", event_name)

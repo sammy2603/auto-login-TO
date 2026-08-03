@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import sys
-
 from src.app.application import Application
+from src.infrastructure.logging import LoggingService, get_logger
+
+logger = get_logger(__name__)
 
 
 def main() -> int:
+    LoggingService.setup()
+
     app = Application()
 
     try:
@@ -13,11 +16,11 @@ def main() -> int:
         return 0
 
     except KeyboardInterrupt:
-        print("\nAplicação interrompida pelo usuário.")
+        logger.warning("Aplicação interrompida pelo usuário.")
         return 1
 
-    except Exception as exc:
-        print(f"\nErro durante a execução: {exc}")
+    except Exception:
+        logger.exception("Erro durante a execução")
         return 1
 
     finally:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json, sys, threading, time, tkinter as tk
+import json, logging, threading, time, tkinter as tk
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -11,10 +11,22 @@ import win32gui
 from src.app.application import Application
 from src.app.automation_controller import AutomationController
 from src.config.settings import Settings
+from src.infrastructure.logging import (
+    LoggingService,
+    get_logger,
+    session_context,
+)
+from src.infrastructure.logging.service import (
+    CONSOLE_DATE_FORMAT,
+    CONSOLE_FORMAT,
+)
 from src.services.license.service import LicenseService
 from src.services.game.memory_reader import MemoryReader
 from src.services.bot.script_registry import ScriptRegistry
 from src.shared.character_slots import CharacterSlot
+from src.ui.log_handler import TextboxLogHandler
+
+logger = get_logger(__name__)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
@@ -172,33 +184,6 @@ class AccountDialog:
         )
         dialog.destroy()
 
-class LogRedirector:
-    def __init__(self, widgets, original):
-        self.widgets = widgets if isinstance(widgets, list) else [widgets]
-        self.original = original
-        self._labels: dict[int, str] = {}; self._buffers: dict[int, str] = {}
-        self._lock = threading.Lock()
-    def register(self, label):
-        with self._lock: self._labels[threading.get_ident()] = label
-    def unregister(self):
-        with self._lock: self._labels.pop(threading.get_ident(), None); self._buffers.pop(threading.get_ident(), None)
-    def write(self, text):
-        self.original.write(text)
-        ident = threading.get_ident()
-        with self._lock:
-            label = self._labels.get(ident)
-            buf = self._buffers.get(ident, "") + text
-            lines = []
-            while "\n" in buf: line, buf = buf.split("\n", 1); lines.append(line)
-            self._buffers[ident] = buf
-        for line in lines:
-            prefixed = f"[{label}] {line}" if label else line
-            for w in self.widgets:
-                w.after(0, self._append, w, prefixed + "\n")
-    def _append(self, w, t):
-        w.configure(state="normal"); w.insert("end", t); w.yview_moveto(1.0); w.configure(state="disabled")
-    def flush(self): self.original.flush()
-
 # ============================================================
 # SCRIPT CARD
 # ============================================================
@@ -252,7 +237,6 @@ class MainWindow:
         _init_fonts()
 
         self.accounts = load_accounts()
-        self._active_threads = 0; self._active_lock = threading.Lock()
         self._stop_events: dict[str, threading.Event] = {}
         self._feature_vars: dict[str, dict[str, ctk.BooleanVar]] = {}
         self._widget_states: dict[str, bool] = {}
@@ -279,7 +263,13 @@ class MainWindow:
         self._build_layout()
         self._build_bottom_bar()
 
-        self.log_redirector = LogRedirector(self._console, sys.stdout)
+        # O console da GUI e apenas mais um destino do logging: recebe
+        # as mesmas mensagens que vao pro terminal e pro arquivo.
+        self._log_handler = TextboxLogHandler(self._console)
+        self._log_handler.setFormatter(
+            logging.Formatter(CONSOLE_FORMAT, datefmt=CONSOLE_DATE_FORMAT)
+        )
+        LoggingService.add_handler(self._log_handler)
 
         self._load_client_path()
         self.root.after(500, self._auto_start_accounts)
@@ -887,7 +877,7 @@ class MainWindow:
         """
         Chamado pelo EventBus quando uma sessão conecta/desconecta.
         """
-        print(f"[EventBus] Sessão atualizada: {label}")
+        logger.debug("Sessão atualizada: %s", label)
 
     def _on_bot_state_event(self, label: str):
         """
@@ -895,7 +885,7 @@ class MainWindow:
         'bot.started'/'bot.stopped'). Pode vir de qualquer thread --
         só agenda a atualização real do widget na thread principal.
         """
-        print(f"[EventBus] Script atualizado: {label}")
+        logger.debug("Estado dos scripts atualizado: %s", label)
         self.root.after(0, self._refresh_bot_toggle_button)
 
     def _has_enabled_scripts(self, label: str) -> bool:
@@ -1005,9 +995,6 @@ class MainWindow:
         cp = self._client_path.get().strip()
         if not cp: return
         self._save_client_path()
-        with self._active_lock:
-            if self._active_threads == 0: sys.stdout = self.log_redirector
-            self._active_threads += 1
         se = threading.Event(); self._stop_events[label] = se
         acc = self.accounts[self._account_index[label]]
         threading.Thread(target=self._run_account_loop, args=(acc, cp, se), daemon=True).start()
@@ -1017,44 +1004,46 @@ class MainWindow:
         if ev: ev.set()
 
     def _run_account_loop(self, account, client_path, stop_event):
-        self.log_redirector.register(account.label)
+        # Marca a thread inteira como pertencente a esta conta: dai em
+        # diante, TODA linha logada aqui dentro -- inclusive a que vier
+        # de dentro dos workflows -- sai identificada com o apelido.
         try:
-            while not stop_event.is_set():
-                app = None
-                try:
-                    s = replace(Settings(), username=account.username, password=account.password,
-                               server_name=account.server_name, character_slot=account.character_slot,
-                               client_path=client_path, account_label=account.label)
-                    app = Application(settings=s); app.start()
-                    hwnd = app.container.session.hwnd; pid = app.container.session.pid
-                    if hwnd is None: raise RuntimeError("No window")
-                    cn = account.label
-                    if pid:
-                        try: tmp = MemoryReader(pid); cn = tmp.char_name or account.label; tmp.close()
-                        except: pass
-                    self.controller.register_session(account.label, hwnd, pid, display=cn)
-                    self.controller.rename_window(hwnd, cn)
-                    while not stop_event.is_set():
-                        if not win32gui.IsWindow(hwnd): break
-                        time.sleep(2.0)
-                except Exception as e:
-                    print(f"[{account.label}] Error: {e}")
-                    if stop_event.wait(5.0): break
-                finally:
-                    self.controller.unregister_session(account.label)
-                    if app:
-                        try: app.shutdown()
-                        except: pass
+            with session_context(account.label):
+                self._account_loop_body(account, client_path, stop_event)
         finally:
-            self.log_redirector.unregister()
             self._on_account_finished(account.label)
+
+    def _account_loop_body(self, account, client_path, stop_event):
+        while not stop_event.is_set():
+            app = None
+            try:
+                s = replace(Settings(), username=account.username, password=account.password,
+                           server_name=account.server_name, character_slot=account.character_slot,
+                           client_path=client_path, account_label=account.label)
+                app = Application(settings=s); app.start()
+                hwnd = app.container.session.hwnd; pid = app.container.session.pid
+                if hwnd is None: raise RuntimeError("No window")
+                cn = account.label
+                if pid:
+                    try: tmp = MemoryReader(pid); cn = tmp.char_name or account.label; tmp.close()
+                    except Exception: logger.debug("Nao foi possivel ler o nome do personagem", exc_info=True)
+                self.controller.register_session(account.label, hwnd, pid, display=cn)
+                self.controller.rename_window(hwnd, cn)
+                logger.info("Conta conectada como '%s' (hwnd=%s)", cn, hwnd)
+                while not stop_event.is_set():
+                    if not win32gui.IsWindow(hwnd): break
+                    time.sleep(2.0)
+            except Exception:
+                logger.exception("Falha no ciclo da conta")
+                if stop_event.wait(5.0): break
+            finally:
+                self.controller.unregister_session(account.label)
+                if app:
+                    try: app.shutdown()
+                    except Exception: logger.exception("Falha ao encerrar a Application")
 
     def _on_account_finished(self, label):
         self.controller.forget_session(label)
-        with self._active_lock:
-            self._active_threads -= 1
-            if self._active_threads <= 0:
-                self.root.after(0, lambda: setattr(sys, "stdout", self.log_redirector.original))
 
     def _current_script_configs(self):
         """

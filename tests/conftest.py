@@ -10,6 +10,7 @@ mexe nos atributos privados de propósito.
 
 import pytest
 
+from src.infrastructure.logging import set_session
 from src.ui.session_registry import SessionRegistry
 
 
@@ -24,6 +25,22 @@ def clean_session_registry():
     _reset_session_registry()
     yield
     _reset_session_registry()
+
+
+@pytest.fixture(autouse=True)
+def clean_log_session():
+    """
+    Zera o rótulo de sessão do logging entre os testes.
+
+    Em produção o rótulo é sempre posto via session_context(), que
+    restaura sozinho ao sair. Mas um teste que use set_session() direto
+    vazaria o rótulo pros testes seguintes -- e o sintoma é confuso:
+    falha um teste que não tem nada a ver com sessão, só porque herdou
+    um rótulo de outro.
+    """
+    set_session("")
+    yield
+    set_session("")
 
 
 class Flag:

@@ -1,5 +1,7 @@
 import time
 
+from src.infrastructure.logging import get_logger
+
 
 class BaseWorkflow:
     """
@@ -17,7 +19,14 @@ class BaseWorkflow:
     ):
         self.client = client
         self.settings = settings
-        self.logger = logger
+
+        # 'logger' continua injetável (útil pra teste), mas o default
+        # deixou de ser print: cada workflow ganha o seu logger, o que
+        # preserva a identidade que o prefixo "[LoginWorkflow]" dava e
+        # ainda permite calar um workflow específico por nome.
+        self.logger = logger or get_logger(
+            f"workflows.{self.__class__.__name__}"
+        )
 
     # =====================================================
     # Logging
@@ -27,10 +36,7 @@ class BaseWorkflow:
         """
         Escreve uma mensagem de log.
         """
-        if self.logger:
-            self.logger.info(message)
-        else:
-            print(f"[{self.__class__.__name__}] {message}")
+        self.logger.info(message)
 
     def rename_window(self):
         """

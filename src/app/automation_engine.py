@@ -1,4 +1,7 @@
 from src.domain.exceptions import ServerConnectionInterrupted
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AutomationEngine:
@@ -20,13 +23,13 @@ class AutomationEngine:
 
     def run(self):
 
-        print("Automation Engine iniciado.")
+        logger.info("Automation Engine iniciado.")
 
         self.login_workflow.execute()
 
         self._run_server_and_character()
 
-        print("Fluxo de login concluído.")
+        logger.info("Fluxo de login concluído.")
 
     def _run_server_and_character(self):
         """
@@ -50,18 +53,19 @@ class AutomationEngine:
 
                 attempt += 1
 
-                print(f"[AutomationEngine] {exc}")
+                logger.warning("%s", exc)
 
                 if attempt > self.max_connection_retries:
-                    print(
-                        f"[AutomationEngine] Número máximo de tentativas "
-                        f"({self.max_connection_retries}) excedido. Desistindo."
+                    logger.error(
+                        "Número máximo de tentativas (%s) excedido. Desistindo.",
+                        self.max_connection_retries,
                     )
                     raise
 
-                print(
-                    f"[AutomationEngine] Tentando novamente "
-                    f"({attempt}/{self.max_connection_retries})..."
+                logger.info(
+                    "Tentando novamente (%s/%s)...",
+                    attempt,
+                    self.max_connection_retries,
                 )
 
                 self.login_workflow.retry_login()

@@ -79,8 +79,16 @@ ou workflows diretamente.
 | VisionService | `src/infrastructure/vision/service.py` |
 | InputService | `src/infrastructure/input/service.py` |
 | LoggingService | `src/infrastructure/logging/service.py` |
+| Contexto de sessão do log | `src/infrastructure/logging/models.py` |
+| Console da GUI (handler) | `src/ui/log_handler.py` |
 | GameLauncher | `src/infrastructure/game/launcher.py` |
 | Interfaces (contratos) | `src/core/interfaces/` |
+
+Logging: todo módulo faz `logger = get_logger(__name__)`. Toda thread
+de conta ou de motor de scripts abre um `session_context(label)`, pra
+que cada linha diga de qual conta veio. Saída em console, em
+`logs/loginto.log` (rotativo, gitignored) e no console da GUI. Ver
+`ADR-003-Logging.md`.
 
 ## Scripts de gameplay
 
@@ -123,8 +131,8 @@ re-exporta `Settings` como constantes, mantido para os scripts em
 ## Testes
 
 `tests/` — suíte do núcleo (BotEngine, ScriptRegistry,
-SessionRegistry, StateManager, EventBus). Roda sem win32, OpenCV,
-Tkinter ou cliente aberto.
+SessionRegistry, StateManager, EventBus, logging). Roda sem win32,
+OpenCV, Tkinter ou cliente aberto.
 
 Sem cobertura ainda: workflows, container, GUI. Os arquivos
 `test_application.py`, `test_container.py`, `test_game_client.py` e

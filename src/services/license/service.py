@@ -6,6 +6,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
+
 LICENSE_FILE = Path(__file__).resolve().parents[3] / "license.json"
 
 # Chave secreta usada para assinar as licenças (em produção,
@@ -209,5 +213,5 @@ class LicenseService:
                 ),
                 encoding="utf-8",
             )
-        except Exception as e:
-            print(f"[LicenseService] Aviso: nao foi possivel salvar ({e})")
+        except Exception:
+            logger.warning("Nao foi possivel salvar a licenca", exc_info=True)
