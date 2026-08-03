@@ -1,38 +1,122 @@
 # Agent instructions for LoginTO
 
 ## Project purpose
-This repository automates the login flow for Talisman Online on Windows. It uses Windows message injection, image-based screen matching, and configurable templates under the templates folder.
+This repository automates Talisman Online on Windows: it logs accounts in
+(client launch, credentials, server selection, character entry) and then
+runs gameplay scripts against the logged-in clients. Multiple accounts can
+run at once, each with its own window and its own set of enabled scripts.
 
-## Key files
-- main.py: orchestrates the full login flow.
-- config.py: central configuration, credentials, window title, template names, and thresholds.
-- window_utils.py: window discovery and screen capture helpers.
-- vision.py: image matching logic for locating UI elements.
-- input_utils.py: simulated clicks and text input.
-- templates/: reference images used by the bot.
-- tools/: small utilities for discovering window titles, testing clicks, and capturing screenshots.
+Three techniques are used to talk to the game:
+- **PostMessage input** — keystrokes and clicks injected into a specific
+  window handle, so a client can be driven without holding focus.
+- **Template matching** (OpenCV) — locating UI elements from the reference
+  images under `templates/`. Used by the login flow.
+- **Memory reading** — HP/mana/target/position read straight from the
+  process (`MemoryReader`). Used by the gameplay scripts, since polling
+  pixels for these is slow and fragile.
+
+## Entry points
+- `gui.py` — the graphical app (`python gui.py`). This is the primary way
+  the project is used: account management, script cards, multi-client.
+- `main.py` — terminal-only single login run, no interface
+  (`python main.py`). Useful for debugging the login flow in isolation.
+
+## Architecture
+Three layers, with a strict communication rule:
+
+    Presentation (src/ui)
+        ↓  only through AutomationController
+    Automation (src/app, src/services)
+        ↓
+    Infrastructure (src/infrastructure)
+
+**The rule that matters most:** the GUI must never construct or call
+`WindowService`, `VisionService`, `InputService`, `GameClient`, `BotEngine`
+or workflows directly. Everything goes through
+`src/app/automation_controller.py`. This was violated before and had to be
+corrected; keep it intact.
+
+The authoritative document is `.project/architecture/01_Architecture.md`.
+Decisions are logged in `.project/decisions/` and progress in
+`.project/meetings/DEV_LOG.md` — read the most recent DEV_LOG entries
+before starting work, they carry context that the code does not.
+
+## Key directories
+- `src/ui/` — `main_window.py` builds the entire interface directly
+  (top bar, script cards, client panel, console). `session_registry.py`
+  tracks connected accounts.
+- `src/app/` — `automation_controller.py` (the single door between GUI and
+  core), `application.py`, `container.py` (DI), `state_manager.py`
+  (combined session view), `automation_engine.py` (login orchestration).
+- `src/services/bot/` — `bot_engine.py` (the per-session script loop),
+  `script_registry.py` (the script catalogue), `scripts/` (one file per
+  script).
+- `src/services/game/` — `game_client.py` facade, `memory_reader.py`,
+  `game_reader.py` (pixel reading), `game_session.py`.
+- `src/domain/workflows/` — login, server and character workflows.
+- `src/infrastructure/` — `window/`, `vision/`, `input/`, `game/launcher`,
+  `logging/`. No business rules here.
+- `src/config/settings.py` — the single source of truth for configuration
+  (frozen dataclass, credentials from `.env`).
+- `src/shared/` — constants, keys, offsets, delays, `event_bus.py`.
+- `templates/` — reference images for template matching.
+- `tools/` — standalone debugging utilities (window discovery, click
+  testing, screenshots, memory scanning).
+- `tests/` — pytest suite for the automation core.
+
+Note: `config.py` at the repository root is only a compatibility shim that
+re-exports `Settings` as module-level constants, kept so the scripts in
+`tools/` keep working. **New code must import `src.config.settings`
+directly.**
 
 ## Working conventions
 - Keep changes compatible with Windows and Python 3.10+.
-- Avoid hardcoding user credentials or secrets. Prefer environment variables or a local .env file.
-- Preserve the existing approach of using PostMessage-based input unless a fallback is explicitly required.
-- When adding new templates, keep the naming consistent with the existing files in templates/.
-- Prefer configurable values in config.py over magic numbers.
+- Never hardcode credentials or secrets. Credentials come from `.env`
+  (`TALISMAN_USER` / `TALISMAN_PASS`); saved accounts live in
+  `accounts.json` and store passwords in plain text. `.env`,
+  `accounts.json` and `gui_settings.json` are all gitignored and hold
+  real user data — never paste their contents into commits, issues,
+  logs or PR descriptions.
+- Preserve the PostMessage-based input approach unless a fallback is
+  explicitly required.
+- Prefer values in `src/config/settings.py` over magic numbers.
+- When adding new templates, keep the naming consistent with the existing
+  files in `templates/`.
+- **Adding a gameplay script**: create the class in
+  `src/services/bot/scripts/` (it needs a `name` attribute and a `tick()`
+  method, per the `BotScript` protocol in `bot_engine.py`), then add ONE
+  line to `register_builtin_scripts()` in `script_registry.py`. Nothing
+  else — the GUI cards, colours and icons are derived from the registry.
+  The script's `name` must equal the descriptor's `display_name`, or the
+  script will never be enabled (there is a test guarding this).
+- Scripts must not depend on each other.
+- A script only runs when its feature flag is registered **and** enabled.
+  Absence of a flag means OFF — treating "no state" as ON once made every
+  script run with its card switched off.
 
 ## Verification
 Before considering work complete, verify changes with:
-- python -m compileall .
-- python -m pytest
+- `python -m compileall .`
+- `python -m pytest`
 
 The test suite covers the automation core (BotEngine, ScriptRegistry,
 SessionRegistry, StateManager, EventBus) and runs without win32, OpenCV,
 Tkinter or a running game client. Install dev dependencies with
 `pip install -r requirements-dev.txt`.
 
-When relevant, also validate against the existing tooling:
-- python tools/find_window_title.py
-- python tools/test_click.py 400 300
+Workflows, the DI container and the GUI are **not** covered yet — changes
+there need manual verification, and the game client is generally not
+available during local work. Say so plainly when that is the case rather
+than implying a change was verified.
 
 ## Notes
-- The bot depends on specific UI templates and window titles. If a change affects matching behavior, update the relevant template names and thresholds carefully.
-- Do not assume the client or game window is available during local verification; use the available checks and report any environment limitations clearly.
+- The bot depends on specific UI templates, window titles and memory
+  offsets. If a change affects matching or reading behaviour, update the
+  relevant template names, thresholds (`match_threshold`) and offsets
+  (`src/shared/offsets.py`) carefully.
+- The default `client_path` in `settings.py` is a machine-specific
+  absolute path. The GUI overrides and persists it in `gui_settings.json`;
+  do not assume the default is valid.
+- Do not assume the client or game window is available during local
+  verification; use the available checks and report any environment
+  limitations clearly.

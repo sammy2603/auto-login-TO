@@ -1058,8 +1058,9 @@ class MainWindow:
 
     def _current_script_configs(self):
         """
-        Configuração atual de cada script, editada via os diálogos da
-        sidebar. É estado de apresentação (a GUI é quem edita), por
+        Configuração atual de cada script, editada pelos diálogos que
+        abrem no botão de engrenagem de cada ScriptCard. É estado de
+        apresentação (a GUI é quem edita), por
         isso continua vivendo aqui -- o Controller só recebe e repassa
         pros scripts na hora de ligar o motor.
         """
