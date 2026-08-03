@@ -6,8 +6,9 @@ class SessionRegistry:
     """
     Registro thread-safe das sessoes ativas do jogo.
 
-    Cada conta logada registra seu HWND aqui. O RightPanel
-    observa mudancas para exibir a lista de janelas abertas.
+    Cada conta logada registra seu HWND aqui. A lista de clients da
+    GUI e alimentada pelo polling em MainWindow._poll_loop, que le o
+    estado combinado via AutomationController.state.
 
     Também publica eventos no EventBus compartilhado (se vinculado via
     bind_event_bus), pra quem preferir reagir a mudanças específicas

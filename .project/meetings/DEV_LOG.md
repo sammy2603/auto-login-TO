@@ -61,13 +61,36 @@ Status:
 Status:
 🟢 Funcionando
 
+### Concluído — Remoção do código morto da UI
+
+- Removidos `src/ui/widgets/sidebar.py` (Sidebar) e
+  `src/ui/widgets/right_panel.py` (RightPanel). Nada no sistema os
+  importava -- as únicas ocorrências dos nomes eram as próprias
+  definições de classe, uma docstring e entradas históricas deste log.
+- Por que incomodavam: ambos tinham lógica PRÓPRIA de Start/Stop
+  (`RightPanel._on_action`, `RightPanel._update_action_btn`,
+  `Sidebar._toggle`). No diagnóstico do bug acima, a leitura natural é
+  supor que são a UI de verdade e investigar ali -- mas quem monta a
+  tela é o `main_window.py` direto.
+- O diretório `src/ui/widgets/` foi removido junto: ficou vazio, e
+  nunca chegou a ter `__init__.py` (não era nem um pacote de fato).
+- Duas docstrings obsoletas corrigidas no caminho:
+  - `session_registry.py` dizia que "o RightPanel observa mudanças para
+    exibir a lista de janelas abertas" -- quem faz isso hoje é o
+    polling em `MainWindow._poll_loop`, via
+    `AutomationController.state`.
+  - `main_window._current_script_configs` dizia que as configs são
+    "editadas via os diálogos da sidebar" -- hoje são editadas pelos
+    diálogos que abrem no botão de engrenagem de cada `ScriptCard`.
+- Verificação: 54 testes passando, `compileall` OK, e
+  `import src.ui.main_window` funcionando -- prova direta de que nada
+  dependia dos módulos removidos.
+
+Status:
+🟢 Funcionando
+
 ### Observações pendentes (não tratadas nesta rodada)
 
-- `src/ui/widgets/sidebar.py` e `src/ui/widgets/right_panel.py` são
-  **código morto** -- nada os importa. Ambos têm lógica própria de
-  Start/Stop, o que atrapalhou o diagnóstico do bug acima (a leitura
-  natural é achar que são a UI real, mas quem monta a tela é o
-  `main_window.py` direto).
 - `AGENTS.md` está desatualizado: a seção "Key files" ainda lista
   `main.py`, `window_utils.py`, `vision.py` e `input_utils.py` como
   arquivos centrais, mas os três últimos foram removidos na Fase 2.
