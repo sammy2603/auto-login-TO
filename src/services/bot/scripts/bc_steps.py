@@ -1,0 +1,289 @@
+# -*- coding: utf-8 -*-
+"""
+Roteiro do BC (Battle Cave) como DADOS.
+
+Traduzido dos macros antigos. As coordenadas ficam aqui, separadas da
+logica, porque sao o que mais envelhece: qualquer patch que mexa na UI
+do jogo exige recalibrar, e isso tem que ser editar uma tabela, nao
+cacar chamadas de clique no meio do codigo.
+
+TODAS as coordenadas assumem client area de 1024x768 -- e a resolucao
+que os macros originais usavam (valores vao de x=15 a x=997, y=52 a
+y=714) e a que o Settings.target_width/height ja fixa.
+
+As teclas NAO estao aqui: vem da configuracao do usuario, via o dict
+passado em cada funcao. Ver DEFAULT_CONFIG em bc.py.
+"""
+
+from __future__ import annotations
+
+from src.services.bot.step_runner import (
+    Step,
+    attack_until_dead,
+    double_right,
+    key,
+    key_down,
+    key_up,
+    left,
+    repeat,
+    retry_until_color,
+    right,
+    wait,
+)
+
+# Cor que o macro usava pra confirmar "entrou na cave" (pixel 945,148).
+# 65280 == 0x00FF00 lido como RGB = verde puro; e o unico dos tres
+# valores herdados que casa com uma cor obvia. Configuravel mesmo
+# assim, porque o formato original nao esta documentado.
+COR_DENTRO_DA_CAVE = 0x00FF00
+PIXEL_DENTRO_DA_CAVE = (945, 148)
+
+
+# =====================================================
+# Preparo
+# =====================================================
+
+def ajustes_iniciais(cfg) -> list[Step]:
+    """Abre o painel de team e ajusta a camera."""
+    return [
+        key_down(cfg["team_key"], note="segura o painel de team aberto"),
+        *repeat(3, [left(997, 97, note="zoom/camera")]),
+        left(864, 55),
+        wait(0.5),
+    ]
+
+
+def convidar_team(cfg) -> list[Step]:
+    return [
+        left(15, 496, note="abre a lista"),
+        wait(0.5),
+        left(439, 334, note="convida"),
+        wait(0.5),
+    ]
+
+
+def montar(cfg) -> list[Step]:
+    return [
+        key(cfg["mount_key"], note="monta"),
+        wait(3.0),
+    ]
+
+
+def ir_para_ghost(cfg) -> list[Step]:
+    """Caminhada ate o ghost -- cliques no minimapa."""
+    return [
+        double_right(507, 472), double_right(463, 474), double_right(463, 474),
+        double_right(479, 482), double_right(457, 467), double_right(516, 478),
+        double_right(454, 469), double_right(456, 439),
+        wait(0.1),
+        left(303, 592, note="confirma"),
+        wait(2.0),
+    ]
+
+
+# =====================================================
+# Comercio
+# =====================================================
+
+def comprar_pot(cfg) -> list[Step]:
+    """
+    Compra de pocoes: 16 rodadas de 24 cliques no item.
+
+    Vem do macro 'comprar pot', que segura o team_key durante todo o
+    processo -- mantido igual.
+    """
+    rodada = [
+        right(481, 387), right(494, 423), right(490, 403),
+        right(483, 351), right(495, 393),
+        wait(0.5),
+        left(300, 398, note="abre a loja"),
+        wait(0.5),
+        *repeat(cfg["compras_por_rodada"], [left(199, 325, note="compra")]),
+        wait(0.5),
+        left(190, 713, note="fecha"),
+    ]
+    return repeat(cfg["rodadas_de_compra"], rodada)
+
+
+def vender(cfg) -> list[Step]:
+    """Ciclo de venda: abre menu, navega ate o NPC, vende."""
+    return [
+        left(974, 55), wait(1.0),
+        left(597, 391), wait(1.0),
+        left(378, 328), wait(1.0),
+        left(607, 164), wait(5.0),
+
+        double_right(477, 345), double_right(466, 391), double_right(510, 384),
+        double_right(481, 427), double_right(488, 330), double_right(513, 373),
+        double_right(465, 377), double_right(459, 371), double_right(522, 398),
+        wait(1.0),
+        left(269, 396, note="abre a loja"),
+        wait(1.0),
+        *repeat(6, [left(450, 326), left(445, 325)]),
+        left(488, 714, note="fecha"),
+        wait(0.5),
+    ]
+
+
+# =====================================================
+# Ida ate a cave
+# =====================================================
+
+def ir_para_cave(cfg) -> list[Step]:
+    return [
+        left(978, 56), wait(0.5),
+        left(594, 415), wait(0.5),
+        *repeat(5, [left(359, 273), wait(5.0)]),
+        left(407, 537),
+        wait(0.5),
+    ]
+
+
+def entrar_na_cave(cfg) -> list[Step]:
+    """
+    Entrada na cave, com retentativa.
+
+    E o unico ponto dos macros com realimentacao real: o original
+    repetia num 'while_not' ate o pixel (945,148) ficar verde. Aqui a
+    retentativa tem LIMITE -- o original podia ficar preso pra sempre.
+    """
+    tentativa = [
+        double_right(467, 417), double_right(471, 394), double_right(479, 377),
+        double_right(479, 362), double_right(486, 390), double_right(479, 393),
+        double_right(508, 405),
+        wait(1.0),
+        left(266, 366, note="confirma a entrada"),
+        wait(10.0),
+    ]
+
+    return retry_until_color(
+        tentativa,
+        *PIXEL_DENTRO_DA_CAVE,
+        cfg.get("cor_dentro_da_cave", COR_DENTRO_DA_CAVE),
+        vezes=cfg["tentativas_de_entrada"],
+    )
+
+
+def sair_do_team(cfg) -> list[Step]:
+    return [
+        key_up(cfg["team_key"], note="solta o painel de team"),
+        right(50, 52),
+        wait(0.5),
+        left(104, 94, note="sai do team"),
+        wait(0.5),
+    ]
+
+
+# =====================================================
+# Dentro da cave
+# =====================================================
+
+# As 75 caminhadas do macro. Sao cliques no MINIMAPA (canto superior
+# direito -- x entre 861 e 970, y entre 58 e 166), nao no chao, o que e
+# uma boa noticia: minimapa nao depende do angulo da camera.
+_CAMINHO_CAVE = [
+    (874, 105), (883, 78), (871, 98), (883, 74), (908, 76), (885, 79),
+    (884, 78), (915, 70), (901, 83), (885, 85), (864, 108), (870, 142),
+    (873, 152), (863, 96), (865, 89), (868, 116), (871, 125), (861, 101),
+    (868, 130), (877, 152), (880, 159), (894, 163), (914, 164), (887, 165),
+    (888, 157), (906, 144), (955, 146), (948, 157), (956, 152), (959, 145),
+    (905, 163), (892, 164), (958, 148), (958, 144), (955, 152), (950, 158),
+    (940, 161), (964, 122), (970, 110), (964, 92), (938, 63), (905, 78),
+    (951, 89), (968, 103), (951, 157), (948, 157), (967, 124), (970, 91),
+    (950, 72), (957, 80), (944, 65), (921, 67), (928, 71), (884, 76),
+    (883, 75), (874, 84), (869, 115), (861, 117), (884, 111), (923, 68),
+    (918, 75), (863, 114), (869, 113), (876, 116), (874, 116), (919, 166),
+    (918, 166), (961, 115), (915, 144), (915, 153), (963, 112), (940, 113),
+    (964, 113), (917, 58), (888, 116), (895, 116),
+]
+
+
+def andar_na_cave(cfg) -> list[Step]:
+    passos: list[Step] = []
+    for x, y in _CAMINHO_CAVE:
+        passos.append(right(x, y))
+        passos.append(wait(cfg["intervalo_caminhada"]))
+    return passos
+
+
+# Sequencia de aproximacao do NPC, repetida na retentativa do macro.
+_APROXIMA_NPC = [
+    (230, 202), (219, 296), (227, 193), (198, 241), (223, 293),
+    (293, 256), (119, 237), (233, 299), (255, 308), (219, 185),
+]
+
+
+def entrar_no_npc(cfg) -> list[Step]:
+    return [
+        double_right(390, 321),
+        *[double_right(x, y) for x, y in _APROXIMA_NPC],
+        double_right(387, 331),
+        double_right(285, 266),
+        wait(1.0),
+        double_right(239, 263),
+        *[double_right(x, y) for x, y in _APROXIMA_NPC],
+        double_right(216, 223),
+        double_right(285, 266),
+        wait(1.0),
+        left(278, 332, note="fala com o NPC"),
+        wait(4.0),
+    ]
+
+
+def caminho_boss(cfg) -> list[Step]:
+    return [
+        left(680, 475),
+        wait(2.0),
+        right(879, 112),
+        wait(1.0),
+        *repeat(9, [right(887, 114), wait(1.0)]),
+        key(cfg["mount_key"], note="desmonta antes de lutar"),
+        wait(0.5),
+    ]
+
+
+def atacar_boss(cfg) -> list[Step]:
+    """
+    Substitui o 'repeat 130 {tab, 3, wait 1s}' do macro.
+
+    O original batia 130 vezes independentemente do que acontecesse:
+    se o boss morresse antes, desperdicava minutos; se demorasse mais,
+    desistia no meio. Aqui le a vida do alvo.
+    """
+    return [
+        attack_until_dead(
+            cfg["skills"],
+            timeout=cfg["timeout_boss"],
+            skill_interval=cfg["intervalo_skill"],
+            note="ataca ate o boss cair",
+        ),
+    ]
+
+
+def usar_courage(cfg) -> list[Step]:
+    """
+    Abre o inventario e usa o courage.
+
+    ATENCAO: o macro achava o item por COR (5391624), num formato nao
+    documentado. Sem conferir contra o jogo, esse numero nao e
+    confiavel -- por isso aqui usa posicao fixa, configuravel. Quando a
+    cor for confirmada, da pra trocar por find_color.
+    """
+    if not cfg.get("usar_courage"):
+        return []
+
+    return [
+        key(cfg["inventory_key"], note="abre o inventario"),
+        wait(1.0),
+        double_right(*cfg["courage_pos"], note="usa o courage"),
+        wait(0.5),
+        key(cfg["inventory_key"], note="fecha o inventario"),
+        wait(1.0),
+    ]
+
+
+def voltar_para_stone(cfg) -> list[Step]:
+    return [
+        key(cfg["stone_key"], note="volta pra Stone City"),
+        wait(4.0),
+    ]

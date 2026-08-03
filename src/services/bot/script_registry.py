@@ -104,7 +104,7 @@ def register_builtin_scripts():
     ScriptRegistry.register(ScriptDescriptor("fairy", "Fairy", "\u2726", "companion", FairyScript, has_config=True))
     ScriptRegistry.register(ScriptDescriptor("revive", "Revive", "\u2715", "combat", ReviveScript, has_config=True))
     ScriptRegistry.register(ScriptDescriptor("delete", "Delete", "\u2717", "neutral", DeleteScript, has_config=False))
-    ScriptRegistry.register(ScriptDescriptor("bc", "BC", "\u25C6", "special", BCScript, has_config=False))
+    ScriptRegistry.register(ScriptDescriptor("bc", "BC", "\u25C6", "special", BCScript, has_config=True))
     ScriptRegistry.register(ScriptDescriptor("hollow", "Hollow", "\u25CE", "companion", HollowScript, has_config=False))
     ScriptRegistry.register(ScriptDescriptor("sell", "Sell", "\u25C8", "highlight", SellScript, has_config=False))
     ScriptRegistry.register(ScriptDescriptor("dr_lure", "DR Lure", "\u25C9", "companion", DRLureScript, has_config=False))

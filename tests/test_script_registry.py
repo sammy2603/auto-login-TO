@@ -55,9 +55,19 @@ def test_create_instance_sem_config_usa_dict_vazio():
 
 
 def test_create_instance_ignora_config_de_quem_nao_declara():
-    """Scripts com has_config=False são instanciados sem argumentos."""
-    script = ScriptRegistry.create_instance("bc", {"irrelevante": True})
-    assert script.name == "BC"
+    """
+    Scripts com has_config=False são instanciados sem argumentos --
+    passar config pra eles levantaria TypeError.
+
+    'hollow' é usado aqui por ser um stub sem config; se um dia ganhar
+    configuração, troque por outro has_config=False em vez de apagar o
+    teste.
+    """
+    descriptor = ScriptRegistry.get("hollow")
+    assert descriptor.has_config is False
+
+    script = ScriptRegistry.create_instance("hollow", {"irrelevante": True})
+    assert script.name == "Hollow"
 
 
 def test_create_instance_de_chave_inexistente_levanta():

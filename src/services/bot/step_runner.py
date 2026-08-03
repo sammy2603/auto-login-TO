@@ -1,0 +1,397 @@
+# -*- coding: utf-8 -*-
+"""
+Motor de passos para scripts longos.
+
+O problema: os macros antigos sao sequencias lineares de varios
+minutos, cheias de 'wait'. O tick() dos nossos scripts nao pode
+bloquear -- ele roda num loop compartilhado com os outros scripts da
+mesma conta, entao um BC que segure a thread por 6 minutos impede a
+pocao de ser usada e mata o personagem.
+
+A solucao: o roteiro vira uma LISTA DE PASSOS declarativa, e o runner
+guarda em que passo esta. Cada tick executa no maximo um passo e
+devolve o controle. Uma espera de 2 segundos nao dorme: ela anota um
+prazo e os ticks seguintes so verificam se ja venceu.
+
+Vantagem colateral: as centenas de coordenadas viram DADOS, num
+arquivo separado. Recalibrar depois de um patch do jogo e editar uma
+tabela, nao cacar chamadas de clique no meio da logica.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+# =====================================================
+# Passos
+# =====================================================
+
+LEFT = "left"                    # clique esquerdo (menus, botoes)
+RIGHT = "right"                  # clique direito = MOVIMENTO no jogo
+DOUBLE_RIGHT = "double_right"    # duplo direito = interagir/mover
+KEY = "key"                      # pressiona e solta
+KEY_DOWN = "key_down"            # segura
+KEY_UP = "key_up"                # solta
+WAIT = "wait"                    # espera nao-bloqueante
+WAIT_COLOR = "wait_color"        # espera um pixel ficar de certa cor
+SKIP_IF_COLOR = "skip_if_color"  # pula N passos se a cor ja estiver la
+ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
+CALL = "call"                    # delega a um callable do script
+
+
+@dataclass(frozen=True)
+class Step:
+    """
+    Um passo do roteiro.
+
+    'kind' e uma das constantes acima; 'args' varia por tipo. Frozen
+    de proposito: o roteiro e dado imutavel, compartilhado entre
+    sessoes -- o estado de execucao vive no runner, nunca no passo.
+    """
+
+    kind: str
+    args: tuple = ()
+    timeout: float = 0.0
+    note: str = ""
+
+
+# Atalhos para montar roteiros de forma legivel no arquivo de dados.
+def left(x: int, y: int, note: str = "") -> Step:
+    return Step(LEFT, (x, y), note=note)
+
+
+def right(x: int, y: int, note: str = "") -> Step:
+    return Step(RIGHT, (x, y), note=note)
+
+
+def double_right(x: int, y: int, note: str = "") -> Step:
+    return Step(DOUBLE_RIGHT, (x, y), note=note)
+
+
+def key(k, note: str = "") -> Step:
+    return Step(KEY, (k,), note=note)
+
+
+def key_down(k, note: str = "") -> Step:
+    return Step(KEY_DOWN, (k,), note=note)
+
+
+def key_up(k, note: str = "") -> Step:
+    return Step(KEY_UP, (k,), note=note)
+
+
+def wait(seconds: float, note: str = "") -> Step:
+    return Step(WAIT, (seconds,), note=note)
+
+
+def wait_color(x: int, y: int, color, timeout: float = 60.0,
+               tolerance: int = 10, note: str = "") -> Step:
+    """
+    Espera o pixel (x, y) ficar da cor indicada.
+
+    E o 'while_not' dos macros antigos -- a unica realimentacao real
+    que eles tinham. Se estourar o timeout, o runner registra e segue,
+    em vez de travar pra sempre.
+    """
+    return Step(WAIT_COLOR, (x, y, color, tolerance), timeout=timeout, note=note)
+
+
+def skip_if_color(x: int, y: int, color, steps_ahead: int,
+                  tolerance: int = 10, note: str = "") -> Step:
+    """
+    Pula os proximos 'steps_ahead' passos se o pixel ja estiver da cor
+    indicada.
+
+    E como o retry dos macros vira dado: monta-se N tentativas em
+    sequencia e, entre elas, um skip que descarta as restantes assim
+    que a condicao for satisfeita. Sem isto, so daria pra repetir as
+    tentativas cegamente, mesmo depois de ter dado certo.
+    """
+    return Step(SKIP_IF_COLOR, (x, y, color, tolerance, steps_ahead), note=note)
+
+
+def retry_until_color(tentativa: list[Step], x: int, y: int, color,
+                      vezes: int = 3, tolerance: int = 10) -> list[Step]:
+    """
+    Repete um bloco ate o pixel (x, y) ficar da cor indicada, no maximo
+    'vezes'. Substitui o 'while_not' dos macros -- com limite, pra nao
+    ficar preso pra sempre como o original ficava.
+    """
+    saida: list[Step] = []
+    for n in range(vezes):
+        restantes = (vezes - n - 1) * (len(tentativa) + 1)
+        saida.extend(tentativa)
+        if restantes > 0:
+            saida.append(skip_if_color(x, y, color, restantes, tolerance))
+    return saida
+
+
+def attack_until_dead(skills, timeout: float = 300.0,
+                      skill_interval: float = 1.0, note: str = "") -> Step:
+    """
+    Cicla as skills ate o alvo morrer.
+
+    Substitui o 'repeat 130' do macro: em vez de contar repeticoes e
+    torcer, le a vida do alvo. Se o alvo morrer antes, para antes; se
+    demorar mais, continua.
+    """
+    return Step(ATTACK_UNTIL_DEAD, (tuple(skills), skill_interval),
+                timeout=timeout, note=note)
+
+
+def call(fn: Callable, note: str = "") -> Step:
+    """Delega a um callable do proprio script (logica que nao vira dado)."""
+    return Step(CALL, (fn,), note=note)
+
+
+def repeat(times: int, steps: list[Step]) -> list[Step]:
+    """
+    Expande um bloco repetido em passos literais.
+
+    As repeticoes dos macros tem contagem constante, entao nao precisam
+    de controle de fluxo em tempo de execucao -- expandir na montagem
+    do roteiro mantem o runner simples.
+    """
+    saida: list[Step] = []
+    for _ in range(times):
+        saida.extend(steps)
+    return saida
+
+
+# =====================================================
+# Contexto
+# =====================================================
+
+@dataclass
+class StepContext:
+    """O que um passo precisa para agir. Montado a cada tick."""
+
+    hwnd: Any
+    input_service: Any
+    vision_service: Any = None
+    char_info: Any = None
+    target_info: Any = None
+
+
+# =====================================================
+# Runner
+# =====================================================
+
+class StepRunner:
+    """
+    Executa uma lista de passos ao longo de varios ticks.
+
+    Nao dorme: passos de espera anotam um prazo e os ticks seguintes
+    apenas verificam se ja venceu.
+    """
+
+    def __init__(self, steps: list[Step], name: str = ""):
+        self._steps = list(steps)
+        self._name = name
+        self._index = 0
+        self._deadline: float | None = None
+        self._step_started: float | None = None
+        self._last_action: float = 0.0
+
+    # -------------------------------------------------
+    # Estado
+    # -------------------------------------------------
+
+    @property
+    def finished(self) -> bool:
+        return self._index >= len(self._steps)
+
+    @property
+    def index(self) -> int:
+        return self._index
+
+    @property
+    def total(self) -> int:
+        return len(self._steps)
+
+    @property
+    def progress(self) -> str:
+        return f"{self._index}/{len(self._steps)}"
+
+    def reset(self):
+        self._index = 0
+        self._deadline = None
+        self._step_started = None
+        self._last_action = 0.0
+
+    # -------------------------------------------------
+    # Execucao
+    # -------------------------------------------------
+
+    def tick(self, ctx: StepContext) -> bool:
+        """
+        Tenta avancar um passo. Devolve True se agiu.
+
+        Nunca bloqueia: se o passo atual e uma espera que ainda nao
+        venceu, devolve False na hora e tenta de novo no proximo tick.
+        """
+
+        if self.finished:
+            return False
+
+        step = self._steps[self._index]
+
+        if self._step_started is None:
+            self._step_started = time.time()
+
+        try:
+            concluido = self._execute(step, ctx)
+        except Exception:
+            logger.exception(
+                "Falha no passo %s de '%s' (%s)",
+                self._index, self._name, step.kind,
+            )
+            self._advance()
+            return True
+
+        if concluido:
+            self._advance()
+
+        return True
+
+    def _advance(self):
+        self._index += 1
+        self._deadline = None
+        self._step_started = None
+
+    def _timed_out(self, step: Step) -> bool:
+        if not step.timeout or self._step_started is None:
+            return False
+        return (time.time() - self._step_started) >= step.timeout
+
+    def _execute(self, step: Step, ctx: StepContext) -> bool:
+        """Devolve True quando o passo terminou."""
+
+        kind = step.kind
+
+        if kind == LEFT:
+            x, y = step.args
+            ctx.input_service.click(ctx.hwnd, x, y)
+            return True
+
+        if kind == RIGHT:
+            x, y = step.args
+            ctx.input_service.right_click(ctx.hwnd, x, y)
+            return True
+
+        if kind == DOUBLE_RIGHT:
+            x, y = step.args
+            ctx.input_service.double_right_click(ctx.hwnd, x, y)
+            return True
+
+        if kind == KEY:
+            ctx.input_service.press_key(ctx.hwnd, step.args[0])
+            return True
+
+        if kind == KEY_DOWN:
+            ctx.input_service.key_down(ctx.hwnd, step.args[0])
+            return True
+
+        if kind == KEY_UP:
+            ctx.input_service.key_up(ctx.hwnd, step.args[0])
+            return True
+
+        if kind == WAIT:
+            return self._do_wait(step)
+
+        if kind == WAIT_COLOR:
+            return self._do_wait_color(step, ctx)
+
+        if kind == SKIP_IF_COLOR:
+            x, y, color, tolerance, adiante = step.args
+            if ctx.vision_service is not None and ctx.vision_service.pixel_matches(
+                ctx.hwnd, x, y, color, tolerance
+            ):
+                logger.info("Condicao satisfeita; pulando %s passos", adiante)
+                self._index += adiante
+            return True
+
+        if kind == ATTACK_UNTIL_DEAD:
+            return self._do_attack(step, ctx)
+
+        if kind == CALL:
+            return bool(step.args[0](ctx))
+
+        logger.warning("Passo desconhecido, pulando: %s", kind)
+        return True
+
+    def _do_wait(self, step: Step) -> bool:
+        if self._deadline is None:
+            self._deadline = time.time() + step.args[0]
+            return False
+        return time.time() >= self._deadline
+
+    def _do_wait_color(self, step: Step, ctx: StepContext) -> bool:
+        x, y, color, tolerance = step.args
+
+        if ctx.vision_service is None:
+            logger.warning("wait_color sem vision_service; pulando")
+            return True
+
+        if ctx.vision_service.pixel_matches(ctx.hwnd, x, y, color, tolerance):
+            return True
+
+        if self._timed_out(step):
+            # Seguir sem a confirmacao e ruim, mas travar pra sempre e
+            # pior: o macro original ficava preso no while_not.
+            logger.warning(
+                "Cor esperada em (%s, %s) nao apareceu em %ss; seguindo mesmo assim",
+                x, y, step.timeout,
+            )
+            return True
+
+        return False
+
+    def _do_attack(self, step: Step, ctx: StepContext) -> bool:
+        skills, intervalo = step.args
+
+        alvo_morto = (
+            ctx.target_info is None
+            or not getattr(ctx.target_info, "name", "")
+            or getattr(ctx.target_info, "hp_pct", 0) <= 0
+        )
+
+        if alvo_morto and self._step_started is not None:
+            # So considera concluido depois de ter batido pelo menos uma
+            # vez: no primeiro tick o alvo ainda nem foi selecionado.
+            if self._last_action > 0:
+                logger.info("Alvo derrubado")
+                self._last_action = 0.0
+                return True
+
+        if self._timed_out(step):
+            logger.warning(
+                "Alvo nao caiu em %ss; seguindo pro proximo passo", step.timeout
+            )
+            self._last_action = 0.0
+            return True
+
+        agora = time.time()
+
+        if agora - self._last_action < intervalo:
+            return False
+
+        if not skills:
+            return True
+
+        # TAB seleciona o alvo mais proximo; depois cicla as skills.
+        indice = int((agora / max(intervalo, 0.01))) % len(skills)
+
+        ctx.input_service.press_key(ctx.hwnd, "TAB")
+        ctx.input_service.press_key(ctx.hwnd, skills[indice])
+
+        self._last_action = agora
+
+        return False
