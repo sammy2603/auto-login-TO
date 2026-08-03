@@ -61,6 +61,63 @@ Status:
 Status:
 🟢 Funcionando
 
+### Concluído — BC (Battle Cave) e o motor de passos
+
+- O BC deixou de ser stub. Traduzidos os 4 macros antigos (~650
+  cliques) num ciclo configurável. Ver `ADR-004-Motor-de-Passos.md`.
+- **Os macros não eram Lua** -- eram de um gravador de macros
+  (`left x,y`, `double_right`, `send_down {f12}`, `findcolor`). Não
+  precisou de interpretador; foi tradução conceitual.
+- **Motor de passos** (`step_runner.py`): o roteiro virou lista
+  declarativa e o runner guarda em que passo está. Cada tick executa um
+  passo. Espera não dorme -- anota prazo. É o que permite os ~6 minutos
+  do BC sem travar a Potion.
+- **Roteiro como dado** (`bc_steps.py`): as coordenadas são o que mais
+  envelhece, então ficam numa tabela, longe da lógica.
+- **Ciclo configurável**: preparo → [run → reset] ×N → retorno. Ao
+  matar o boss, sai pelo NPC que aparece (teleporta pro NPC de entrada)
+  e repete a run; só depois da última volta pra cidade e vende.
+- **Auto-contido por decisão do usuário**: o BC não conversa com os
+  outros scripts nem depende deles. Tem as próprias 4 skills e teclas.
+  Ligar o card Attack junto é escolha de quem usa -- o BC não
+  interfere nem avisa. Mesma regra vale pro DR Lure.
+- **Courage por template matching**, não por cor. O macro procurava a
+  cor 5391624 (formato não documentado) e usava UMA vez. Agora acha o
+  ícone e repete enquanto encontrar -- não se sabe quantas bags o boss
+  dropou, então contagem fixa erra pros dois lados. Precisa do recorte
+  `templates/courage_bag.png`.
+- Primitivas novas que faltavam: clique direito e duplo-direito (87%
+  do macro), `key_down`/`key_up`/`held_key`, F1–F12 (`press_key("F12")`
+  levantava ValueError), e checagem de cor de pixel/região.
+- Diálogo de configuração na GUI: 4 skills, mount, stone, inventário,
+  team, runs por ciclo, repetir, e liga/desliga de comprar/vender/
+  courage.
+- Achados que os testes pegaram:
+  - Eu vinha citando "~75 caminhadas"; o teste falhou com 76.
+    Conferido contra o arquivo original: são **76**, e a transcrição
+    está idêntica. O errado era minha estimativa.
+  - `test_create_instance_ignora_config_de_quem_nao_declara` usava o
+    `bc` como exemplo de `has_config=False`. Ao mudar o BC pra
+    `True`, o teste continuou passando **sem testar nada** -- trocado
+    pro `hollow`.
+  - Fixture de template matching com cor uniforme casava em qualquer
+    lugar: `TM_CCOEFF_NORMED` é degenerado com variância zero. O
+    template de teste passou a ter padrão.
+- 67 testes novos (180 no total).
+
+**Pendente:**
+
+- O NPC de saída da cave: o usuário confirmou que existe e teleporta
+  pro NPC de entrada, mas o nome e as coordenadas ainda não. A fase de
+  `reset` hoje só reconstitui o team.
+- As cores herdadas 64511 e 5391624 não foram reaproveitadas -- formato
+  não documentado.
+- Nada foi testado contra o jogo real. Todas as ~650 coordenadas vêm
+  dos macros e assumem 1024x768.
+
+Status:
+🟡 Implementado, aguardando teste no jogo
+
 ### Concluído — Logger estruturado
 
 - Fecha o item "Logger estruturado" da Fase 3. Ver `ADR-003-Logging.md`

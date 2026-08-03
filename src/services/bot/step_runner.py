@@ -42,6 +42,7 @@ KEY_UP = "key_up"                # solta
 WAIT = "wait"                    # espera nao-bloqueante
 WAIT_COLOR = "wait_color"        # espera um pixel ficar de certa cor
 SKIP_IF_COLOR = "skip_if_color"  # pula N passos se a cor ja estiver la
+USE_ALL_ITEMS = "use_all_items"  # acha um item por imagem e usa, ate acabar
 ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
 CALL = "call"                    # delega a um callable do script
 
@@ -133,6 +134,28 @@ def retry_until_color(tentativa: list[Step], x: int, y: int, color,
     return saida
 
 
+def use_all_items(template: str, region=None, maximo: int = 20,
+                  intervalo: float = 1.0, threshold: float = 0.85,
+                  note: str = "") -> Step:
+    """
+    Localiza um item pelo icone e usa (duplo-direito), repetindo
+    enquanto ainda achar -- ate o limite 'maximo'.
+
+    Serve pras bags dropadas pelo boss: nao se sabe de antemao quantas
+    cairam, entao contar repeticoes fixas erra pros dois lados. Aqui,
+    'nao achou mais' e a condicao de parada natural.
+
+    Se o template nao existir em templates/, o VisionService avisa uma
+    vez e devolve None -- o passo termina sem fazer nada, em vez de
+    derrubar o ciclo.
+    """
+    return Step(
+        USE_ALL_ITEMS,
+        (template, region, maximo, intervalo, threshold),
+        note=note,
+    )
+
+
 def attack_until_dead(skills, timeout: float = 300.0,
                       skill_interval: float = 1.0, note: str = "") -> Step:
     """
@@ -199,6 +222,7 @@ class StepRunner:
         self._deadline: float | None = None
         self._step_started: float | None = None
         self._last_action: float = 0.0
+        self._usados: int = 0
 
     # -------------------------------------------------
     # Estado
@@ -225,6 +249,7 @@ class StepRunner:
         self._deadline = None
         self._step_started = None
         self._last_action = 0.0
+        self._usados = 0
 
     # -------------------------------------------------
     # Execucao
@@ -265,6 +290,7 @@ class StepRunner:
         self._index += 1
         self._deadline = None
         self._step_started = None
+        self._usados = 0
 
     def _timed_out(self, step: Step) -> bool:
         if not step.timeout or self._step_started is None:
@@ -318,6 +344,9 @@ class StepRunner:
                 self._index += adiante
             return True
 
+        if kind == USE_ALL_ITEMS:
+            return self._do_use_all_items(step, ctx)
+
         if kind == ATTACK_UNTIL_DEAD:
             return self._do_attack(step, ctx)
 
@@ -351,6 +380,42 @@ class StepRunner:
                 x, y, step.timeout,
             )
             return True
+
+        return False
+
+    def _do_use_all_items(self, step: Step, ctx: StepContext) -> bool:
+        template, region, maximo, intervalo, threshold = step.args
+
+        if ctx.vision_service is None:
+            logger.warning("use_all_items sem vision_service; pulando")
+            return True
+
+        if self._usados >= maximo:
+            logger.info("Limite de %s itens usados atingido", maximo)
+            self._usados = 0
+            return True
+
+        agora = time.time()
+
+        if self._last_action and agora - self._last_action < intervalo:
+            return False
+
+        posicao = ctx.vision_service.find_template(
+            ctx.hwnd, template, threshold=threshold, region=region
+        )
+
+        if posicao is None:
+            if self._usados:
+                logger.info("%s item(ns) usado(s)", self._usados)
+            self._usados = 0
+            self._last_action = 0.0
+            return True
+
+        x, y = posicao
+        ctx.input_service.double_right_click(ctx.hwnd, x, y)
+
+        self._usados += 1
+        self._last_action = agora
 
         return False
 

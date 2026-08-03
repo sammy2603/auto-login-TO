@@ -23,6 +23,7 @@ from src.infrastructure.logging.service import (
 from src.services.license.service import LicenseService
 from src.services.game.memory_reader import MemoryReader
 from src.services.bot.script_registry import ScriptRegistry
+from src.services.bot.scripts.bc import DEFAULT_CONFIG as BC_DEFAULT_CONFIG
 from src.shared.character_slots import CharacterSlot
 from src.ui.log_handler import TextboxLogHandler
 
@@ -611,6 +612,141 @@ class MainWindow:
         self._buff_config["self_buff"] = {"enabled":sbe.get(),"interval_min":sbi.get()}
         d.destroy()
 
+    def _cfg_bc(self, name):
+        """
+        Configuração do Battle Cave.
+
+        O BC é auto-contido: tem as próprias skills e teclas, e não
+        depende de nenhum outro script. Por isso o diálogo repete
+        campos que existem em Attack -- é intencional.
+        """
+        if not hasattr(self, "_bc_config"):
+            self._bc_config = dict(BC_DEFAULT_CONFIG)
+        cfg = self._bc_config
+
+        def build(d):
+            inner = ctk.CTkScrollableFrame(d, fg_color="transparent")
+            inner.pack(fill="both", expand=True, padx=12, pady=8)
+
+            ctk.CTkLabel(inner, text="Battle Cave", font=FONT_H3, text_color=TEXT).pack(anchor="w")
+            ctk.CTkFrame(inner, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+
+            def secao(titulo):
+                ctk.CTkLabel(inner, text=titulo, font=FONT_SMALL,
+                            text_color=TEXT2).pack(anchor="w", pady=(10, 2))
+
+            def campo(pai, rotulo, valor, largura=60):
+                r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=2)
+                ctk.CTkLabel(r, text=rotulo, width=130, font=FONT_SMALL, anchor="w").pack(side="left")
+                v = tk.StringVar(value=str(valor))
+                ctk.CTkEntry(r, textvariable=v, width=largura, font=FONT_SMALL).pack(side="left")
+                return v
+
+            # --- Skills ---
+            secao("Skills de ataque")
+            skills = list(cfg.get("skills", ["1", "2", "3", "4"]))
+            while len(skills) < 4:
+                skills.append("")
+            skill_vars = []
+            linha = ctk.CTkFrame(inner, fg_color="transparent"); linha.pack(fill="x", pady=2)
+            for i in range(4):
+                ctk.CTkLabel(linha, text=f"{i+1}:", width=16, font=FONT_SMALL).pack(side="left")
+                v = tk.StringVar(value=skills[i])
+                ctk.CTkEntry(linha, textvariable=v, width=40, font=FONT_SMALL).pack(side="left", padx=(0, 8))
+                skill_vars.append(v)
+
+            # --- Teclas ---
+            secao("Teclas")
+            v_mount = campo(inner, "Mount:", cfg["mount_key"])
+            v_stone = campo(inner, "Stone (voltar):", cfg["stone_key"])
+            v_inv = campo(inner, "Inventário:", cfg["inventory_key"])
+            v_team = campo(inner, "Painel de team:", cfg["team_key"])
+
+            # --- Ciclo ---
+            secao("Ciclo")
+            v_runs = campo(inner, "Runs antes de voltar:", cfg["runs_por_ciclo"], largura=50)
+            ctk.CTkLabel(
+                inner,
+                text="Ao matar o boss, sai pelo NPC e repete a run.\n"
+                     "Só volta pra cidade (e vende) depois da última.",
+                font=ctk.CTkFont(size=10), text_color=TEXT3, justify="left",
+            ).pack(anchor="w", padx=4)
+
+            v_repetir = ctk.BooleanVar(value=cfg.get("repetir_ciclo", False))
+            ctk.CTkCheckBox(inner, text="Repetir o ciclo indefinidamente",
+                           variable=v_repetir, font=FONT_SMALL).pack(anchor="w", pady=(6, 0))
+
+            # --- Etapas ---
+            secao("Etapas")
+            v_comprar = ctk.BooleanVar(value=cfg.get("comprar_pot", True))
+            v_vender = ctk.BooleanVar(value=cfg.get("vender", True))
+            v_courage = ctk.BooleanVar(value=cfg.get("usar_courage", True))
+            for texto, var in (("Comprar poção antes de ir", v_comprar),
+                               ("Vender ao voltar pra cidade", v_vender),
+                               ("Abrir as bags de courage", v_courage)):
+                ctk.CTkCheckBox(inner, text=texto, variable=var, font=FONT_SMALL).pack(anchor="w", pady=1)
+
+            # --- Avançado ---
+            secao("Avançado")
+            v_tent = campo(inner, "Tentativas de entrada:", cfg["tentativas_de_entrada"], largura=50)
+            v_cam = campo(inner, "Espera por passo (s):", cfg["intervalo_caminhada"], largura=50)
+            v_tboss = campo(inner, "Timeout do boss (s):", cfg["timeout_boss"], largura=50)
+            v_maxc = campo(inner, "Máx. de bags:", cfg["max_courage"], largura=50)
+
+            ctk.CTkLabel(
+                inner,
+                text="A bag de courage é achada por imagem:\n"
+                     "capture o ícone como templates/courage_bag.png",
+                font=ctk.CTkFont(size=10), text_color=TEXT3, justify="left",
+            ).pack(anchor="w", padx=4, pady=(4, 0))
+
+            campos = {
+                "skills": skill_vars, "mount_key": v_mount, "stone_key": v_stone,
+                "inventory_key": v_inv, "team_key": v_team, "runs_por_ciclo": v_runs,
+                "repetir_ciclo": v_repetir, "comprar_pot": v_comprar,
+                "vender": v_vender, "usar_courage": v_courage,
+                "tentativas_de_entrada": v_tent, "intervalo_caminhada": v_cam,
+                "timeout_boss": v_tboss, "max_courage": v_maxc,
+            }
+
+            ctk.CTkButton(inner, text="Save", font=FONT_SMALL, width=80,
+                         command=lambda: self._save_bc(campos, d)).pack(pady=(14, 4))
+
+        self._cfg_window("BC", 400, 640, build)
+
+    def _save_bc(self, campos, d):
+        cfg = self._bc_config
+
+        skills = [v.get().strip() for v in campos["skills"]]
+        cfg["skills"] = [s for s in skills if s] or list(BC_DEFAULT_CONFIG["skills"])
+
+        for chave in ("mount_key", "stone_key", "inventory_key", "team_key"):
+            valor = campos[chave].get().strip()
+            # Tecla vazia mandaria press_key("") pro jogo; manter o
+            # valor anterior é melhor que gravar algo inválido.
+            if valor:
+                cfg[chave] = valor
+
+        for chave in ("repetir_ciclo", "comprar_pot", "vender", "usar_courage"):
+            cfg[chave] = campos[chave].get()
+
+        for chave, conversor, mimimo in (
+            ("runs_por_ciclo", int, 1),
+            ("tentativas_de_entrada", int, 1),
+            ("max_courage", int, 1),
+            ("intervalo_caminhada", float, 0.1),
+            ("timeout_boss", float, 1.0),
+        ):
+            try:
+                cfg[chave] = max(mimimo, conversor(campos[chave].get().strip()))
+            except (TypeError, ValueError):
+                # Campo com lixo digitado: mantém o valor anterior em
+                # vez de gravar algo que quebraria o roteiro.
+                logger.warning("Valor inválido para '%s'; mantendo o anterior", chave)
+
+        logger.info("Configuração do BC salva: %s runs por ciclo", cfg["runs_por_ciclo"])
+        d.destroy()
+
     # ============================================================
     # LOGIN / WINDOWS / PERSISTENCE / POLLING / BOT ENGINE
     # ============================================================
@@ -1061,6 +1197,7 @@ class MainWindow:
             "helper": getattr(self, "_helper_config", {}),
             "fairy": getattr(self, "_fairy_config", {}),
             "revive": getattr(self, "_revive_config", {}),
+            "bc": getattr(self, "_bc_config", {}),
         }
 
     def _start_bot_for_window(self, label):

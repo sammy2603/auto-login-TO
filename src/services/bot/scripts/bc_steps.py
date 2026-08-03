@@ -28,6 +28,7 @@ from src.services.bot.step_runner import (
     repeat,
     retry_until_color,
     right,
+    use_all_items,
     wait,
 )
 
@@ -262,12 +263,16 @@ def atacar_boss(cfg) -> list[Step]:
 
 def usar_courage(cfg) -> list[Step]:
     """
-    Abre o inventario e usa o courage.
+    Abre o inventario e abre TODAS as bags de courage dropadas.
 
-    ATENCAO: o macro achava o item por COR (5391624), num formato nao
-    documentado. Sem conferir contra o jogo, esse numero nao e
-    confiavel -- por isso aqui usa posicao fixa, configuravel. Quando a
-    cor for confirmada, da pra trocar por find_color.
+    O macro procurava por COR (5391624, formato nao documentado) e usava
+    UMA vez. Aqui e por template matching, e repete enquanto achar --
+    nao se sabe de antemao quantas bags cairam, entao contar repeticoes
+    fixas erra pros dois lados.
+
+    Precisa do recorte 'courage_bag.png' em templates/. Sem ele, o
+    VisionService avisa uma vez e o passo termina sem fazer nada, em vez
+    de derrubar o ciclo.
     """
     if not cfg.get("usar_courage"):
         return []
@@ -275,7 +280,12 @@ def usar_courage(cfg) -> list[Step]:
     return [
         key(cfg["inventory_key"], note="abre o inventario"),
         wait(1.0),
-        double_right(*cfg["courage_pos"], note="usa o courage"),
+        use_all_items(
+            cfg["courage_template"],
+            region=cfg.get("inventario_regiao"),
+            maximo=cfg["max_courage"],
+            note="abre as bags de courage",
+        ),
         wait(0.5),
         key(cfg["inventory_key"], note="fecha o inventario"),
         wait(1.0),

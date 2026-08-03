@@ -94,20 +94,52 @@ class VisionService:
         hwnd,
         template_name: str,
         threshold: float = 0.85,
+        region=None,
     ):
         """
         Captura a janela e procura o template nela. Retorna (x, y) em
         coordenadas relativas à client area, ou None.
+
+        'region' é (x1, y1, x2, y2) e limita a busca a um recorte --
+        útil pra procurar um ícone só dentro do inventário, por
+        exemplo. Sem ela, procura na janela toda, o que aumenta a
+        chance de casar com algo parecido em outro canto da tela.
         """
 
         screenshot = self.window.capture_hwnd(hwnd)
+
+        if screenshot is None:
+            return None
+
         template = self.load_template(template_name)
+
+        offset_x, offset_y = 0, 0
+
+        if region:
+            height, width = screenshot.shape[:2]
+            x1, y1, x2, y2 = region
+            x1 = max(0, min(int(x1), width))
+            y1 = max(0, min(int(y1), height))
+            x2 = max(0, min(int(x2), width))
+            y2 = max(0, min(int(y2), height))
+
+            if x1 >= x2 or y1 >= y2:
+                return None
+
+            screenshot = screenshot[y1:y2, x1:x2]
+            offset_x, offset_y = x1, y1
+
+        # Template maior que a área de busca faz o matchTemplate
+        # levantar; tratar como "não encontrado" é o comportamento útil.
+        if (template.shape[0] > screenshot.shape[0]
+                or template.shape[1] > screenshot.shape[1]):
+            return None
 
         match = self.locate_on_screenshot(screenshot, template, threshold)
 
         if match:
             x, y, _confidence = match
-            return x, y
+            return x + offset_x, y + offset_y
 
         return None
 
@@ -120,12 +152,14 @@ class VisionService:
         hwnd,
         template,
         threshold: float = 0.90,
+        region=None,
     ):
         try:
             return self.locate_in_window(
                 hwnd=hwnd,
                 template_name=template,
                 threshold=threshold,
+                region=region,
             )
         except FileNotFoundError:
             # Template ainda não foi capturado/criado -- trata como

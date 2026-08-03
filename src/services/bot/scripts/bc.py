@@ -60,7 +60,17 @@ DEFAULT_CONFIG = {
     "intervalo_caminhada": 2.0,
     "intervalo_skill": 1.0,
     "timeout_boss": 300.0,
-    "courage_pos": (250, 300),
+
+    # --- Courage (bag dropada pelo boss) ---
+    # Achado por template matching: e um icone fixo, sem escala nem
+    # rotacao, que e o caso ideal pro matchTemplate. Precisa do recorte
+    # em templates/courage_bag.png.
+    "courage_template": "courage_bag",
+    "max_courage": 20,
+    # Recorte do inventario (x1, y1, x2, y2) pra limitar a busca e
+    # evitar casar com algo parecido em outro canto da tela. None
+    # procura na janela toda.
+    "inventario_regiao": None,
 }
 
 

@@ -25,6 +25,7 @@ from src.services.bot.step_runner import (
     retry_until_color,
     right,
     skip_if_color,
+    use_all_items,
     wait,
     wait_color,
 )
@@ -54,13 +55,23 @@ class FakeInput:
 
 
 class FakeVision:
-    def __init__(self, combina=False):
+    def __init__(self, combina=False, achados=None):
         self.combina = combina
         self.consultas = 0
+        # Lista de posições a devolver em chamadas sucessivas de
+        # find_template; None significa "não achei mais".
+        self.achados = list(achados or [])
+        self.buscas = []
 
     def pixel_matches(self, hwnd, x, y, color, tolerance=10):
         self.consultas += 1
         return self.combina
+
+    def find_template(self, hwnd, template, threshold=0.85, region=None):
+        self.buscas.append((template, region))
+        if self.achados:
+            return self.achados.pop(0)
+        return None
 
 
 class FakeTarget:
@@ -414,6 +425,68 @@ def test_retry_until_color_esgota_as_tentativas_se_nunca_der_certo(entrada):
     rodar_ate_terminar(runner, ctx)
 
     assert entrada.acoes == [("left", 5, 5)] * 3
+
+
+# ==========================================================
+# use_all_items -- as bags de courage
+# ==========================================================
+
+def test_usa_todas_as_bags_encontradas(entrada):
+    """
+    Não se sabe quantas bags o boss dropou; 'não achei mais' é a
+    condição de parada. Contar repetições fixas erraria pros dois lados.
+    """
+    vision = FakeVision(achados=[(100, 200), (110, 200), (120, 200)])
+    runner = StepRunner([use_all_items("courage_bag", intervalo=0.0)])
+    ctx = contexto(entrada, vision=vision)
+    rodar_ate_terminar(runner, ctx)
+
+    usos = [a for a in entrada.acoes if a[0] == "double_right"]
+    assert usos == [
+        ("double_right", 100, 200),
+        ("double_right", 110, 200),
+        ("double_right", 120, 200),
+    ]
+
+
+def test_sem_bag_nenhuma_termina_sem_agir(entrada):
+    vision = FakeVision(achados=[])
+    runner = StepRunner([use_all_items("courage_bag", intervalo=0.0), left(1, 1)])
+    ctx = contexto(entrada, vision=vision)
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("left", 1, 1)]
+
+
+def test_respeita_o_limite_maximo(entrada):
+    """Template que casa sempre não pode gerar laço infinito."""
+    vision = FakeVision(achados=[(1, 1)] * 500)
+    runner = StepRunner([use_all_items("courage_bag", maximo=5, intervalo=0.0)])
+    ctx = contexto(entrada, vision=vision)
+    rodar_ate_terminar(runner, ctx)
+
+    assert len([a for a in entrada.acoes if a[0] == "double_right"]) == 5
+
+
+def test_repassa_a_regiao_de_busca(entrada):
+    """
+    Limitar ao inventário evita casar com algo parecido em outro canto
+    da tela.
+    """
+    vision = FakeVision(achados=[])
+    regiao = (10, 20, 300, 400)
+    runner = StepRunner([use_all_items("courage_bag", region=regiao, intervalo=0.0)])
+    ctx = contexto(entrada, vision=vision)
+    rodar_ate_terminar(runner, ctx)
+
+    assert vision.buscas == [("courage_bag", regiao)]
+
+
+def test_use_all_items_sem_vision_service_pula(entrada):
+    runner = StepRunner([use_all_items("courage_bag"), left(1, 1)])
+    ctx = contexto(entrada, vision=None)
+    rodar_ate_terminar(runner, ctx)
+    assert entrada.acoes == [("left", 1, 1)]
 
 
 def test_progress_reporta_a_posicao(entrada):
