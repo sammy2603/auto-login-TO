@@ -90,6 +90,12 @@ directly.**
   The script's `name` must equal the descriptor's `display_name`, or the
   script will never be enabled (there is a test guarding this).
 - Scripts must not depend on each other.
+- **Never use `print()`.** Every module does
+  `logger = get_logger(__name__)` (from `src.infrastructure.logging`)
+  and logs with a level. Use `logger.exception(...)` inside `except`
+  blocks so the traceback is preserved. Any thread that belongs to an
+  account opens a `session_context(label)` so its lines identify which
+  account they came from. See `.project/adr/ADR-003-Logging.md`.
 - A script only runs when its feature flag is registered **and** enabled.
   Absence of a flag means OFF — treating "no state" as ON once made every
   script run with its card switched off.

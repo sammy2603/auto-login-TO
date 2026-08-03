@@ -61,6 +61,55 @@ Status:
 Status:
 🟢 Funcionando
 
+### Concluído — Logger estruturado
+
+- Fecha o item "Logger estruturado" da Fase 3. Ver `ADR-003-Logging.md`
+  pro raciocínio completo.
+- Saíram 23 `print()` de 10 arquivos; entrou o `logging` da stdlib sob
+  a raiz `loginto`, com console + arquivo rotativo (`logs/loginto.log`,
+  2 MB × 5, gitignored).
+- **Contexto de sessão via `contextvars`**: cada thread de conta abre um
+  `session_context(label)` e toda linha logada lá dentro sai
+  identificada -- inclusive as que vêm de dentro dos workflows. Um
+  `SessionFilter` injeta o campo em todo record.
+- O `LogRedirector` foi removido. Ele trocava `sys.stdout` por um
+  objeto próprio, o que capturava tudo que fosse impresso no processo
+  (inclusive de terceiros) e obrigava a restaurar o stdout na mão,
+  contando threads ativas (`_active_threads`/`_active_lock`, também
+  removidos). No lugar entrou `src/ui/log_handler.py`, um
+  `logging.Handler` de verdade -- o console da GUI virou apenas mais um
+  destino.
+- Ganhos que não existiam antes:
+  - **Traceback completo** nas falhas. O `print(f"...: {e}")` mostrava
+    só a mensagem e perdia a pilha, que é justamente o que se precisa.
+  - **As threads do BotEngine agora se identificam.** O LogRedirector
+    só registrava as threads de conta; log de script saía sem rótulo.
+    `BotEngine.start()` passou a aceitar `session_label`.
+  - **O console da GUI descarta linhas antigas** (2000). Antes crescia
+    sem limite numa sessão longa.
+  - **Persistência.** Antes, fechou o app, perdeu o log -- e é depois de
+    horas rodando que se precisa investigar.
+- `BaseWorkflow` já tinha o ponto de injeção pronto (`__init__` aceitava
+  `logger`, `log()` fazia `self.logger.info()`), mas ninguém nunca
+  passava um logger, então caía sempre no `print` de fallback. Agora o
+  default é `get_logger(f"workflows.{ClassName}")`: preserva a
+  identidade que o prefixo dava e mantém a injeção pra teste.
+- Achado durante os testes: um teste que chamava `set_session()` sem
+  desfazer vazava o rótulo pros testes seguintes, e o sintoma era
+  confuso (falhava um teste sem relação com sessão, só porque herdou o
+  rótulo). Resolvido com fixture `autouse` no `conftest.py`, na mesma
+  linha da que já limpa o `SessionRegistry`.
+- 19 testes novos (73 no total). O de threads concorrentes usa
+  `threading.Barrier` pra garantir sobreposição real, não confiar em
+  sorte de escalonamento.
+- **Não testado automaticamente:** o `TextboxLogHandler` em si, porque
+  exige Tkinter com display. A validação foi por leitura e por um smoke
+  test do caminho completo (BotEngine → filtro → arquivo) sem a GUI.
+  Vale conferir o console rodando `python gui.py`.
+
+Status:
+🟢 Funcionando
+
 ### Concluído — Remoção do código morto da UI
 
 - Removidos `src/ui/widgets/sidebar.py` (Sidebar) e
@@ -91,9 +140,10 @@ Status:
 
 ### Observações pendentes (não tratadas nesta rodada)
 
-- `AGENTS.md` está desatualizado: a seção "Key files" ainda lista
-  `main.py`, `window_utils.py`, `vision.py` e `input_utils.py` como
-  arquivos centrais, mas os três últimos foram removidos na Fase 2.
+- Existem DUAS pastas de ADR: `.project/adr/` (ADR-001, ADR-002 e agora
+  ADR-003) e `.project/decisions/` (ADR-0001, com numeração de 4
+  dígitos, mais o template e o DECISIONS.md). Convém unificar antes que
+  a divergência cresça.
 - 5 scripts continuam stubs que retornam `False`: BC, Sell, Hollow,
   Delete e DR Lure.
 - `DR Lure` foi REDUZIDO a stub de propósito. A implementação anterior

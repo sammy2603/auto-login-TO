@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from src.app.container import ServiceContainer
 from src.config.settings import Settings
+from src.infrastructure.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class Application:
@@ -27,8 +30,7 @@ class Application:
         Liberação de recursos da aplicação.
         """
 
-        print("Finalizando aplicação...")
-        pass
+        logger.info("Finalizando aplicação...")
         # Futuramente:
         #
         # self.container.window_service.disconnect()

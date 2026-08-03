@@ -20,9 +20,10 @@ FASE 3 - Melhorias (EM ANDAMENTO)
 [x] Licenciamento (Key, validacao, demo, status bar)
 [x] GameReader (leitura de HP/recurso por analise de pixels)
 [x] Dashboard polling (1s) para leitura em tempo real
-[ ] Logger estruturado
+[x] Logger estruturado (logging + contexto de sessao + arquivo
+    rotativo) - ver ADR-003
 [x] Testes do nucleo de automacao (BotEngine, ScriptRegistry,
-    SessionRegistry, StateManager, EventBus) - 54 testes
+    SessionRegistry, StateManager, EventBus, logging) - 73 testes
 [ ] Testes dos workflows (login/servidor/personagem) e da GUI
 [ ] Sistema de plugins
 [ ] Scripts reais do bot (Attack, Potion, Pet Food, etc.)
