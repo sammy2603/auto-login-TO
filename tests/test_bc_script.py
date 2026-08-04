@@ -443,11 +443,15 @@ def test_saida_com_ponto_calibrado_clica_direto():
     assert any(p.kind == "double_right" and p.args == (500, 400) for p in passos)
 
 
-def test_view_reset_nao_derruba_o_ciclo_se_o_botao_nao_aparecer():
-    """Câmera torta ainda tem chance de dar certo; parar ali não tem."""
+def test_view_reset_avisa_quando_nao_acha_o_botao():
+    """
+    Câmera torta ainda tem chance de dar certo, então o passo não para o
+    ciclo -- mas tem que AVISAR. Silencioso, a falha só aparece lá na
+    frente, num clique que erra o alvo sem explicação (aconteceu).
+    """
     obrigatorio = bc_steps.view_reset(DEFAULT_CONFIG)[0].args[4]
 
-    assert obrigatorio is False
+    assert obrigatorio is True
 
 
 def test_leave_team_desligado_ainda_solta_a_tecla():

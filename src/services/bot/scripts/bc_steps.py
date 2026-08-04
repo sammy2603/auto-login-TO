@@ -133,13 +133,16 @@ def vender(cfg) -> list[Step]:
 # =====================================================
 
 def ir_para_cave(cfg) -> list[Step]:
-    return [
-        left(978, 56), wait(0.5),
-        left(594, 415), wait(0.5),
-        *repeat(5, [left(359, 273), wait(5.0)]),
-        left(407, 537),
-        wait(0.5),
-    ]
+    """
+    Vai ate o Skull Herald da entrada.
+
+    O macro antigo fazia isso abrindo o painel Surroundings e clicando
+    no nome do NPC, o que aciona o PATHFINDING do jogo: o personagem
+    percorre as passagens reais do mapa e leva o tempo que levar. Aqui
+    a caminhada e por coordenada, cortando reto pelo minimapa -- e o
+    que era pra ser tempo de farm deixa de ser tempo de caminhada.
+    """
+    return andar_ate(cfg, cfg["npc_entrada_pos"])
 
 
 def view_reset(cfg) -> list[Step]:
@@ -153,14 +156,17 @@ def view_reset(cfg) -> list[Step]:
 
     Por template e nao por coordenada fixa porque o proprio botao e um
     elemento de UI que a gente quer achar mesmo se a barra mudar de
-    lugar. 'obrigatorio=False': se o recorte nao casar, seguir com a
-    camera torta ainda tem chance de dar certo -- parar ali nao tem.
+    lugar.
+
+    Falhar aqui nao para o roteiro -- seguir com a camera torta ainda
+    tem chance de dar certo, parar ali nao tem --, mas AVISA. Sem o
+    aviso, o sintoma aparece so la na frente, num clique que erra o
+    alvo sem explicacao.
     """
     return [
         click_template(
             cfg["template_view_reset"],
             timeout=cfg.get("timeout_view_reset", 5.0),
-            obrigatorio=False,
             note="reseta a camera",
         ),
         wait(cfg.get("espera_view_reset", 0.5)),
@@ -214,13 +220,16 @@ def falar_com_npc(cfg, destino, ponto_na_tela, template_opcao) -> list[Step]:
     passos = list(andar_ate(cfg, destino))
     passos += view_reset(cfg)
 
+    # Direito SIMPLES: e o que abre a interacao com NPC. Duplo direito
+    # (que e o de mover/interagir com o cenario) seleciona o NPC e nao
+    # abre dialogo nenhum -- foi o que travou o primeiro teste.
     if ponto_na_tela:
         passos.append(
-            double_right(*ponto_na_tela, note="abre o dialogo do NPC")
+            right(*ponto_na_tela, note="abre o dialogo do NPC")
         )
     else:
         passos.append(
-            click_template(cfg["template_npc_saida"], botao="double_right",
+            click_template(cfg["template_npc_saida"], botao="right",
                            timeout=cfg.get("timeout_npc_saida", 20.0),
                            note="acha e fala com o NPC")
         )
