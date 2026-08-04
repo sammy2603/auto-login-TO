@@ -62,11 +62,10 @@ BASES = {
     "TARGET":    {"loginto": 0x012CE340, "ramora": 0x012CE2E0},
     "TEAM":      {"loginto": 0x0106D388, "ramora": 0x0106D328},
     "DIALOGO":   {"loginto": 0x0117B2DC, "ramora": 0x0117B27C},
-    # ENTIDADES e SUR recuperadas aplicando o mesmo rebase de 0x60 das
-    # demais bases. CAMERA nao respondeu ao rebase e segue perdida.
+    # Recuperadas aplicando o mesmo rebase de 0x60 das demais bases.
     "ENTIDADES": {"loginto": 0x012C0628, "ramora": 0x012C05C8},
     "SUR":       {"loginto": 0x012CE33C, "ramora": 0x012CE2DC},
-    "CAMERA":    {"ramora": 0x0116FFF4},
+    "CAMERA":    {"loginto": 0x01170054, "ramora": 0x0116FFF4},
     "XP":        {"loginto": 0x01139700},
 }
 
@@ -164,9 +163,10 @@ CAMPOS = [
     # no meio dele e devolvia um fragmento.
     ("sur_info",      "SUR",    [0x18, 0x8C, 0x3C], "texto_longo", tem_coordenada,
      [0x18, 0x8C, 0x3C, 0x64]),
-    ("camera_zoom",   "CAMERA", [0x64], "float", faixa(-1000, 1000), None),
-    ("camera_rot",    "CAMERA", [0x5C], "float", faixa(-1000, 1000), None),
-    ("camera_ang",    "CAMERA", [0x60], "float", faixa(-1000, 1000), None),
+    # Graus, conferidos com o scan de valor no ver.6400.
+    ("camera_rot",    "CAMERA", [0x5C], "float", faixa(0, 360), None),
+    ("camera_ang",    "CAMERA", [0x60], "float", faixa(0, 360), None),
+    ("camera_zoom",   "CAMERA", [0x64], "float", faixa(1, 1000), None),
 ]
 
 # Constantes-sentinela usadas pelos dois codigos, impressas junto do
@@ -527,7 +527,8 @@ def autoteste():
 
     # A divergencia de 0x60 e o achado central. Se alguem mexer numa base
     # e esquecer a outra, isto avisa.
-    for chave in ("CHAR", "TARGET", "TEAM", "DIALOGO", "ENTIDADES", "SUR"):
+    for chave in ("CHAR", "TARGET", "TEAM", "DIALOGO", "ENTIDADES", "SUR",
+                  "CAMERA"):
         v = BASES[chave]
         assert v["loginto"] - v["ramora"] == 0x60, \
             f"{chave}: divergencia deixou de ser 0x60"

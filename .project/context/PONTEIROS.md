@@ -68,7 +68,6 @@ genérico. Corrigido em `memory_reader.py`.
 | XP | `0x01139700` | lê 0, cadeia nunca resolve |
 | `notification` | `0x0117097C` | lê `86581704` (um ponteiro), nunca `1` |
 | `class_id` | CHAR+`0x3C8` | lê 760 — offset mudou |
-| CAMERA | `0x0116FFF4` | lê 0 |
 | todas as bases `ramora` | — | 0, lixo, ou cadeia quebra |
 
 ### Recuperado pelo rebase de 0x60
@@ -80,9 +79,17 @@ RamoraBOT. Somando os mesmos `0x60` das outras bases, voltam a resolver:
 |---|---|---|
 | ENTIDADES | `0x012C0628` | `target_select` alterna 1 ↔ 0 ao selecionar e dar Esc |
 | SUR | `0x012CE33C` | cadeia resolve para um `EvUiForm` |
+| CAMERA | `0x01170054` | rot 241.4°, ângulo 60.0°, zoom 164.0 |
 
-Lição barata: antes de varrer memória, sempre testar o rebase conhecido
-no entorno da base morta. Duas das três voltaram sem scan nenhum.
+**As três bases dadas como mortas eram apenas os endereços do build
+anterior.** Nenhuma exigia scan: bastava somar `0x60`.
+
+A CAMERA custou caro por um erro de método. A primeira sonda varreu o
+entorno da base e exigiu float não-nulo; o zoom lia `0` naquele
+instante, então ela foi descartada como perdida e só voltou depois de um
+scan de valor completo — que no fim apontou para `0x01170054`, isto é,
+exatamente `0x0116FFF4 + 0x60`. Lição: ao sondar uma base, o critério é
+**a cadeia resolver**, nunca o valor parecer bonito.
 
 **SUR tem uma ressalva.** A cadeia resolve, mas o `+0x64` do RamoraBOT
 caía no meio do texto e devolvia um fragmento (`"t "`). No `ver.6400` o
@@ -108,13 +115,42 @@ automatizar a coleta de coordenada de NPC.
 As strings da UI são **UTF-8**, não UTF-16 — um scan por `text="` em
 UTF-16LE devolve zero ocorrências.
 
-### CAMERA continua perdida
+### CAMERA: unidades e layout
 
-O rebase de `0x60` não funciona para `0x0116FFF4`, e varrer `±0x400` em
-volta só devolve floats denormais (ruído). Como zoom, rotação e ângulo
-são floats que o jogador controla, o caminho é scan por valor com
-`tools/scan_memory.py`: dar scan de float, mexer a câmera, refinar,
-repetir até sobrar um punhado de endereços.
+Base `0x01170054`, todos `float` no objeto apontado:
+
+| Offset | Campo | Valor medido |
+|---|---|---|
+| `0x5C` | rotação | 241.40 (graus, 0–360) |
+| `0x60` | ângulo | 60.00 (graus) |
+| `0x64` | zoom | 164.00 |
+| `0x68` | zoom espelhado | 164.00 — provável alvo da interpolação |
+
+### Receita do scan de valor desconhecido
+
+Serviu para a CAMERA e serve para qualquer campo controlado pelo
+jogador. Um snapshot de todos os floats plausíveis, depois refinamento:
+
+| Ação no jogo | Filtro | Sobreviventes |
+|---|---|---|
+| — | foto inicial | 49.153.297 |
+| rolar o zoom | mudou | 271.106 |
+| nada | igual (×2) | 170.483 |
+| rolar o zoom | mudou | 7.901 |
+| nada | igual | 7.512 |
+| girar a câmera | igual | 2.793 |
+| rolar o zoom | mudou | 906 |
+
+O que fechou não foi mais refinamento por valor, e sim o **filtro
+estrutural**: para cada sobrevivente `S` e cada offset plausível,
+procurar na faixa estática (`< 0x02000000`) um dword valendo `S - off`.
+Só um resultado tinha a cara certa, e era o offset `0x64` que o
+RamoraBOT já documentava.
+
+Ordem que economiza tempo: aplicar o evento discriminante **primeiro**.
+Começar filtrando ruído com o jogo parado é lento e corta pouco — a
+primeira passada ociosa levou minutos para derrubar 1% dos candidatos,
+enquanto uma rolada de zoom cortou 99,4%.
 
 `sit` hardcoded, XP e `notification` foram **removidos** do
 `memory_reader.py`: nenhum consumidor no app e falhavam em silêncio.
