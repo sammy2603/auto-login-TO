@@ -81,11 +81,17 @@ class MemoryReader:
 
     CLIENT_BASE = 0x00400000
 
-    # Ponteiros base
+    # Ponteiros base. Catalogo completo, divergencias entre versoes e
+    # procedimento apos atualizacao do cliente:
+    # .project/context/PONTEIROS.md
+    #
+    # Removidos por estarem mortos no cliente ver.6400 (nenhum
+    # consumidor no app; comprovado por tools/comparar_ponteiros.py):
+    #   XP_BASE  0x01139700  -> le 0, cadeia de xp_pct nunca resolve
+    #   notification  0x0117097C -> le um ponteiro, nunca 1
     CHAR_BASE = 0x0114514C
     TARGET_BASE = 0x012CE340
     SPLIT_BASE = 0x012CE340
-    XP_BASE = 0x01139700
     TEAM_SIZE_BASE = 0x0106D388
 
     def __init__(self, pid: int):
@@ -248,7 +254,17 @@ class MemoryReader:
 
     @property
     def breakpoint(self) -> int:
+        """Passiva do Monk."""
         return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3E0), 4)
+
+    @property
+    def sin_combo(self) -> int:
+        """Passiva do Assassin (vizinha da do Monk)."""
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3E4), 4)
+
+    @property
+    def gold(self) -> int:
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x410), 4)
 
     @property
     def location(self) -> str:
@@ -280,10 +296,14 @@ class MemoryReader:
 
     @property
     def target_hp_pct(self) -> float:
-        hp = self.target_hp
-        if hp == 0:
-            return 0.0
-        return (hp / 597.0) * 100.0  # 597 = HP cheio do alvo
+        # Nao existe ponteiro conhecido para o HP maximo do alvo. O
+        # divisor 597 herdado do SSCBot era o HP de um mob especifico
+        # (confirmado: Little Wild Boar), entao mentia para todo o
+        # resto. Os consumidores (attack.py, step_runner) so testam
+        # <= 0, ou seja, vivo ou morto.
+        # ponytail: vivo = 100%; se algum dia precisarmos da barra real,
+        # e preciso achar o offset do HP maximo do alvo.
+        return 100.0 if self.target_hp > 0 else 0.0
 
     @property
     def target_name(self) -> str:
@@ -313,7 +333,10 @@ class MemoryReader:
 
     @property
     def is_sitting(self) -> bool:
-        return _rpm_int(self._hProcess, 0x305F08B8, 4) == 200
+        # O endereco antigo (0x305F08B8) era heap hardcoded e lia sempre
+        # 0. CHAR+0x290 vem do RamoraBOT: 100 em pe, 200 sentado,
+        # conferido no cliente ver.6400.
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x290), 1) == 200
 
     @property
     def is_channeling(self) -> bool:
@@ -324,24 +347,8 @@ class MemoryReader:
         ) == 24
 
     @property
-    def notification(self) -> bool:
-        return _rpm_int(self._hProcess, self.CLIENT_BASE + 0xD7097C, 4) == 1
-
-    @property
     def confirm_box(self) -> bool:
         return _rpm_int(self._hProcess, 0x012CE3BC, 4) == 1
-
-    @property
-    def xp_pct(self) -> float:
-        chain = [0xF0, 0x80, 0x28, 0x60, 0x5C, 0x228, 0x3EFC]
-        addr = self._follow_chain(self.XP_BASE, chain)
-        if addr == 0:
-            return 0.0
-        xp_str = _rpm_string(self._hProcess, addr, 10)
-        try:
-            return float(xp_str.replace("%", "").strip())
-        except ValueError:
-            return 0.0
 
     @property
     def dialog_open(self) -> bool:

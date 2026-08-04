@@ -156,7 +156,7 @@ def main():
     test_property(mr, "mana", "{}")
     test_property(mr, "max_mana", "{}")
     test_property(mr, "mana_pct", "{:.1f}%")
-    test_property(mr, "xp_pct", "{:.1f}%")
+    test_property(mr, "gold", "{}")
     test_property(mr, "x", "{}")
     test_property(mr, "y", "{}")
     test_property(mr, "location", "{}")
@@ -171,6 +171,7 @@ def main():
     test_property(mr, "team_size", "{}")
     test_property(mr, "is_channeling", "{}")
     test_property(mr, "breakpoint", "{}")
+    test_property(mr, "sin_combo", "{}")
 
     # ---- Target ----
     section("TARGET")
@@ -187,7 +188,6 @@ def main():
     test_property(mr, "dialog_open", "{}")
     test_property(mr, "bag_open", "{}")
     test_property(mr, "loot_window", "{}")
-    test_property(mr, "notification", "{}")
     test_property(mr, "confirm_box", "{}")
 
     mr.close()

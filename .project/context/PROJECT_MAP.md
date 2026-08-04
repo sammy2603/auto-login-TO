@@ -72,6 +72,9 @@ ou workflows diretamente.
 | GameReader (leitura por pixels) | `src/services/game/game_reader.py` |
 | LicenseService | `src/services/license/service.py` |
 
+Catálogo de offsets de memória e o que fazer quando o cliente atualizar:
+[`.project/context/PONTEIROS.md`](PONTEIROS.md).
+
 ## Infraestrutura
 
 | Serviço | Arquivo |
