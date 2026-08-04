@@ -24,8 +24,10 @@ from src.services.bot.step_runner import (
     repeat,
     retry_until_color,
     right,
+    click_template,
     skip_if_color,
     use_all_items,
+    wait_position,
     wait,
     wait_color,
 )
@@ -495,3 +497,115 @@ def test_progress_reporta_a_posicao(entrada):
     assert runner.progress == "0/2"
     runner.tick(ctx)
     assert runner.progress == "1/2"
+
+
+# ==========================================================
+# click_template e wait_position
+# ==========================================================
+#
+# Usados na saída da cave pela Skull Herald: a caixa de diálogo do NPC
+# não aparece sempre no mesmo lugar, então clicar às cegas erraria.
+
+def test_click_template_clica_onde_achou(entrada):
+    vision = FakeVision(achados=[(300, 200)])
+    runner = StepRunner([click_template("leave_bc")])
+    ctx = contexto(entrada, vision=vision)
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("left", 300, 200)]
+
+
+def test_click_template_respeita_o_botao_pedido(entrada):
+    vision = FakeVision(achados=[(50, 60)])
+    runner = StepRunner([click_template("skull_herald", botao="double_right")])
+    ctx = contexto(entrada, vision=vision)
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("double_right", 50, 60)]
+
+
+def test_click_template_espera_o_elemento_aparecer(entrada):
+    """O diálogo do NPC demora; não pode desistir no primeiro tick."""
+    vision = FakeVision(achados=[])
+    runner = StepRunner([click_template("leave_bc", timeout=5.0)])
+    ctx = contexto(entrada, vision=vision)
+
+    for _ in range(3):
+        runner.tick(ctx)
+
+    assert entrada.acoes == []
+    assert runner.finished is False
+
+    vision.achados = [(10, 20)]
+    runner.tick(ctx)
+    assert entrada.acoes == [("left", 10, 20)]
+
+
+def test_click_template_desiste_no_timeout(entrada):
+    vision = FakeVision(achados=[])
+    runner = StepRunner([click_template("leave_bc", timeout=0.05), left(9, 9)])
+    ctx = contexto(entrada, vision=vision)
+
+    runner.tick(ctx)
+    time.sleep(0.06)
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("left", 9, 9)]
+
+
+def test_wait_position_libera_ao_chegar(entrada):
+    class Char:
+        x, y = 82, -396
+
+    runner = StepRunner([wait_position(82, -396, tolerancia=5), left(1, 1)])
+    ctx = StepContext(hwnd=1, input_service=entrada, char_info=Char())
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("left", 1, 1)]
+
+
+def test_wait_position_aceita_tolerancia():
+    """Coordenada do mundo não bate exata; a tolerância é o que a torna usável."""
+    class Char:
+        x, y = 85, -399
+
+    entrada = FakeInput()
+    runner = StepRunner([wait_position(82, -396, tolerancia=5), left(1, 1)])
+    ctx = StepContext(hwnd=1, input_service=entrada, char_info=Char())
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("left", 1, 1)]
+
+
+def test_wait_position_espera_enquanto_longe(entrada):
+    class Char:
+        x, y = 500, 500
+
+    runner = StepRunner([wait_position(82, -396, timeout=5.0), left(1, 1)])
+    ctx = StepContext(hwnd=1, input_service=entrada, char_info=Char())
+
+    for _ in range(5):
+        runner.tick(ctx)
+
+    assert entrada.acoes == []
+
+
+def test_wait_position_desiste_no_timeout(entrada):
+    class Char:
+        x, y = 500, 500
+
+    runner = StepRunner([wait_position(82, -396, timeout=0.05), left(9, 9)])
+    ctx = StepContext(hwnd=1, input_service=entrada, char_info=Char())
+
+    runner.tick(ctx)
+    time.sleep(0.06)
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [("left", 9, 9)]
+
+
+def test_wait_position_sem_char_info_pula(entrada):
+    runner = StepRunner([wait_position(82, -396), left(1, 1)])
+    ctx = StepContext(hwnd=1, input_service=entrada, char_info=None)
+    rodar_ate_terminar(runner, ctx)
+    assert entrada.acoes == [("left", 1, 1)]

@@ -20,6 +20,7 @@ from __future__ import annotations
 from src.services.bot.step_runner import (
     Step,
     attack_until_dead,
+    click_template,
     double_right,
     key,
     key_down,
@@ -30,6 +31,7 @@ from src.services.bot.step_runner import (
     right,
     use_all_items,
     wait,
+    wait_position,
 )
 
 # Cor que o macro usava pra confirmar "entrou na cave" (pixel 945,148).
@@ -420,6 +422,45 @@ def usar_courage(cfg) -> list[Step]:
         key(cfg["inventory_key"], note="fecha o inventario"),
         wait(1.0),
     ]
+
+
+def sair_da_cave(cfg) -> list[Step]:
+    """
+    Sai da cave pelo NPC que aparece depois do boss (Skull Herald), que
+    teleporta de volta pro NPC de entrada.
+
+    E o que viabiliza repetir a run sem passar pela cidade: sair e
+    voltar desfaz e refaz o team, e e isso que reseta a cave e devolve
+    o boss.
+
+    O item de dialogo e achado por IMAGEM, nao por coordenada fixa: a
+    caixa de dialogo do NPC nao aparece sempre no mesmo lugar, e clicar
+    as cegas erraria.
+    """
+    passos: list[Step] = []
+
+    # Se houver coordenada do NPC, confirma a chegada pela posicao lida
+    # da memoria em vez de contar segundos.
+    npc = cfg.get("npc_saida_pos")
+    if npc:
+        passos.append(
+            wait_position(*npc, tolerancia=cfg.get("tolerancia_posicao", 8),
+                          timeout=cfg.get("timeout_chegada", 60.0),
+                          note="chega perto da Skull Herald")
+        )
+
+    passos += [
+        click_template(cfg["template_npc_saida"], botao="double_right",
+                       timeout=cfg.get("timeout_npc_saida", 20.0),
+                       note="fala com a Skull Herald"),
+        wait(1.5, note="abre o dialogo"),
+        click_template(cfg["template_leave_bc"],
+                       timeout=cfg.get("timeout_npc_saida", 20.0),
+                       note="escolhe 'Leave BC'"),
+        wait(cfg.get("espera_teleporte", 6.0), note="teleporta"),
+    ]
+
+    return passos
 
 
 def voltar_para_stone(cfg) -> list[Step]:

@@ -42,6 +42,8 @@ KEY_UP = "key_up"                # solta
 WAIT = "wait"                    # espera nao-bloqueante
 WAIT_COLOR = "wait_color"        # espera um pixel ficar de certa cor
 SKIP_IF_COLOR = "skip_if_color"  # pula N passos se a cor ja estiver la
+CLICK_TEMPLATE = "click_template"  # espera um elemento aparecer e clica nele
+WAIT_POSITION = "wait_position"  # espera o personagem chegar numa coordenada
 USE_ALL_ITEMS = "use_all_items"  # acha um item por imagem e usa, ate acabar
 ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
 CALL = "call"                    # delega a um callable do script
@@ -132,6 +134,41 @@ def retry_until_color(tentativa: list[Step], x: int, y: int, color,
         if restantes > 0:
             saida.append(skip_if_color(x, y, color, restantes, tolerance))
     return saida
+
+
+def click_template(template: str, region=None, timeout: float = 20.0,
+                   threshold: float = 0.85, botao: str = "left",
+                   obrigatorio: bool = True, note: str = "") -> Step:
+    """
+    Espera um elemento aparecer na tela e clica nele.
+
+    Melhor que coordenada fixa pra coisas que MUDAM DE LUGAR ou que
+    demoram a aparecer -- caixa de dialogo de NPC, popup de convite.
+    Clicar as cegas nesses casos erra sempre que o jogo desenha a
+    janela alguns pixels adiante.
+
+    'obrigatorio=False' faz o passo desistir em silencio no timeout,
+    pra elementos que podem simplesmente nao aparecer.
+    """
+    return Step(
+        CLICK_TEMPLATE,
+        (template, region, threshold, botao, obrigatorio),
+        timeout=timeout,
+        note=note,
+    )
+
+
+def wait_position(x: int, y: int, tolerancia: int = 5, timeout: float = 60.0,
+                  note: str = "") -> Step:
+    """
+    Espera o personagem chegar perto de uma coordenada DO MUNDO (a
+    mesma que o jogo mostra), lida da memoria.
+
+    Substitui esperar N segundos e torcer: se a caminhada foi rapida
+    segue antes, se foi lenta espera mais. Os macros antigos nao tinham
+    como fazer isso.
+    """
+    return Step(WAIT_POSITION, (x, y, tolerancia), timeout=timeout, note=note)
 
 
 def use_all_items(template: str, region=None, maximo: int = 20,
@@ -356,6 +393,12 @@ class StepRunner:
                 self._index += adiante
             return True
 
+        if kind == CLICK_TEMPLATE:
+            return self._do_click_template(step, ctx)
+
+        if kind == WAIT_POSITION:
+            return self._do_wait_position(step, ctx)
+
         if kind == USE_ALL_ITEMS:
             return self._do_use_all_items(step, ctx)
 
@@ -390,6 +433,64 @@ class StepRunner:
             logger.warning(
                 "Cor esperada em (%s, %s) nao apareceu em %ss; seguindo mesmo assim",
                 x, y, step.timeout,
+            )
+            return True
+
+        return False
+
+    def _do_click_template(self, step: Step, ctx: StepContext) -> bool:
+        template, region, threshold, botao, obrigatorio = step.args
+
+        if ctx.vision_service is None:
+            logger.warning("click_template sem vision_service; pulando")
+            return True
+
+        posicao = ctx.vision_service.find_template(
+            ctx.hwnd, template, threshold=threshold, region=region
+        )
+
+        if posicao is not None:
+            x, y = posicao
+            if botao == "right":
+                ctx.input_service.right_click(ctx.hwnd, x, y)
+            elif botao == "double_right":
+                ctx.input_service.double_right_click(ctx.hwnd, x, y)
+            else:
+                ctx.input_service.click(ctx.hwnd, x, y)
+            logger.info("Clicou em '%s' (%s, %s)", template, x, y)
+            return True
+
+        if self._timed_out(step):
+            if obrigatorio:
+                logger.warning(
+                    "'%s' nao apareceu em %ss; seguindo mesmo assim",
+                    template, step.timeout,
+                )
+            return True
+
+        return False
+
+    def _do_wait_position(self, step: Step, ctx: StepContext) -> bool:
+        alvo_x, alvo_y, tolerancia = step.args
+
+        if ctx.char_info is None:
+            logger.warning("wait_position sem char_info; pulando")
+            return True
+
+        x = getattr(ctx.char_info, "x", None)
+        y = getattr(ctx.char_info, "y", None)
+
+        if x is None or y is None:
+            return True
+
+        if abs(x - alvo_x) <= tolerancia and abs(y - alvo_y) <= tolerancia:
+            logger.info("Chegou em (%s, %s)", alvo_x, alvo_y)
+            return True
+
+        if self._timed_out(step):
+            logger.warning(
+                "Nao chegou em (%s, %s) em %ss -- parou em (%s, %s)",
+                alvo_x, alvo_y, step.timeout, x, y,
             )
             return True
 

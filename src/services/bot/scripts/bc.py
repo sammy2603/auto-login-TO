@@ -168,6 +168,19 @@ DEFAULT_CONFIG = {
     # procura na janela toda.
     "inventario_regiao": None,
 
+    # --- Saida da cave (NPC "Skull Herald") ---
+    # Aparece depois que o boss morre e teleporta de volta pro NPC de
+    # entrada. E o que permite repetir a run sem passar pela cidade.
+    # A coordenada e do MUNDO (a mesma que o jogo mostra), lida da
+    # memoria -- nao e posicao de tela.
+    "npc_saida_pos": (82, -396),
+    "template_npc_saida": "skull_herald",
+    "template_leave_bc": "leave_bc",
+    "tolerancia_posicao": 8,
+    "timeout_chegada": 60.0,
+    "timeout_npc_saida": 20.0,
+    "espera_teleporte": 6.0,
+
     # --- Posicoes que ainda precisam de calibracao no jogo ---
     # Nenhum dos macros antigos cobria estas etapas, entao os valores
     # abaixo sao PALPITES centrados na tela. Conferir antes de usar.
@@ -406,11 +419,15 @@ class BCScript:
 
     def _montar_reset(self) -> list:
         """
-        Entre uma run e outra: reconstitui o team pra entrar de novo,
-        sem passar pela cidade.
+        Entre uma run e outra: sai pela Skull Herald e reconstitui o
+        team, sem passar pela cidade.
+
+        Sair e refazer o grupo e o que RESETA a cave -- e por isso que o
+        reseter existe.
         """
         cfg = self._config
         return [
+            *bc_steps.sair_da_cave(cfg),
             *bc_steps.ajustes_iniciais(cfg),
             *bc_steps.convidar_team(cfg),
         ]
