@@ -188,7 +188,30 @@ DEFAULT_CONFIG = {
     "timeout_view_reset": 5.0,
     "espera_view_reset": 0.5,
 
+    # --- Minimapa ---
+    # O minimapa e o mundo em escala, centrado no personagem: e o que
+    # permite converter "quero chegar em (x, y)" num ponto de clique.
+    # Medido neste client -- clique direito no minimapa e comparacao da
+    # posicao lida da memoria antes e depois.
+    "minimapa_centro": (915, 112),
+    "minimapa_raio": 55,
+    # Unidades de mundo por pixel. Aproximada de proposito: a caminhada
+    # e um laco que rele a posicao, entao erro custa iteracao a mais,
+    # nao destino errado.
+    "minimapa_escala": 1.0,
+
+    # --- Entrada da cave (NPC "Skull Herald", do lado de fora) ---
+    # Coordenada do MUNDO (a mesma que o jogo mostra) e ponto na TELA
+    # com o personagem no pe dele e a camera resetada. O ponto de tela
+    # foi medido clicando no NPC e conferindo onde o clique caiu.
+    "npc_entrada_pos": (1395, -636),
+    "npc_entrada_tela": (479, 410),
+    "template_enter_bc": "enter_bc",
+
     # --- Saida da cave (NPC "Skull Herald") ---
+    # Mesmo NPC, do lado de dentro. O ponto de tela ainda nao foi
+    # calibrado la dentro; None faz cair na busca por template.
+    "npc_saida_tela": None,
     # Aparece depois que o boss morre e teleporta de volta pro NPC de
     # entrada. E o que permite repetir a run sem passar pela cidade.
     # A coordenada e do MUNDO (a mesma que o jogo mostra), lida da

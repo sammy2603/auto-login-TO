@@ -396,16 +396,51 @@ def test_team_key_e_segurada_e_solta():
     assert bc_steps.sair_do_team(cfg)[0].kind == "key_up"
 
 
-def test_view_reset_antecede_os_cliques_de_chao():
+def test_anda_ate_a_coordenada_antes_de_falar_com_o_npc():
     """
-    Entrar na cave e sair pelo NPC são os únicos pontos que dependem do
-    ângulo da câmera (as caminhadas são no minimapa). Se o reset não vier
-    ANTES, os cliques caem no lugar errado quando a câmera girou.
+    A ordem é o que importa: chegar (coordenada do mundo), endireitar a
+    câmera e só então clicar no NPC. Clicar antes de chegar erra sempre.
     """
-    for passos in (bc_steps.entrar_na_cave(DEFAULT_CONFIG),
-                   bc_steps.sair_da_cave(DEFAULT_CONFIG)):
-        assert passos[0].kind == "click_template"
-        assert passos[0].args[0] == "view_reset"
+    for passos, destino in (
+        (bc_steps.entrar_na_cave(DEFAULT_CONFIG), DEFAULT_CONFIG["npc_entrada_pos"]),
+        (bc_steps.sair_da_cave(DEFAULT_CONFIG), DEFAULT_CONFIG["npc_saida_pos"]),
+    ):
+        assert passos[0].kind == "walk_to"
+        assert passos[0].args[:2] == destino
+        assert passos[1].kind == "click_template"
+        assert passos[1].args[0] == "view_reset"
+
+
+def test_entrada_abre_o_dialogo_no_ponto_calibrado():
+    """
+    O NPC tem animação idle -- procurá-lo por imagem oscilou de 0.14 a
+    0.93 no mesmo lugar. Com posição fixa e câmera resetada ele cai
+    sempre no mesmo ponto da tela; o que se procura por imagem é a
+    opção do diálogo, que é interface e não anima.
+    """
+    passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
+
+    dialogo = [p for p in passos if p.kind == "double_right"]
+    assert dialogo[0].args == DEFAULT_CONFIG["npc_entrada_tela"]
+
+    opcoes = [p for p in passos if p.kind == "click_template"
+              and p.args[0] == "enter_bc"]
+    assert opcoes, "faltou escolher a opção de entrar"
+
+
+def test_saida_sem_ponto_calibrado_procura_o_npc_por_imagem():
+    """Plano B enquanto o ponto de tela lá dentro não foi medido."""
+    passos = bc_steps.sair_da_cave({**DEFAULT_CONFIG, "npc_saida_tela": None})
+
+    templates = [p.args[0] for p in passos if p.kind == "click_template"]
+    assert DEFAULT_CONFIG["template_npc_saida"] in templates
+    assert DEFAULT_CONFIG["template_leave_bc"] in templates
+
+
+def test_saida_com_ponto_calibrado_clica_direto():
+    passos = bc_steps.sair_da_cave({**DEFAULT_CONFIG, "npc_saida_tela": (500, 400)})
+
+    assert any(p.kind == "double_right" and p.args == (500, 400) for p in passos)
 
 
 def test_view_reset_nao_derruba_o_ciclo_se_o_botao_nao_aparecer():

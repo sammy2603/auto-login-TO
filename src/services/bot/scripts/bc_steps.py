@@ -31,7 +31,7 @@ from src.services.bot.step_runner import (
     right,
     use_all_items,
     wait,
-    wait_position,
+    walk_to,
 )
 
 # Cor que o macro usava pra confirmar "entrou na cave" (pixel 945,148).
@@ -167,6 +167,74 @@ def view_reset(cfg) -> list[Step]:
     ]
 
 
+def andar_ate(cfg, destino) -> list[Step]:
+    """
+    Caminhada por coordenada do MUNDO, cortando reto pelo minimapa.
+
+    Substitui listas de cliques gravados: aquelas eram cegas -- nao
+    sabiam se tinham chegado, e qualquer empurrao no caminho jogava o
+    resto da sequencia fora. Aqui o alvo e a coordenada, e o passo so
+    termina quando a memoria diz que chegou.
+
+    Nao usa o pathfinding do jogo de proposito: ele anda por passagens
+    "de verdade" e custa tempo de farm.
+    """
+    return [
+        walk_to(
+            *destino,
+            centro=cfg["minimapa_centro"],
+            raio=cfg["minimapa_raio"],
+            escala=cfg["minimapa_escala"],
+            tolerancia=cfg.get("tolerancia_posicao", 8),
+            timeout=cfg.get("timeout_chegada", 60.0),
+            note=f"anda ate {destino}",
+        ),
+    ]
+
+
+def falar_com_npc(cfg, destino, ponto_na_tela, template_opcao) -> list[Step]:
+    """
+    Vai ate um NPC e escolhe uma opcao do dialogo dele.
+
+    A confirmacao de que a interacao deu certo e o DIALOGO abrir, e nao
+    a selecao do NPC: clicar num NPC nao preenche a estrutura de alvo
+    que a gente le da memoria (essa e do alvo de combate -- mob entra,
+    NPC nao). Ja o item de dialogo e interface: alto contraste, sem
+    animacao nem iluminacao por cima, que e onde template matching e
+    forte.
+
+    Com o personagem no pe do NPC e a camera resetada, o NPC cai sempre
+    no mesmo ponto da tela -- por isso 'ponto_na_tela' e coordenada fixa
+    e nao busca por imagem, que no corpo do NPC oscila com a animacao
+    idle (medido: 0.14 a 0.93 no mesmo lugar).
+
+    Sem 'ponto_na_tela' calibrado, cai no plano B: procura o proprio NPC
+    por template.
+    """
+    passos = list(andar_ate(cfg, destino))
+    passos += view_reset(cfg)
+
+    if ponto_na_tela:
+        passos.append(
+            double_right(*ponto_na_tela, note="abre o dialogo do NPC")
+        )
+    else:
+        passos.append(
+            click_template(cfg["template_npc_saida"], botao="double_right",
+                           timeout=cfg.get("timeout_npc_saida", 20.0),
+                           note="acha e fala com o NPC")
+        )
+
+    passos += [
+        wait(1.5, note="abre o dialogo"),
+        click_template(template_opcao,
+                       timeout=cfg.get("timeout_npc_saida", 20.0),
+                       note="escolhe a opcao"),
+    ]
+
+    return passos
+
+
 def entrar_na_cave(cfg) -> list[Step]:
     """
     Entrada na cave, com retentativa.
@@ -175,18 +243,18 @@ def entrar_na_cave(cfg) -> list[Step]:
     repetia num 'while_not' ate o pixel (945,148) ficar verde. Aqui a
     retentativa tem LIMITE -- o original podia ficar preso pra sempre.
 
-    A camera e resetada dentro de CADA tentativa: se a primeira falhou
-    por angulo errado, repetir os mesmos cliques com a mesma camera
-    torta falharia igual.
+    A tentativa INTEIRA se repete (caminhada, camera, dialogo): quando
+    a entrada falha, em geral e porque o personagem nem chegou onde
+    deveria -- refazer so o clique final daria no mesmo.
     """
     tentativa = [
-        *view_reset(cfg),
-        double_right(467, 417), double_right(471, 394), double_right(479, 377),
-        double_right(479, 362), double_right(486, 390), double_right(479, 393),
-        double_right(508, 405),
-        wait(1.0),
-        left(266, 366, note="confirma a entrada"),
-        wait(10.0),
+        *falar_com_npc(
+            cfg,
+            cfg["npc_entrada_pos"],
+            cfg.get("npc_entrada_tela"),
+            cfg["template_enter_bc"],
+        ),
+        wait(10.0, note="carrega a cave"),
     ]
 
     return retry_until_color(
@@ -484,32 +552,15 @@ def sair_da_cave(cfg) -> list[Step]:
     caixa de dialogo do NPC nao aparece sempre no mesmo lugar, e clicar
     as cegas erraria.
     """
-    # Camera reta antes de procurar o NPC: o clique nele e por imagem,
-    # mas a Skull Herald so aparece no recorte se estiver enquadrada.
-    passos: list[Step] = list(view_reset(cfg))
-
-    # Se houver coordenada do NPC, confirma a chegada pela posicao lida
-    # da memoria em vez de contar segundos.
-    npc = cfg.get("npc_saida_pos")
-    if npc:
-        passos.append(
-            wait_position(*npc, tolerancia=cfg.get("tolerancia_posicao", 8),
-                          timeout=cfg.get("timeout_chegada", 60.0),
-                          note="chega perto da Skull Herald")
-        )
-
-    passos += [
-        click_template(cfg["template_npc_saida"], botao="double_right",
-                       timeout=cfg.get("timeout_npc_saida", 20.0),
-                       note="fala com a Skull Herald"),
-        wait(1.5, note="abre o dialogo"),
-        click_template(cfg["template_leave_bc"],
-                       timeout=cfg.get("timeout_npc_saida", 20.0),
-                       note="escolhe 'Leave BC'"),
+    return [
+        *falar_com_npc(
+            cfg,
+            cfg["npc_saida_pos"],
+            cfg.get("npc_saida_tela"),
+            cfg["template_leave_bc"],
+        ),
         wait(cfg.get("espera_teleporte", 6.0), note="teleporta"),
     ]
-
-    return passos
 
 
 # =====================================================
