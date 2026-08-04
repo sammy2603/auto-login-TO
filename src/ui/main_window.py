@@ -25,6 +25,7 @@ from src.services.game.memory_reader import MemoryReader
 from src.services.bot.script_registry import ScriptRegistry
 from src.services.bot.scripts.bc import DEFAULT_CONFIG as BC_DEFAULT_CONFIG
 from src.shared.character_slots import CharacterSlot
+from src.shared.servers import SERVERS, has_template, missing_templates
 from src.ui.log_handler import TextboxLogHandler
 
 logger = get_logger(__name__)
@@ -114,14 +115,16 @@ class AccountDialog:
         self.label_var = ctk.StringVar(value=account.label if account else "")
         self.username_var = ctk.StringVar(value=account.username if account else "")
         self.password_var = ctk.StringVar(value=account.password if account else "")
-        self.server_var = ctk.StringVar(value=account.server_name if account else "")
+        self.server_var = ctk.StringVar(
+            value=account.server_name if account else SERVERS[0]
+        )
         self.slot_var = ctk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
         self.auto_var = ctk.BooleanVar(value=account.auto_login if account else False)
 
         self._field(outer, "Apelido da conta", self.label_var)
         self._field(outer, "Usuário", self.username_var)
         self._field(outer, "Senha", self.password_var, show="*")
-        self._field(outer, "Servidor", self.server_var)
+        self._server_field(outer)
 
         slot_frame = ctk.CTkFrame(outer, fg_color="transparent")
         slot_frame.pack(fill="x", pady=(0, 14))
@@ -153,6 +156,51 @@ class AccountDialog:
         d.grab_set()
         d.wait_window()
 
+    def _server_field(self, parent):
+        """
+        Dropdown de servidores.
+
+        A seleção na tela de servidores é feita por template matching,
+        então um servidor sem o recorte 'servidor_<nome>.png' falha no
+        login com TimeoutError -- depois de esperar o timeout inteiro.
+        Por isso o dropdown MARCA quais ainda não dá pra usar: descobrir
+        isso só na hora de logar seria bem pior.
+        """
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="x", pady=(0, 14))
+
+        ctk.CTkLabel(frame, text="Servidor", font=FONT_SMALL,
+                     text_color=TEXT2).pack(anchor="w", pady=(0, 4))
+
+        faltando = set(missing_templates())
+
+        def rotular(servidor):
+            return f"{servidor}  (sem template)" if servidor in faltando else servidor
+
+        # A var guarda o rótulo mostrado; _save tira o sufixo antes de
+        # gravar, pra o nome do servidor continuar limpo no accounts.json.
+        self._rotulos_servidor = {rotular(s): s for s in SERVERS}
+
+        atual = self.server_var.get()
+        self.server_var.set(rotular(atual) if atual in self._rotulos_servidor.values()
+                            else rotular(SERVERS[0]))
+
+        ctk.CTkOptionMenu(
+            frame, variable=self.server_var,
+            values=[rotular(s) for s in SERVERS],
+            font=FONT_TEXT, fg_color=CARD, button_color=HOVER,
+            button_hover_color=BLUE, dropdown_fg_color=CARD,
+            dropdown_text_color=TEXT, text_color=TEXT,
+        ).pack(fill="x")
+
+        if faltando:
+            ctk.CTkLabel(
+                frame,
+                text=("Servidores marcados precisam do recorte da tela de\n"
+                      "seleção. Capture com: python tools/calibrar.py"),
+                font=ctk.CTkFont(size=10), text_color=YELLOW, justify="left",
+            ).pack(anchor="w", pady=(4, 0))
+
     def _field(self, parent, label, var, show=None):
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.pack(fill="x", pady=(0, 14))
@@ -175,11 +223,26 @@ class AccountDialog:
             )
             return
 
+        # O dropdown mostra "Nome  (sem template)" nos servidores ainda
+        # não capturados; grava só o nome limpo.
+        rotulo = self.server_var.get().strip()
+        servidor = self._rotulos_servidor.get(rotulo, rotulo)
+
+        if not has_template(servidor):
+            if not messagebox.askyesno(
+                "Servidor sem template",
+                f"O servidor '{servidor}' ainda não tem o recorte da tela de "
+                f"seleção (templates/servidor_{servidor}.png).\n\n"
+                f"O login vai falhar por timeout até ele ser capturado com "
+                f"tools/calibrar.py.\n\nSalvar mesmo assim?",
+            ):
+                return
+
         self.result = Account(
             label=label,
             username=username,
             password=self.password_var.get(),
-            server_name=self.server_var.get().strip(),
+            server_name=servidor,
             character_slot=self.slot_var.get(),
             auto_login=self.auto_var.get(),
         )
