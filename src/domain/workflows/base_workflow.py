@@ -1,6 +1,8 @@
 import time
 
 from src.infrastructure.logging import get_logger
+from src.shared.delays import Delays
+from src.shared.keys import Keys
 
 
 class BaseWorkflow:
@@ -132,6 +134,8 @@ class BaseWorkflow:
         pra esperas longas e incertas (ex: fila de servidor), onde não
         faz sentido ficar tentando a cada 0.5s nem falhar rápido.
 
+        'timeout=None' espera indefinidamente.
+
         Loga uma mensagem periódica (a cada 'heartbeat_interval'
         segundos) pra deixar claro que o bot ainda está rodando, não
         travado.
@@ -163,6 +167,11 @@ class BaseWorkflow:
 
         'templates' é um dict: {label: (template_name, offset)}.
 
+        'timeout=None' espera indefinidamente -- é o caso da fila de
+        servidor, que pode durar horas: qualquer limite que a gente
+        escolhesse seria arbitrário e transformaria "a fila está longa"
+        em erro.
+
         Retorna (label, position) do primeiro que aparecer, ou
         (None, None) se o timeout for atingido.
         """
@@ -180,13 +189,16 @@ class BaseWorkflow:
             now = time.time()
             elapsed = now - start
 
-            if elapsed >= timeout:
+            if timeout is not None and elapsed >= timeout:
                 return None, None
 
             if now - last_heartbeat >= heartbeat_interval:
+                limite = (
+                    "sem limite de tempo" if timeout is None
+                    else f"timeout em {int(timeout)}s"
+                )
                 self.log(
-                    f"{waiting_message} ({int(elapsed)}s decorridos, "
-                    f"timeout em {int(timeout)}s)"
+                    f"{waiting_message} ({int(elapsed)}s decorridos, {limite})"
                 )
                 last_heartbeat = now
 
@@ -266,3 +278,21 @@ class BaseWorkflow:
         """
 
         self.client.press_key(key)
+
+    def dismiss_dialogs(self, times: int = 3):
+        """
+        Fecha qualquer caixa de diálogo com ESC.
+
+        Substitui ter um template por mensagem de erro: as mensagens do
+        client são muitas ("Acquiring server IP address", senha errada,
+        conta em uso, servidor cheio...) e recortar cada uma é trabalho
+        que nunca termina. ESC fecha todas, e o que interessa não é qual
+        popup apareceu -- é que ainda não estamos na tela seguinte.
+
+        Repete algumas vezes porque popups podem vir empilhados; ESC na
+        tela de login sem diálogo nenhum não faz nada.
+        """
+
+        for _ in range(times):
+            self.press_key(Keys.ESC)
+            self.wait(Delays.AFTER_CLICK)

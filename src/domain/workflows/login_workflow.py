@@ -1,8 +1,7 @@
 from src.domain.workflows.base_workflow import BaseWorkflow
 
-from src.shared.templates import LoginTemplates, ErrorTemplates
+from src.shared.templates import LoginTemplates, ServerTemplates
 from src.shared.delays import Delays
-from src.shared.keys import Keys
 from src.shared.offsets import FieldOffsets
 
 
@@ -31,13 +30,71 @@ class LoginWorkflow(BaseWorkflow):
 
             self.connect()
 
-        self.wait_login_screen()
+        self.login_until_server_screen()
 
-        self.fill_username()
+    # =====================================================
+    # Laço de login
+    # =====================================================
 
-        self.fill_password()
+    def login_until_server_screen(self):
+        """
+        Preenche as credenciais e clica em Entrar, repetindo até a tela
+        de servidores aparecer.
 
-        self.click_login()
+        Não há tratamento por tipo de erro. As mensagens que o client
+        pode mostrar são muitas ("Acquiring server IP address", conta em
+        uso, servidor em manutenção...) e recortar um template pra cada
+        uma é trabalho que nunca acaba -- e que só serve pra chegar na
+        mesma conclusão: não passamos da tela de login. Então a checagem
+        é uma só (a tela de servidores apareceu?) e o tratamento é um só
+        (ESC no que estiver na frente e tentar de novo).
+
+        O laço não tem limite de tentativas de propósito: desistir não
+        deixa a conta logada, só deixa o client parado sem ninguém
+        olhando.
+        """
+
+        tentativa = 1
+
+        while True:
+
+            self.wait_login_screen()
+
+            self.fill_username()
+
+            self.fill_password()
+
+            self.click_login()
+
+            if self.server_screen_appeared():
+                self.log("Login concluído.")
+                return
+
+            self.log(
+                f"Tela de servidores não apareceu (tentativa {tentativa}). "
+                "Fechando diálogos e preenchendo de novo..."
+            )
+
+            self.dismiss_dialogs()
+
+            tentativa += 1
+
+    def server_screen_appeared(self) -> bool:
+        """
+        Único sinal de sucesso do login: o servidor configurado apareceu
+        na lista.
+
+        É o mesmo template que o ServerWorkflow usa em seguida -- aqui
+        ele serve só como "passamos da tela de login", e lá como "clica
+        aqui".
+        """
+
+        posicao = self.wait_template(
+            ServerTemplates.server(self.settings.server_name),
+            timeout=self.settings.timeout_server_selection,
+        )
+
+        return posicao is not None
 
     # =====================================================
     # Cliente
@@ -138,8 +195,12 @@ class LoginWorkflow(BaseWorkflow):
 
         self.wait(Delays.FIELD_FOCUS_DELAY)
 
-        # Não limpamos o campo aqui: ele já começa vazio (tela de login
-        # recém-carregada).
+        # Limpa mesmo com o campo em geral já vazio: numa retentativa a
+        # senha anterior ainda está lá, e digitar por cima mandaria as
+        # duas juntas -- sem dar pra notar, já que o campo é mascarado.
+        self.clear_current()
+
+        self.wait(Delays.AFTER_CLEAR)
 
         self.log("Preenchendo senha...")
 
@@ -157,63 +218,28 @@ class LoginWorkflow(BaseWorkflow):
 
     def click_login(self):
 
-        for attempt in range(1, self.settings.max_ip_retries + 1):
-
-            login_button = self.find_template(
-                LoginTemplates.LOGIN_BUTTON,
-            )
-
-            if not login_button:
-                raise RuntimeError(
-                    "Botão Entrar não encontrado."
-                )
-
-            if attempt == 1:
-                self.log(
-                    f"Botão Entrar localizado em {login_button}"
-                )
-
-            self.log(f"Clicando em Entrar (tentativa {attempt})...")
-
-            self.click(
-                login_button
-            )
-
-            self.wait(
-                Delays.AFTER_LOGIN
-            )
-
-            popup = self.find_template(
-                ErrorTemplates.ACQUIRING_IP
-            )
-
-            if not popup:
-                self.log("Login enviado.")
-                return
-
-            self.log(
-                "Popup 'Acquiring server IP address' detectado. "
-                "Fechando e tentando de novo..."
-            )
-
-            ok_button = self.find_template(
-                ErrorTemplates.OK_BUTTON_LOGIN
-            )
-
-            if ok_button:
-                self.click(ok_button)
-            else:
-                # Se o botão OK específico não for encontrado, clica
-                # no próprio popup como fallback (muitos popups também
-                # fecham ao clicar em qualquer parte deles).
-                self.click(popup)
-
-            self.wait(Delays.AFTER_CLICK)
-
-        raise RuntimeError(
-            "Não foi possível logar: popup 'Acquiring server IP "
-            f"address' persistiu após {self.settings.max_ip_retries} tentativas."
+        login_button = self.find_template(
+            LoginTemplates.LOGIN_BUTTON,
         )
+
+        if not login_button:
+            raise RuntimeError(
+                "Botão Entrar não encontrado."
+            )
+
+        self.log(
+            f"Clicando em Entrar (localizado em {login_button})..."
+        )
+
+        self.click(
+            login_button
+        )
+
+        self.wait(
+            Delays.AFTER_LOGIN
+        )
+
+        self.log("Login enviado.")
 
     # =====================================================
     # Retentativa (após conexão interrompida)
@@ -232,10 +258,4 @@ class LoginWorkflow(BaseWorkflow):
 
         self.wait(Delays.SCREEN_TRANSITION)
 
-        self.wait_login_screen()
-
-        self.fill_username()
-
-        self.fill_password()
-
-        self.click_login()
+        self.login_until_server_screen()

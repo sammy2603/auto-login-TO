@@ -42,11 +42,9 @@ MATCH_THRESHOLD = _defaults.match_threshold
 TIMEOUT_LOGIN_SCREEN = _defaults.timeout_login_screen
 TIMEOUT_SERVER_SCREEN = _defaults.timeout_server_selection
 TIMEOUT_ENTER_GAME = _defaults.timeout_game_load
-TIMEOUT_SERVER_QUEUE = _defaults.timeout_queue
 
 # --- Retentativas ---
 MAX_CONNECTION_RETRIES = _defaults.max_connection_retries
-MAX_IP_RETRIES = _defaults.max_ip_retries
 
 # --- Personagem ---
 CHARACTER_SLOT = _defaults.character_slot

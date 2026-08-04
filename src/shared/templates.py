@@ -46,15 +46,7 @@ class GameTemplates:
     HUD = "tela_jogo_carregada"
 
 
-class ErrorTemplates:
-    """
-    Templates de telas de erro que podem aparecer durante o fluxo.
-    """
-
-    CONNECTION_INTERRUPTED = "popup_conexao_interrompida"
-    OK_BUTTON = "botao_ok_popup"
-
-    # Popup "Acquiring server IP address" que às vezes aparece logo
-    # após clicar em Entrar, na tela de login.
-    ACQUIRING_IP = "popup_acquiring_ip"
-    OK_BUTTON_LOGIN = "botao_ok_login_popup"
+# Não existe ErrorTemplates: as mensagens de erro do client não são
+# reconhecidas por imagem. São muitas, e todas levam à mesma ação --
+# ESC pra fechar e tentar de novo (ver BaseWorkflow.dismiss_dialogs).
+# O que decide o fluxo é a tela que a gente ESPERAVA ver aparecer.
