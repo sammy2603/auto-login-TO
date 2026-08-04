@@ -78,7 +78,7 @@ RamoraBOT. Somando os mesmos `0x60` das outras bases, voltam a resolver:
 
 | Base | Endereço novo | Prova |
 |---|---|---|
-| ENTIDADES | `0x012C0628` | `target_select` = 1 com alvo selecionado; `loot` = 2 |
+| ENTIDADES | `0x012C0628` | `target_select` alterna 1 ↔ 0 ao selecionar e dar Esc |
 | SUR | `0x012CE33C` | cadeia resolve para um `EvUiForm` |
 
 Lição barata: antes de varrer memória, sempre testar o rebase conhecido
@@ -274,6 +274,14 @@ re.search(r'text="([^"]+)\s*\[(-?\d+),(-?\d+)\]"', info)
 
 7. **`x > 0 and math.floor(x) or math.ceil(x)`** — idioma `and/or` que
    quebra quando `floor(x) == 0`: para `0 < x < 1` devolve `ceil(x) == 1`.
+
+8. **HP e nome do alvo sobrevivem ao Esc.** Ao tirar o alvo, as cadeias
+   de `target_hp` e `target_name` continuam devolvendo o valor do alvo
+   anterior por tempo indefinido — conferido: `597` / `Little Wild Boar`
+   com nada selecionado. Só o booleano em ENTIDADES
+   (`[0xD0, 0x2DC, 0x24, 0xC10]`) alterna de verdade. Toda leitura de
+   alvo tem de passar por ele; era por isso que o `target_selected`
+   inferido de `hp > 0 and name` mentia.
 
 ---
 

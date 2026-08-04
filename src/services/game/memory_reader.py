@@ -93,6 +93,7 @@ class MemoryReader:
     TARGET_BASE = 0x012CE340
     SPLIT_BASE = 0x012CE340
     TEAM_SIZE_BASE = 0x0106D388
+    ENTIDADES_BASE = 0x012C0628
 
     def __init__(self, pid: int):
         self._pid = pid
@@ -286,10 +287,20 @@ class MemoryReader:
 
     @property
     def target_selected(self) -> bool:
-        return self.target_hp > 0 and bool(self.target_name)
+        """
+        Booleano real do cliente. Antes isto era inferido de
+        `target_hp > 0 and target_name`, o que mentia: ao tirar o alvo,
+        HP e nome ficam com o valor do alvo anterior indefinidamente.
+        """
+        addr = self._follow_chain(self.ENTIDADES_BASE, [0xD0, 0x2DC, 0x24, 0xC10])
+        return _rpm_int(self._hProcess, addr, 1) == 1 if addr else False
 
     @property
     def target_hp(self) -> int:
+        # Sem alvo o endereco guarda o HP do alvo anterior, entao a
+        # leitura precisa passar pelo booleano de selecao.
+        if not self.target_selected:
+            return 0
         chain = [self.TARGET_BASE, 0x18, 0x59C, 0x0, 0xC, 0x1F4, 0x15C, 0x480]
         addr = self._follow_chain(chain[0], chain[1:])
         return _rpm_int(self._hProcess, addr, 2) if addr else 0
@@ -307,6 +318,9 @@ class MemoryReader:
 
     @property
     def target_name(self) -> str:
+        # Mesma armadilha do target_hp: o nome sobrevive ao Esc.
+        if not self.target_selected:
+            return ""
         chain = [self.TARGET_BASE, 0x18, 0xB1C, 0x0, 0xC, 0xD9C, 0x9AC]
         addr = self._follow_chain(chain[0], chain[1:])
         if addr == 0:
