@@ -25,7 +25,9 @@ from src.services.bot.step_runner import (
     retry_until_color,
     right,
     click_template,
+    click_until_target,
     skip_if_color,
+    walk_to,
     use_all_items,
     wait_position,
     wait,
@@ -427,6 +429,162 @@ def test_retry_until_color_esgota_as_tentativas_se_nunca_der_certo(entrada):
     rodar_ate_terminar(runner, ctx)
 
     assert entrada.acoes == [("left", 5, 5)] * 3
+
+
+# ==========================================================
+# walk_to -- andar até uma coordenada do mundo pelo minimapa
+# ==========================================================
+#
+# O minimapa é o mundo em escala, centrado no personagem. Medido no
+# jogo: ~1 unidade de mundo por pixel, com o y INVERTIDO -- subir no
+# minimapa aumenta o y. Laço fechado: relê a posição e reclica, então
+# escala aproximada só custa iteração, não destino errado.
+
+class FakeChar:
+    def __init__(self, x=0, y=0):
+        self.x = x
+        self.y = y
+
+
+def contexto_char(entrada, char):
+    return StepContext(hwnd=1, input_service=entrada, char_info=char)
+
+
+def test_chegou_no_alvo_nao_clica(entrada):
+    char = FakeChar(100, 100)
+    runner = StepRunner([walk_to(103, 98, tolerancia=8)])
+
+    rodar_ate_terminar(runner, contexto_char(entrada, char))
+
+    assert entrada.acoes == []
+
+
+def test_projeta_o_alvo_no_minimapa_com_y_invertido(entrada):
+    """Alvo 20 ao norte e 10 a leste: clique acima e à direita do centro."""
+    char = FakeChar(1000, -500)
+    runner = StepRunner([walk_to(1010, -480, centro=(915, 112), raio=55,
+                                 escala=1.0, tolerancia=2, intervalo=0.0)])
+
+    runner.tick(contexto_char(entrada, char))
+
+    assert entrada.acoes == [("right", 925, 92)]
+
+
+def test_alvo_fora_do_raio_clica_na_borda(entrada):
+    """Longe demais pro minimapa: anda o que der na direção certa."""
+    char = FakeChar(0, 0)
+    runner = StepRunner([walk_to(1000, 0, centro=(915, 112), raio=55,
+                                 escala=1.0, tolerancia=2, intervalo=0.0)])
+
+    runner.tick(contexto_char(entrada, char))
+
+    (_, x, y), = entrada.acoes
+    assert (x, y) == (915 + 55, 112), "devia parar na borda, não fora do minimapa"
+
+
+def test_parede_no_caminho_faz_o_clique_desviar(entrada):
+    """
+    Medido no jogo: um clique reto pode mover ZERO por causa de parede.
+    Repetir o mesmo clique daria no mesmo, então o seguinte sai torto.
+    """
+    char = FakeChar(1000, -500)
+    runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
+                                 escala=1.0, tolerancia=2, intervalo=0.0)])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)   # primeiro clique, reto
+    runner.tick(ctx)   # personagem não saiu do lugar -> desvia
+
+    assert len(entrada.acoes) == 2
+    assert entrada.acoes[0] != entrada.acoes[1]
+
+
+def test_desiste_no_timeout(entrada):
+    char = FakeChar(0, 0)
+    runner = StepRunner([walk_to(999, 999, tolerancia=2, intervalo=0.0,
+                                 timeout=0.05)])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)
+    time.sleep(0.06)
+    runner.tick(ctx)
+
+    assert runner.finished
+
+
+def test_sem_leitura_de_posicao_nao_trava_o_roteiro(entrada):
+    runner = StepRunner([walk_to(10, 10)])
+
+    rodar_ate_terminar(runner, StepContext(hwnd=1, input_service=entrada))
+
+    assert entrada.acoes == []
+
+
+# ==========================================================
+# click_until_target -- selecionar NPC pelo nome lido da memória
+# ==========================================================
+#
+# Confirmar a seleção pela memória e não por imagem é o ponto: o NPC
+# tem animação idle e o cenário muda de um ponto pro outro, então
+# template matching nele oscila. O nome do alvo, não.
+
+def test_para_assim_que_o_alvo_certo_esta_selecionado(entrada):
+    runner = StepRunner([click_until_target(400, 300, "Skull Herald")])
+    ctx = contexto(entrada, target=FakeTarget(name="Skull Herald"))
+
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == [], "já estava selecionado, não precisava clicar"
+
+
+def test_clica_ate_o_alvo_certo_aparecer(entrada):
+    alvo = FakeTarget(name="")
+    runner = StepRunner([click_until_target(400, 300, "Skull Herald",
+                                            intervalo=0.0)])
+    ctx = contexto(entrada, target=alvo)
+
+    runner.tick(ctx)
+    runner.tick(ctx)
+    assert not runner.finished, "sem o alvo certo, não pode seguir"
+
+    alvo.name = "Skull Herald"
+    runner.tick(ctx)
+
+    assert runner.finished
+    assert entrada.acoes == [("left", 400, 300), ("left", 400, 300)]
+
+
+def test_alvo_errado_nao_conta(entrada):
+    """Clicou e pegou o mob ao lado -- continua tentando."""
+    runner = StepRunner([click_until_target(400, 300, "Skull Herald",
+                                            intervalo=0.0)])
+    ctx = contexto(entrada, target=FakeTarget(name="Gun Witch"))
+
+    runner.tick(ctx)
+
+    assert not runner.finished
+
+
+def test_nome_do_alvo_ignora_maiusculas_e_espacos(entrada):
+    runner = StepRunner([click_until_target(400, 300, "skull herald")])
+    ctx = contexto(entrada, target=FakeTarget(name="  Skull Herald  "))
+
+    rodar_ate_terminar(runner, ctx)
+
+    assert entrada.acoes == []
+
+
+def test_desiste_no_timeout_em_vez_de_travar_o_ciclo(entrada):
+    """Preso aqui pra sempre é pior que seguir e falhar visivelmente."""
+    runner = StepRunner([click_until_target(400, 300, "Skull Herald",
+                                            timeout=0.05, intervalo=0.0)])
+    ctx = contexto(entrada, target=FakeTarget(name=""))
+
+    runner.tick(ctx)
+    time.sleep(0.06)
+    runner.tick(ctx)
+
+    assert runner.finished
 
 
 # ==========================================================

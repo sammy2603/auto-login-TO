@@ -20,6 +20,7 @@ tabela, nao cacar chamadas de clique no meio da logica.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -46,6 +47,8 @@ CLICK_TEMPLATE = "click_template"  # espera um elemento aparecer e clica nele
 WAIT_POSITION = "wait_position"  # espera o personagem chegar numa coordenada
 USE_ALL_ITEMS = "use_all_items"  # acha um item por imagem e usa, ate acabar
 ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
+CLICK_UNTIL_TARGET = "click_until_target"  # clica ate selecionar certo alvo
+WALK_TO = "walk_to"              # anda ate uma coordenada do mundo, pelo minimapa
 CALL = "call"                    # delega a um callable do script
 
 
@@ -218,6 +221,65 @@ def attack_until_dead(skills, timeout: float = 300.0,
     )
 
 
+def walk_to(x: int, y: int, centro=(915, 112), raio: int = 55,
+            escala: float = 1.0, tolerancia: int = 8, intervalo: float = 2.0,
+            timeout: float = 120.0, note: str = "") -> Step:
+    """
+    Anda ate uma coordenada DO MUNDO clicando no minimapa.
+
+    O minimapa e o mundo em escala e centrado no personagem, entao o
+    ponto de clique sai de conta, nao de tabela: pega a diferenca entre
+    onde estamos (lida da memoria) e onde queremos chegar, divide pela
+    escala e soma ao centro do minimapa. Corta reto pelo mapa, sem o
+    pathfinding do jogo -- que anda por passagens "de verdade" e custa
+    tempo de farm.
+
+    O eixo y e INVERTIDO: subir no minimapa aumenta o y do mundo.
+
+    E um laco fechado, nao um clique: a cada intervalo rele a posicao e
+    reclica. Por isso a escala nao precisa ser exata -- erro so custa
+    iteracao a mais, nao destino errado.
+
+    Alvo fora do raio do minimapa vira clique na BORDA naquela direcao:
+    anda o quanto der e a proxima iteracao continua.
+
+    Quando o personagem para de progredir (parede no meio do caminho --
+    acontece, foi medido), o clique seguinte sai desviado alguns graus
+    pro lado, alternando, ate destravar.
+    """
+    return Step(
+        WALK_TO,
+        (x, y, centro[0], centro[1], raio, escala, tolerancia, intervalo),
+        timeout=timeout,
+        note=note,
+    )
+
+
+def click_until_target(x: int, y: int, nome: str, timeout: float = 20.0,
+                       intervalo: float = 1.0, botao: str = "left",
+                       note: str = "") -> Step:
+    """
+    Clica num ponto ate o alvo selecionado ser o esperado.
+
+    Confirmacao por MEMORIA, nao por imagem: o nome do alvo e lido do
+    processo do jogo, entao nao depende de animacao, iluminacao nem do
+    fundo do cenario -- que e onde o template matching de NPC quebra.
+    Ou o clique selecionou o NPC certo, ou nao selecionou.
+
+    So funciona com o personagem parado num ponto conhecido e a camera
+    resetada: e isso que faz o NPC cair sempre no mesmo (x, y) da tela.
+
+    Se estourar o timeout, segue mesmo assim -- os passos seguintes
+    falham de forma visivel, o que e melhor que travar o ciclo aqui.
+    """
+    return Step(
+        CLICK_UNTIL_TARGET,
+        (x, y, nome, intervalo, botao),
+        timeout=timeout,
+        note=note,
+    )
+
+
 def call(fn: Callable, note: str = "") -> Step:
     """Delega a um callable do proprio script (logica que nao vira dado)."""
     return Step(CALL, (fn,), note=note)
@@ -272,6 +334,8 @@ class StepRunner:
         self._step_started: float | None = None
         self._last_action: float = 0.0
         self._usados: int = 0
+        self._ultima_posicao: tuple | None = None
+        self._sem_progresso: int = 0
 
     # -------------------------------------------------
     # Estado
@@ -299,6 +363,8 @@ class StepRunner:
         self._step_started = None
         self._last_action = 0.0
         self._usados = 0
+        self._ultima_posicao = None
+        self._sem_progresso = 0
 
     # -------------------------------------------------
     # Execucao
@@ -340,6 +406,11 @@ class StepRunner:
         self._deadline = None
         self._step_started = None
         self._usados = 0
+        # Cada passo comeca do zero: sem isto, o instante do ultimo
+        # clique de um passo atrasaria o primeiro clique do seguinte.
+        self._last_action = 0.0
+        self._ultima_posicao = None
+        self._sem_progresso = 0
 
     def _timed_out(self, step: Step) -> bool:
         if not step.timeout or self._step_started is None:
@@ -404,6 +475,12 @@ class StepRunner:
 
         if kind == ATTACK_UNTIL_DEAD:
             return self._do_attack(step, ctx)
+
+        if kind == CLICK_UNTIL_TARGET:
+            return self._do_click_until_target(step, ctx)
+
+        if kind == WALK_TO:
+            return self._do_walk_to(step, ctx)
 
         if kind == CALL:
             return bool(step.args[0](ctx))
@@ -529,6 +606,95 @@ class StepRunner:
 
         self._usados += 1
         self._last_action = agora
+
+        return False
+
+    def _do_walk_to(self, step: Step, ctx: StepContext) -> bool:
+        alvo_x, alvo_y, cx, cy, raio, escala, tolerancia, intervalo = step.args
+
+        if ctx.char_info is None:
+            logger.warning("walk_to sem leitura de posicao; pulando")
+            return True
+
+        atual = (getattr(ctx.char_info, "x", 0), getattr(ctx.char_info, "y", 0))
+
+        dx = alvo_x - atual[0]
+        dy = alvo_y - atual[1]
+
+        if math.hypot(dx, dy) <= tolerancia:
+            return True
+
+        agora = time.time()
+
+        if agora - self._last_action < intervalo:
+            return False
+
+        # Andou desde o ultimo clique? Se nao, tem parede no caminho --
+        # repetir o mesmo clique daria no mesmo.
+        if atual == self._ultima_posicao:
+            self._sem_progresso += 1
+        else:
+            self._sem_progresso = 0
+            self._ultima_posicao = atual
+
+        # Mundo -> pixel. O y inverte: subir no minimapa aumenta o y.
+        px = dx / escala
+        py = -dy / escala
+
+        if self._sem_progresso:
+            # Desvia alternando pros dois lados, abrindo o angulo a cada
+            # tentativa presa, ate contornar o obstaculo.
+            lado = 1 if self._sem_progresso % 2 else -1
+            angulo = math.radians(30 * lado * ((self._sem_progresso + 1) // 2))
+            px, py = (px * math.cos(angulo) - py * math.sin(angulo),
+                      px * math.sin(angulo) + py * math.cos(angulo))
+
+        # Alvo longe demais pro minimapa: clica na borda, naquela direcao.
+        distancia = math.hypot(px, py)
+        if distancia > raio:
+            px, py = px * raio / distancia, py * raio / distancia
+
+        ctx.input_service.right_click(ctx.hwnd, int(cx + px), int(cy + py))
+        self._last_action = agora
+
+        if self._timed_out(step):
+            logger.warning(
+                "Nao chegou em (%s, %s) em %ss (parou em %s); seguindo",
+                alvo_x, alvo_y, step.timeout, atual,
+            )
+            return True
+
+        return False
+
+    def _do_click_until_target(self, step: Step, ctx: StepContext) -> bool:
+        x, y, nome, intervalo, botao = step.args
+
+        atual = (getattr(ctx.target_info, "name", "") or "").strip()
+
+        if atual.lower() == nome.strip().lower():
+            return True
+
+        agora = time.time()
+
+        # Espaca os cliques: o jogo leva alguns quadros pra registrar a
+        # selecao, e clicar a cada tick so empilharia clique em cima de
+        # clique sem dar tempo do alvo aparecer na memoria.
+        if agora - self._last_action >= intervalo:
+            if botao == "right":
+                ctx.input_service.right_click(ctx.hwnd, x, y)
+            elif botao == "double_right":
+                ctx.input_service.double_right_click(ctx.hwnd, x, y)
+            else:
+                ctx.input_service.click(ctx.hwnd, x, y)
+            self._last_action = agora
+
+        if self._timed_out(step):
+            logger.warning(
+                "Alvo '%s' nao foi selecionado em %ss (alvo atual: %r); "
+                "seguindo mesmo assim",
+                nome, step.timeout, atual,
+            )
+            return True
 
         return False
 
