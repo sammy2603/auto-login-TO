@@ -69,9 +69,52 @@ genérico. Corrigido em `memory_reader.py`.
 | `notification` | `0x0117097C` | lê `86581704` (um ponteiro), nunca `1` |
 | `class_id` | CHAR+`0x3C8` | lê 760 — offset mudou |
 | CAMERA | `0x0116FFF4` | lê 0 |
-| ENTIDADES | `0x012C05C8` | lê 0 — mata `target_select` e `loot` |
-| SUR | `0x012CE2DC` | lê `0x3` — mata o texto do *surrounding* |
 | todas as bases `ramora` | — | 0, lixo, ou cadeia quebra |
+
+### Recuperado pelo rebase de 0x60
+
+ENTIDADES e SUR estavam mortas só porque eram os endereços do build do
+RamoraBOT. Somando os mesmos `0x60` das outras bases, voltam a resolver:
+
+| Base | Endereço novo | Prova |
+|---|---|---|
+| ENTIDADES | `0x012C0628` | `target_select` = 1 com alvo selecionado; `loot` = 2 |
+| SUR | `0x012CE33C` | cadeia resolve para um `EvUiForm` |
+
+Lição barata: antes de varrer memória, sempre testar o rebase conhecido
+no entorno da base morta. Duas das três voltaram sem scan nenhum.
+
+**SUR tem uma ressalva.** A cadeia resolve, mas o `+0x64` do RamoraBOT
+caía no meio do texto e devolvia um fragmento (`"t "`). No `ver.6400` o
+texto está no próprio objeto, cadeia `[0x18, 0x8C, 0x3C]` — e o que ele
+traz é o *form* da própria posição:
+
+```
+EvUiForm (13722200)...Scarp [392,889]...
+```
+
+Ou seja, mapa e coordenada **do personagem**, não a lista de NPCs do
+painel Surrounding. Essa lista existe: um scan pelo literal `text="`
+achou 118 entradas renderizadas em heap, como
+
+```
+text="Courage Merchant [231,-517] (1269 m)" color="#ff00ff00" hlink="String:task:locate?px=231&py=-517..."
+```
+
+mas nenhum dword aponta para o meio delas, e ainda não há cadeia estável
+até o início do buffer. Achar isso é o trabalho que falta para
+automatizar a coleta de coordenada de NPC.
+
+As strings da UI são **UTF-8**, não UTF-16 — um scan por `text="` em
+UTF-16LE devolve zero ocorrências.
+
+### CAMERA continua perdida
+
+O rebase de `0x60` não funciona para `0x0116FFF4`, e varrer `±0x400` em
+volta só devolve floats denormais (ruído). Como zoom, rotação e ângulo
+são floats que o jogador controla, o caminho é scan por valor com
+`tools/scan_memory.py`: dar scan de float, mexer a câmera, refinar,
+repetir até sobrar um punhado de endereços.
 
 `sit` hardcoded, XP e `notification` foram **removidos** do
 `memory_reader.py`: nenhum consumidor no app e falhavam em silêncio.

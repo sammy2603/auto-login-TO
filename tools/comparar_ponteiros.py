@@ -62,8 +62,10 @@ BASES = {
     "TARGET":    {"loginto": 0x012CE340, "ramora": 0x012CE2E0},
     "TEAM":      {"loginto": 0x0106D388, "ramora": 0x0106D328},
     "DIALOGO":   {"loginto": 0x0117B2DC, "ramora": 0x0117B27C},
-    "ENTIDADES": {"ramora": 0x012C05C8},   # CLIENT + 0xEC05C8
-    "SUR":       {"ramora": 0x012CE2DC},
+    # ENTIDADES e SUR recuperadas aplicando o mesmo rebase de 0x60 das
+    # demais bases. CAMERA nao respondeu ao rebase e segue perdida.
+    "ENTIDADES": {"loginto": 0x012C0628, "ramora": 0x012C05C8},
+    "SUR":       {"loginto": 0x012CE33C, "ramora": 0x012CE2DC},
     "CAMERA":    {"ramora": 0x0116FFF4},
     "XP":        {"loginto": 0x01139700},
 }
@@ -87,6 +89,11 @@ def texto_sensato(v):
         return False
     permitido = set(string.ascii_letters + string.digits + " '-_.")
     return all(c in permitido for c in v) and any(c.isalnum() for c in v)
+
+
+def tem_coordenada(v):
+    """O texto do surrounding traz 'Nome [x,y]' no meio de marcacao."""
+    return isinstance(v, str) and bool(re.search(r"\[-?\d+,-?\d+\]", v))
 
 
 def faixa(lo, hi):
@@ -153,7 +160,10 @@ CAMPOS = [
      booleano(0, 1), None),
     ("loot",          "ENTIDADES", [0xD0, 0x7F4, 0x0, 0x24, 0x40], "int",
      faixa(0, 0x7FFFFFFF), None),
-    ("sur_info",      "SUR",    [0x18, 0x8C, 0x3C, 0x64], "str", texto_sensato, None),
+    # No ver.6400 o texto esta no proprio objeto; o +0x64 do ramora caia
+    # no meio dele e devolvia um fragmento.
+    ("sur_info",      "SUR",    [0x18, 0x8C, 0x3C], "texto_longo", tem_coordenada,
+     [0x18, 0x8C, 0x3C, 0x64]),
     ("camera_zoom",   "CAMERA", [0x64], "float", faixa(-1000, 1000), None),
     ("camera_rot",    "CAMERA", [0x5C], "float", faixa(-1000, 1000), None),
     ("camera_ang",    "CAMERA", [0x60], "float", faixa(-1000, 1000), None),
@@ -247,14 +257,17 @@ def ler_campo(proc: Processo, endereco: int, tipo: str):
         return proc.inteiro(endereco, 1), ""
     if tipo == "float":
         return proc.flutuante(endereco), ""
-    if tipo == "str":
-        direto = proc.texto(endereco)
-        if texto_sensato(direto):
+    if tipo in ("str", "texto_longo"):
+        # texto_longo: marcacao de UI, nao cabe nos 51 bytes de um nome
+        largura = 300 if tipo == "texto_longo" else 51
+        aceita = tem_coordenada if tipo == "texto_longo" else texto_sensato
+        direto = proc.texto(endereco, largura)
+        if aceita(direto):
             return direto, ""
         ponteiro = proc.inteiro(endereco, 4)
         if ponteiro:
-            indireto = proc.texto(ponteiro)
-            if texto_sensato(indireto):
+            indireto = proc.texto(ponteiro, largura)
+            if aceita(indireto):
                 return indireto, "via deref"
         return direto, ""
     raise ValueError(f"tipo desconhecido: {tipo}")
@@ -480,6 +493,10 @@ def autoteste():
     assert booleano(0, 200)(200)
     assert not booleano(0, 200)(1)
 
+    assert tem_coordenada('text="Mount Admin [239,-519] (1270 m)"')
+    assert not tem_coordenada('text="%s%s [%d,%d] (%d m)"')   # template, nao instancia
+    assert not tem_coordenada(None)
+
     assert resumo_ponteiro(0) == "0 (base morta)"
     assert "heap" in resumo_ponteiro(0x0A1B2C3D)
     assert "lixo" in resumo_ponteiro(0xFFFFFFF0)
@@ -495,7 +512,8 @@ def autoteste():
         assert BASES[chave_base], f"{chave_base} sem nenhuma fonte"
         assert set(BASES[chave_base]) <= fontes_validas, f"{chave_base}: fonte invalida"
         assert offsets, f"{nome}: cadeia vazia"
-        assert tipo in {"int", "word", "byte", "float", "str"}, f"{nome}: tipo {tipo}"
+        assert tipo in {"int", "word", "byte", "float", "str", "texto_longo"}, \
+            f"{nome}: tipo {tipo}"
         assert callable(sanidade), f"{nome}: sanidade nao chamavel"
         if off_ramora:
             assert "ramora" in BASES[chave_base], f"{nome}: cadeia ramora sem base ramora"
@@ -509,7 +527,7 @@ def autoteste():
 
     # A divergencia de 0x60 e o achado central. Se alguem mexer numa base
     # e esquecer a outra, isto avisa.
-    for chave in ("CHAR", "TARGET", "TEAM", "DIALOGO"):
+    for chave in ("CHAR", "TARGET", "TEAM", "DIALOGO", "ENTIDADES", "SUR"):
         v = BASES[chave]
         assert v["loginto"] - v["ramora"] == 0x60, \
             f"{chave}: divergencia deixou de ser 0x60"
