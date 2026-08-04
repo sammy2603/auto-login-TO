@@ -157,16 +157,28 @@ def use_all_items(template: str, region=None, maximo: int = 20,
 
 
 def attack_until_dead(skills, timeout: float = 300.0,
-                      skill_interval: float = 1.0, note: str = "") -> Step:
+                      skill_interval: float = 1.0, aoe_key: str = "",
+                      aoe_ate_mana: float | None = None, super_key: str = "",
+                      note: str = "") -> Step:
     """
     Cicla as skills ate o alvo morrer.
 
     Substitui o 'repeat 130' do macro: em vez de contar repeticoes e
     torcer, le a vida do alvo. Se o alvo morrer antes, para antes; se
     demorar mais, continua.
+
+    'aoe_key' entra na rotacao apenas enquanto a mana estiver ACIMA de
+    'aoe_ate_mana' -- AOE custa caro, e ficar sem mana no meio do boss
+    e pior que matar mais devagar.
+
+    'super_key' e disparada uma vez no inicio, quando informada.
     """
-    return Step(ATTACK_UNTIL_DEAD, (tuple(skills), skill_interval),
-                timeout=timeout, note=note)
+    return Step(
+        ATTACK_UNTIL_DEAD,
+        (tuple(skills), skill_interval, aoe_key or "", aoe_ate_mana, super_key or ""),
+        timeout=timeout,
+        note=note,
+    )
 
 
 def call(fn: Callable, note: str = "") -> Step:
@@ -420,7 +432,7 @@ class StepRunner:
         return False
 
     def _do_attack(self, step: Step, ctx: StepContext) -> bool:
-        skills, intervalo = step.args
+        skills, intervalo, aoe_key, aoe_ate_mana, super_key = step.args
 
         alvo_morto = (
             ctx.target_info is None
@@ -434,6 +446,7 @@ class StepRunner:
             if self._last_action > 0:
                 logger.info("Alvo derrubado")
                 self._last_action = 0.0
+                self._usados = 0
                 return True
 
         if self._timed_out(step):
@@ -441,6 +454,7 @@ class StepRunner:
                 "Alvo nao caiu em %ss; seguindo pro proximo passo", step.timeout
             )
             self._last_action = 0.0
+            self._usados = 0
             return True
 
         agora = time.time()
@@ -451,12 +465,40 @@ class StepRunner:
         if not skills:
             return True
 
-        # TAB seleciona o alvo mais proximo; depois cicla as skills.
-        indice = int((agora / max(intervalo, 0.01))) % len(skills)
-
+        # TAB seleciona o alvo mais proximo.
         ctx.input_service.press_key(ctx.hwnd, "TAB")
-        ctx.input_service.press_key(ctx.hwnd, skills[indice])
+
+        # Super skill uma vez so, na abertura.
+        if super_key and self._usados == 0:
+            ctx.input_service.press_key(ctx.hwnd, super_key)
+            self._usados = 1
+            self._last_action = agora
+            return False
+
+        ctx.input_service.press_key(ctx.hwnd, self._proxima_skill(
+            skills, intervalo, aoe_key, aoe_ate_mana, ctx, agora
+        ))
 
         self._last_action = agora
 
         return False
+
+    @staticmethod
+    def _proxima_skill(skills, intervalo, aoe_key, aoe_ate_mana, ctx, agora) -> str:
+        """
+        Escolhe a tecla desta rodada.
+
+        O AOE so entra enquanto a mana estiver ACIMA do limite: ele
+        custa caro, e ficar sem mana no meio do boss e pior que matar
+        mais devagar.
+        """
+        rotacao = list(skills)
+
+        if aoe_key and aoe_ate_mana is not None:
+            mana = getattr(ctx.char_info, "resource_pct", 0.0) if ctx.char_info else 0.0
+            if mana > aoe_ate_mana:
+                rotacao.append(aoe_key)
+
+        indice = int(agora / max(intervalo, 0.01)) % len(rotacao)
+
+        return rotacao[indice]

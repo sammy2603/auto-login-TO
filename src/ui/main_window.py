@@ -614,137 +614,287 @@ class MainWindow:
 
     def _cfg_bc(self, name):
         """
-        Configuração do Battle Cave.
+        Configuração do Bewitcher Cave, em 4 abas.
 
-        O BC é auto-contido: tem as próprias skills e teclas, e não
-        depende de nenhum outro script. Por isso o diálogo repete
-        campos que existem em Attack -- é intencional.
+        O BC é auto-contido: tem as próprias skills, teclas E POÇÕES.
+        Por isso o diálogo repete campos que existem em Attack, Potion e
+        Fairy -- é intencional, não duplicação por descuido.
         """
         if not hasattr(self, "_bc_config"):
             self._bc_config = dict(BC_DEFAULT_CONFIG)
         cfg = self._bc_config
+        campos = {}
+
+        def grupo(pai, titulo):
+            caixa = ctk.CTkFrame(pai, fg_color="transparent", border_width=1,
+                                 border_color="#1A2540", corner_radius=6)
+            caixa.pack(fill="x", pady=(4, 8), padx=2)
+            ctk.CTkLabel(caixa, text=titulo, font=ctk.CTkFont(size=10),
+                         text_color=TEXT2).pack(anchor="w", padx=8, pady=(4, 0))
+            interno = ctk.CTkFrame(caixa, fg_color="transparent")
+            interno.pack(fill="x", padx=8, pady=(2, 8))
+            return interno
+
+        def texto(pai, rotulo, chave, largura=70):
+            r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=2)
+            ctk.CTkLabel(r, text=rotulo, width=150, font=FONT_SMALL,
+                         anchor="e").pack(side="left", padx=(0, 8))
+            v = tk.StringVar(value=str(cfg.get(chave, "")))
+            ctk.CTkEntry(r, textvariable=v, width=largura, font=FONT_SMALL).pack(side="left")
+            campos[chave] = v
+
+        def tecla(pai, rotulo, chave):
+            """Campo de atalho. Vazio aparece como 'unset', como na referência."""
+            r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=2)
+            ctk.CTkLabel(r, text=rotulo, width=105, font=FONT_SMALL,
+                         anchor="e").pack(side="left", padx=(0, 6))
+            atual = cfg.get(chave, "")
+            v = tk.StringVar(value=atual if atual else "unset")
+            ctk.CTkEntry(r, textvariable=v, width=70, font=FONT_SMALL,
+                         justify="center").pack(side="left")
+            campos[chave] = v
+
+        def marcar(pai, rotulo, chave):
+            v = ctk.BooleanVar(value=bool(cfg.get(chave)))
+            ctk.CTkCheckBox(pai, text=rotulo, variable=v,
+                            font=FONT_SMALL).pack(anchor="w", pady=1)
+            campos[chave] = v
+
+        def deslizar(pai, rotulo, chave, cor):
+            """Limiar de poção: barra colorida + slider, como na referência."""
+            r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=4)
+            v = tk.IntVar(value=int(cfg.get(chave, 30)))
+            etiqueta = ctk.CTkLabel(r, text=f"{rotulo}: {v.get()}%", width=110,
+                                    font=FONT_SMALL, fg_color=cor, corner_radius=4)
+            etiqueta.pack(side="left", padx=(0, 10))
+            ctk.CTkSlider(
+                r, from_=0, to=100, variable=v, width=150,
+                command=lambda _x, lb=etiqueta, var=v, rt=rotulo: lb.configure(
+                    text=f"{rt}: {int(var.get())}%"
+                ),
+            ).pack(side="left")
+            campos[chave] = v
 
         def build(d):
-            inner = ctk.CTkScrollableFrame(d, fg_color="transparent")
-            inner.pack(fill="both", expand=True, padx=12, pady=8)
+            abas = ctk.CTkTabview(d, fg_color="transparent", height=460)
+            abas.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+            for titulo in ("Main", "Shortcuts", "Potions", "Stats"):
+                abas.add(titulo)
 
-            ctk.CTkLabel(inner, text="Battle Cave", font=FONT_H3, text_color=TEXT).pack(anchor="w")
-            ctk.CTkFrame(inner, height=1, fg_color="#1A2540").pack(fill="x", pady=4)
+            # ---------------- Main ----------------
+            main = ctk.CTkScrollableFrame(abas.tab("Main"), fg_color="transparent")
+            main.pack(fill="both", expand=True)
 
-            def secao(titulo):
-                ctk.CTkLabel(inner, text=titulo, font=FONT_SMALL,
-                            text_color=TEXT2).pack(anchor="w", pady=(10, 2))
+            g = grupo(main, "Team")
+            texto(g, "Member Name", "member_name", largura=160)
+            marcar(g, "Reseter", "reseter")
 
-            def campo(pai, rotulo, valor, largura=60):
-                r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=2)
-                ctk.CTkLabel(r, text=rotulo, width=130, font=FONT_SMALL, anchor="w").pack(side="left")
-                v = tk.StringVar(value=str(valor))
-                ctk.CTkEntry(r, textvariable=v, width=largura, font=FONT_SMALL).pack(side="left")
-                return v
+            g = grupo(main, "General")
+            texto(g, "Return to Stone every (runs)", "runs_por_ciclo", largura=50)
+            texto(g, "Initial Selling Slot", "slot_inicial_venda", largura=50)
+            marcar(g, "Buy Return Charm after selling", "comprar_return_charm")
+            marcar(g, "Get Treasure Box", "pegar_treasure_box")
+            marcar(g, "Manual Pick (clica no corpo do boss)", "manual_pick")
 
-            # --- Skills ---
-            secao("Skills de ataque")
-            skills = list(cfg.get("skills", ["1", "2", "3", "4"]))
-            while len(skills) < 4:
-                skills.append("")
-            skill_vars = []
-            linha = ctk.CTkFrame(inner, fg_color="transparent"); linha.pack(fill="x", pady=2)
-            for i in range(4):
-                ctk.CTkLabel(linha, text=f"{i+1}:", width=16, font=FONT_SMALL).pack(side="left")
-                v = tk.StringVar(value=skills[i])
-                ctk.CTkEntry(linha, textvariable=v, width=40, font=FONT_SMALL).pack(side="left", padx=(0, 8))
-                skill_vars.append(v)
+            g = grupo(main, "Route")
+            v_rota = tk.StringVar(value=cfg.get("rota", "standard"))
+            ctk.CTkRadioButton(g, text="Standard (direto pro boss)", value="standard",
+                               variable=v_rota, font=FONT_SMALL).pack(anchor="w", pady=1)
+            ctk.CTkRadioButton(g, text="Safe (mata as Gun Witches antes)", value="safe",
+                               variable=v_rota, font=FONT_SMALL).pack(anchor="w", pady=1)
+            campos["rota"] = v_rota
+            marcar(g, "Lure Powerfuls (mobs do corredor)", "lure_powerfuls")
+            marcar(g, "Heal Before Second Phase", "heal_antes_segunda_fase")
 
-            # --- Teclas ---
-            secao("Teclas")
-            v_mount = campo(inner, "Mount:", cfg["mount_key"])
-            v_stone = campo(inner, "Stone (voltar):", cfg["stone_key"])
-            v_inv = campo(inner, "Inventário:", cfg["inventory_key"])
-            v_team = campo(inner, "Painel de team:", cfg["team_key"])
+            g = grupo(main, "Misc")
+            texto(g, "Usar AOE ate mana (%)", "aoe_ate_mana", largura=50)
 
-            # --- Ciclo ---
-            secao("Ciclo")
-            v_runs = campo(inner, "Runs antes de voltar:", cfg["runs_por_ciclo"], largura=50)
+            g = grupo(main, "Etapas do ciclo")
+            marcar(g, "Comprar pocao antes de ir", "comprar_pot")
+            marcar(g, "Vender ao voltar", "vender")
+            marcar(g, "Abrir as bags de courage", "usar_courage")
+            marcar(g, "Repetir o ciclo indefinidamente", "repetir_ciclo")
+
+            # ---------------- Shortcuts ----------------
+            atalhos = ctk.CTkScrollableFrame(abas.tab("Shortcuts"), fg_color="transparent")
+            atalhos.pack(fill="both", expand=True)
+
+            g = grupo(atalhos, "Skills")
+            v_ataques = []
+            atuais = cfg.get("attack_keys", [])
+            for i in range(3):
+                r = ctk.CTkFrame(g, fg_color="transparent"); r.pack(fill="x", pady=2)
+                ctk.CTkLabel(r, text=f"Attack {i+1}", width=105, font=FONT_SMALL,
+                             anchor="e").pack(side="left", padx=(0, 6))
+                v = tk.StringVar(value=atuais[i] if i < len(atuais) else "unset")
+                ctk.CTkEntry(r, textvariable=v, width=70, font=FONT_SMALL,
+                             justify="center").pack(side="left")
+                v_ataques.append(v)
+            campos["attack_keys"] = v_ataques
+            tecla(g, "Attack AOE", "aoe_key")
+            tecla(g, "Super Skill", "super_skill_key")
+            tecla(g, "Buff", "buff_key")
+            tecla(g, "Break Soul", "break_soul_key")
+            tecla(g, "Healing Spell", "healing_spell_key")
+
+            g = grupo(atalhos, "General")
+            tecla(g, "Mount", "mount_key")
+            tecla(g, "Speed Skill", "speed_skill_key")
+            tecla(g, "Summon Pet", "summon_pet_key")
+            tecla(g, "Pet Food", "pet_food_key")
+            tecla(g, "Stone Charm", "stone_charm_key")
+            tecla(g, "Inventario", "inventory_key")
+            tecla(g, "Painel de team", "team_key")
+
+            g = grupo(atalhos, "Potions")
+            tecla(g, "HP", "hp_potion_key")
+            tecla(g, "Battle HP", "battle_hp_key")
+            tecla(g, "Mana", "mana_potion_key")
+            tecla(g, "Battle Mana", "battle_mana_key")
+
             ctk.CTkLabel(
-                inner,
-                text="Ao matar o boss, sai pelo NPC e repete a run.\n"
-                     "Só volta pra cidade (e vende) depois da última.",
-                font=ctk.CTkFont(size=10), text_color=TEXT3, justify="left",
-            ).pack(anchor="w", padx=4)
+                atalhos, text="Deixe 'unset' pra nao usar o item/skill.",
+                font=ctk.CTkFont(size=10), text_color=TEXT3,
+            ).pack(anchor="w", pady=(2, 0))
 
-            v_repetir = ctk.BooleanVar(value=cfg.get("repetir_ciclo", False))
-            ctk.CTkCheckBox(inner, text="Repetir o ciclo indefinidamente",
-                           variable=v_repetir, font=FONT_SMALL).pack(anchor="w", pady=(6, 0))
-
-            # --- Etapas ---
-            secao("Etapas")
-            v_comprar = ctk.BooleanVar(value=cfg.get("comprar_pot", True))
-            v_vender = ctk.BooleanVar(value=cfg.get("vender", True))
-            v_courage = ctk.BooleanVar(value=cfg.get("usar_courage", True))
-            for texto, var in (("Comprar poção antes de ir", v_comprar),
-                               ("Vender ao voltar pra cidade", v_vender),
-                               ("Abrir as bags de courage", v_courage)):
-                ctk.CTkCheckBox(inner, text=texto, variable=var, font=FONT_SMALL).pack(anchor="w", pady=1)
-
-            # --- Avançado ---
-            secao("Avançado")
-            v_tent = campo(inner, "Tentativas de entrada:", cfg["tentativas_de_entrada"], largura=50)
-            v_cam = campo(inner, "Espera por passo (s):", cfg["intervalo_caminhada"], largura=50)
-            v_tboss = campo(inner, "Timeout do boss (s):", cfg["timeout_boss"], largura=50)
-            v_maxc = campo(inner, "Máx. de bags:", cfg["max_courage"], largura=50)
+            # ---------------- Potions ----------------
+            pocoes = ctk.CTkScrollableFrame(abas.tab("Potions"), fg_color="transparent")
+            pocoes.pack(fill="both", expand=True)
 
             ctk.CTkLabel(
-                inner,
-                text="A bag de courage é achada por imagem:\n"
-                     "capture o ícone como templates/courage_bag.png",
+                pocoes,
+                text="O BC cuida da propria vida: nao precisa dos\ncards Potion nem Fairy ligados.",
                 font=ctk.CTkFont(size=10), text_color=TEXT3, justify="left",
-            ).pack(anchor="w", padx=4, pady=(4, 0))
+            ).pack(anchor="w", pady=(0, 6))
 
-            campos = {
-                "skills": skill_vars, "mount_key": v_mount, "stone_key": v_stone,
-                "inventory_key": v_inv, "team_key": v_team, "runs_por_ciclo": v_runs,
-                "repetir_ciclo": v_repetir, "comprar_pot": v_comprar,
-                "vender": v_vender, "usar_courage": v_courage,
-                "tentativas_de_entrada": v_tent, "intervalo_caminhada": v_cam,
-                "timeout_boss": v_tboss, "max_courage": v_maxc,
-            }
+            g = grupo(pocoes, "Potions")
+            deslizar(g, "HP", "hp_potion_pct", "#7F1D1D")
+            deslizar(g, "MP", "mana_potion_pct", "#1E3A8A")
 
-            ctk.CTkButton(inner, text="Save", font=FONT_SMALL, width=80,
-                         command=lambda: self._save_bc(campos, d)).pack(pady=(14, 4))
+            g = grupo(pocoes, "Battle Potions")
+            deslizar(g, "HP", "battle_hp_pct", "#7F1D1D")
+            deslizar(g, "MP", "battle_mana_pct", "#1E3A8A")
 
-        self._cfg_window("BC", 400, 640, build)
+            g = grupo(pocoes, "Fairy self-heal -> Healing Spell")
+            deslizar(g, "HP", "fairy_heal_pct", "#7F1D1D")
+
+            # ---------------- Stats ----------------
+            estat = ctk.CTkScrollableFrame(abas.tab("Stats"), fg_color="transparent")
+            estat.pack(fill="both", expand=True)
+            self._build_bc_stats(estat, campos, cfg)
+
+            ctk.CTkButton(d, text="Save", font=FONT_SMALL, width=100,
+                          command=lambda: self._save_bc(campos, d)).pack(pady=8)
+
+        self._cfg_window("BC", 470, 590, build)
+
+    def _build_bc_stats(self, pai, campos, cfg):
+        """
+        Aba Stats. Le os contadores do script vivo da conta selecionada;
+        sem sessao rodando, mostra zeros.
+        """
+        from src.services.bot.scripts.bc import BCStats
+
+        stats = self._bc_stats_da_sessao()
+
+        if stats is None:
+            ctk.CTkLabel(pai, text="Nenhuma sessao com BC rodando.",
+                         font=FONT_SMALL, text_color=TEXT3).pack(pady=(0, 6))
+            stats = BCStats()
+
+        def caixa(rotulo, valor):
+            f = ctk.CTkFrame(pai, fg_color=CARD, corner_radius=6,
+                             border_width=1, border_color="#1A2540")
+            f.pack(fill="x", pady=3, padx=2)
+            ctk.CTkLabel(f, text=rotulo, font=ctk.CTkFont(size=10),
+                         text_color=TEXT3).pack(anchor="w", padx=8, pady=(4, 0))
+            ctk.CTkLabel(f, text=str(valor), font=FONT_TEXT,
+                         text_color=TEXT).pack(anchor="w", padx=8, pady=(0, 6))
+
+        caixa("Runs", stats.runs)
+        caixa("Success", stats.sucessos)
+        caixa("Fail", stats.falhas)
+        caixa("Run Time", BCStats.formatar(stats.run_atual))
+        caixa("Last Run Time", BCStats.formatar(stats.tempo_ultima_run))
+        caixa("Total Running Time", BCStats.formatar_longo(stats.tempo_total))
+        caixa("Courage Badge", stats.courage)
+
+        ctk.CTkButton(pai, text="Reset Stats", font=FONT_SMALL, width=110,
+                      fg_color="transparent", border_width=1, border_color=TEXT3,
+                      command=self._reset_bc_stats).pack(pady=(8, 4))
+
+        v = ctk.BooleanVar(value=bool(cfg.get("auto_reset_stats", True)))
+        ctk.CTkCheckBox(pai, text="Auto Reset Stats ao iniciar o bot",
+                        variable=v, font=FONT_SMALL).pack(anchor="w")
+        campos["auto_reset_stats"] = v
+
+    def _bc_stats_da_sessao(self):
+        """Contadores do BC da conta selecionada, ou None se nao houver."""
+        engine = self.controller.get_bot_engine(self._selected_window)
+        if engine is None:
+            return None
+        for script in engine.scripts:
+            if getattr(script, "name", "") == "BC":
+                return getattr(script, "stats", None)
+        return None
+
+    def _reset_bc_stats(self):
+        stats = self._bc_stats_da_sessao()
+        if stats is None:
+            messagebox.showinfo("Stats", "Nenhuma sessao com BC rodando.")
+            return
+        stats.zerar()
+        logger.info("Stats do BC zerados")
 
     def _save_bc(self, campos, d):
         cfg = self._bc_config
 
-        skills = [v.get().strip() for v in campos["skills"]]
-        cfg["skills"] = [s for s in skills if s] or list(BC_DEFAULT_CONFIG["skills"])
+        def limpar_tecla(valor: str) -> str:
+            """'unset' e vazio significam a mesma coisa: sem atalho."""
+            valor = (valor or "").strip()
+            return "" if valor.lower() == "unset" else valor
 
-        for chave in ("mount_key", "stone_key", "inventory_key", "team_key"):
-            valor = campos[chave].get().strip()
-            # Tecla vazia mandaria press_key("") pro jogo; manter o
-            # valor anterior é melhor que gravar algo inválido.
-            if valor:
-                cfg[chave] = valor
+        ataques = [limpar_tecla(v.get()) for v in campos["attack_keys"]]
+        cfg["attack_keys"] = [a for a in ataques if a] or list(
+            BC_DEFAULT_CONFIG["attack_keys"]
+        )
 
-        for chave in ("repetir_ciclo", "comprar_pot", "vender", "usar_courage"):
-            cfg[chave] = campos[chave].get()
+        for chave in ("aoe_key", "super_skill_key", "buff_key", "break_soul_key",
+                      "healing_spell_key", "mount_key", "speed_skill_key",
+                      "summon_pet_key", "pet_food_key", "stone_charm_key",
+                      "inventory_key", "team_key", "hp_potion_key",
+                      "mana_potion_key", "battle_hp_key", "battle_mana_key"):
+            cfg[chave] = limpar_tecla(campos[chave].get())
 
-        for chave, conversor, mimimo in (
+        cfg["member_name"] = campos["member_name"].get().strip()
+        cfg["rota"] = campos["rota"].get()
+
+        for chave in ("reseter", "comprar_return_charm", "pegar_treasure_box",
+                      "manual_pick", "lure_powerfuls", "heal_antes_segunda_fase",
+                      "comprar_pot", "vender", "usar_courage", "repetir_ciclo",
+                      "auto_reset_stats"):
+            cfg[chave] = bool(campos[chave].get())
+
+        for chave in ("hp_potion_pct", "mana_potion_pct", "battle_hp_pct",
+                      "battle_mana_pct", "fairy_heal_pct"):
+            cfg[chave] = int(campos[chave].get())
+
+        for chave, conversor, minimo in (
             ("runs_por_ciclo", int, 1),
-            ("tentativas_de_entrada", int, 1),
-            ("max_courage", int, 1),
-            ("intervalo_caminhada", float, 0.1),
-            ("timeout_boss", float, 1.0),
+            ("slot_inicial_venda", int, 1),
+            ("aoe_ate_mana", int, 0),
         ):
             try:
-                cfg[chave] = max(mimimo, conversor(campos[chave].get().strip()))
+                cfg[chave] = max(minimo, conversor(str(campos[chave].get()).strip()))
             except (TypeError, ValueError):
-                # Campo com lixo digitado: mantém o valor anterior em
-                # vez de gravar algo que quebraria o roteiro.
-                logger.warning("Valor inválido para '%s'; mantendo o anterior", chave)
+                # Campo com lixo digitado: mantem o valor anterior em vez
+                # de gravar algo que quebraria o roteiro.
+                logger.warning("Valor invalido para '%s'; mantendo o anterior", chave)
 
-        logger.info("Configuração do BC salva: %s runs por ciclo", cfg["runs_por_ciclo"])
+        logger.info(
+            "Config do BC salva: rota=%s, %s run(s) por ciclo",
+            cfg["rota"], cfg["runs_por_ciclo"],
+        )
         d.destroy()
 
     # ============================================================

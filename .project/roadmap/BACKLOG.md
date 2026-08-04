@@ -28,7 +28,7 @@ FASE 3 - Melhorias (EM ANDAMENTO)
 [ ] Sistema de plugins
 [ ] Scripts reais do bot (Attack, Potion, Pet Food, etc.)
 [x] Motor de passos para scripts longos (ADR-004)
-[x] BC (Battle Cave) - ciclo completo configuravel
+[x] BC (Bewitcher Cave) - ciclo completo configuravel
 [ ] BC: NPC de saida da cave (coordenadas pendentes)
 [ ] BC: testar contra o jogo real e recalibrar coordenadas
 [ ] DR Lure - aguardando codigo externo

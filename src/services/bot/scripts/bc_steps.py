@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Roteiro do BC (Battle Cave) como DADOS.
+Roteiro do BC (Bewitcher Cave) como DADOS.
 
 Traduzido dos macros antigos. As coordenadas ficam aqui, separadas da
 logica, porque sao o que mais envelhece: qualquer patch que mexa na UI
@@ -243,6 +243,64 @@ def caminho_boss(cfg) -> list[Step]:
     ]
 
 
+def _skills_de_ataque(cfg) -> list[str]:
+    """
+    Teclas de ataque efetivas.
+
+    O AOE entra na rotacao junto: a condicao de mana ('usar AOE
+    enquanto a mana estiver acima de N%') e avaliada pelo runner a cada
+    ciclo, nao aqui -- por isso ele vai como skill condicional.
+    """
+    teclas = [k for k in cfg.get("attack_keys", []) if k]
+    return teclas or ["1"]
+
+
+def limpar_powerfuls(cfg) -> list[Step]:
+    """
+    Os Powerfuls sao os mobs das duas fileiras do corredor da sala do
+    boss -- uma em cada parede.
+
+    So entra no roteiro se 'lure_powerfuls' estiver ligado; do
+    contrario o personagem passa direto pelo corredor.
+    """
+    if not cfg.get("lure_powerfuls"):
+        return []
+
+    return repeat(cfg["powerfuls"], [
+        attack_until_dead(
+            _skills_de_ataque(cfg),
+            timeout=cfg["timeout_mob"],
+            skill_interval=cfg["intervalo_skill"],
+            aoe_key=cfg.get("aoe_key"),
+            aoe_ate_mana=cfg.get("aoe_ate_mana"),
+            note="Powerful do corredor",
+        ),
+    ])
+
+
+def matar_gun_witches(cfg) -> list[Step]:
+    """
+    Gun Witches sao os guardas em frente ao boss -- a ultima defesa da
+    sala.
+
+    So na rota 'safe'. Na 'standard' o personagem vai direto pro boss,
+    que e mais rapido e mais arriscado.
+    """
+    if cfg.get("rota") != "safe":
+        return []
+
+    return repeat(cfg["gun_witches"], [
+        attack_until_dead(
+            _skills_de_ataque(cfg),
+            timeout=cfg["timeout_mob"],
+            skill_interval=cfg["intervalo_skill"],
+            aoe_key=cfg.get("aoe_key"),
+            aoe_ate_mana=cfg.get("aoe_ate_mana"),
+            note="Gun Witch",
+        ),
+    ])
+
+
 def atacar_boss(cfg) -> list[Step]:
     """
     Substitui o 'repeat 130 {tab, 3, wait 1s}' do macro.
@@ -250,14 +308,86 @@ def atacar_boss(cfg) -> list[Step]:
     O original batia 130 vezes independentemente do que acontecesse:
     se o boss morresse antes, desperdicava minutos; se demorasse mais,
     desistia no meio. Aqui le a vida do alvo.
+
+    O boss tem DUAS fases. Se 'heal_antes_segunda_fase' estiver ligado,
+    cura entre elas antes de seguir.
     """
+    passos: list[Step] = []
+
+    # Break Soul reduz a defesa do inimigo. So existe pra quem tem
+    # mount de combine maximo (+12), entao e opcional.
+    if cfg.get("break_soul_key"):
+        passos.append(key(cfg["break_soul_key"], note="Break Soul (debuff de defesa)"))
+        passos.append(wait(0.5))
+
+    if cfg.get("buff_key"):
+        passos.append(key(cfg["buff_key"], note="buff antes do boss"))
+        passos.append(wait(0.5))
+
+    ataque = attack_until_dead(
+        _skills_de_ataque(cfg),
+        timeout=cfg["timeout_boss"],
+        skill_interval=cfg["intervalo_skill"],
+        aoe_key=cfg.get("aoe_key"),
+        aoe_ate_mana=cfg.get("aoe_ate_mana"),
+        super_key=cfg.get("super_skill_key"),
+        note="ataca ate o boss cair",
+    )
+
+    passos.append(ataque)
+
+    if cfg.get("heal_antes_segunda_fase") and cfg.get("healing_spell_key"):
+        passos.append(key(cfg["healing_spell_key"], note="cura antes da segunda fase"))
+        passos.append(wait(1.0))
+        # A segunda fase e outro alvo/estado: ataca de novo.
+        passos.append(ataque)
+
+    return passos
+
+
+def lotear_boss(cfg) -> list[Step]:
+    """
+    Manual Pick: clica no corpo do boss pra lotear.
+
+    Serve pra quem nao tem pet com loot automatico. A posicao do corpo
+    nao veio de nenhum macro -- precisa de calibracao no jogo.
+    """
+    if not cfg.get("manual_pick"):
+        return []
+
     return [
-        attack_until_dead(
-            cfg["skills"],
-            timeout=cfg["timeout_boss"],
-            skill_interval=cfg["intervalo_skill"],
-            note="ataca ate o boss cair",
-        ),
+        wait(1.0, note="espera o corpo assentar"),
+        *repeat(3, [
+            right(*cfg["corpo_do_boss_pos"], note="loota o corpo do boss"),
+            wait(0.5),
+        ]),
+    ]
+
+
+def abrir_treasure_box(cfg) -> list[Step]:
+    """
+    A Treasure Box fica no limite final da sala do boss: clique direito
+    e espera o casting. Depois de aberta, NASCEM MOBS -- por isso o
+    roteiro ja segue lutando.
+
+    A posicao da caixa nao veio de nenhum macro; precisa de calibracao.
+    """
+    if not cfg.get("pegar_treasure_box"):
+        return []
+
+    return [
+        right(*cfg["treasure_box_pos"], note="abre a Treasure Box"),
+        wait(cfg["casting_treasure_box"], note="espera o casting"),
+        *repeat(cfg["mobs_do_treasure_box"], [
+            attack_until_dead(
+                _skills_de_ataque(cfg),
+                timeout=cfg["timeout_mob"],
+                skill_interval=cfg["intervalo_skill"],
+                aoe_key=cfg.get("aoe_key"),
+                aoe_ate_mana=cfg.get("aoe_ate_mana"),
+                note="mob nascido da Treasure Box",
+            ),
+        ]),
     ]
 
 
@@ -294,6 +424,6 @@ def usar_courage(cfg) -> list[Step]:
 
 def voltar_para_stone(cfg) -> list[Step]:
     return [
-        key(cfg["stone_key"], note="volta pra Stone City"),
+        key(cfg["stone_charm_key"], note="volta pra Stone City"),
         wait(4.0),
     ]

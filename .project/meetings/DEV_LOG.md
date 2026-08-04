@@ -61,7 +61,60 @@ Status:
 Status:
 🟢 Funcionando
 
-### Concluído — BC (Battle Cave) e o motor de passos
+### Concluído — BC: config completa espelhando a referência
+
+- **Correção de nome:** BC é **Bewitcher** Cave, não Battle Cave. Eu
+  tinha assumido errado; corrigido em 7 lugares (código e docs).
+- O usuário mostrou a UI de um bot de referência, com 4 abas (Main,
+  Shortcuts, Potions, Stats). São ~44 campos contra os 17 que eu tinha.
+  O diálogo agora espelha essa estrutura.
+- **Conhecimento de domínio registrado** (não estava em lugar nenhum):
+  - **Gun Witches**: mobs em frente ao boss, última defesa da sala.
+    Rota "safe" mata antes de encarar o boss.
+  - **Powerfuls**: mobs das duas fileiras do corredor da sala, uma em
+    cada parede.
+  - **Treasure Box**: caixa no limite final da sala; clique direito e
+    espera o casting. **Nascem mobs depois de aberta** -- o roteiro já
+    segue lutando.
+  - **Manual Pick**: pra quem não tem pet com loot automático; clica no
+    corpo do boss pra lotear.
+  - **Break Soul**: skill de quem tem mount de combine máximo (+12);
+    debuff que reduz a defesa do inimigo.
+  - **O boss tem DUAS fases** -- daí a opção de curar entre elas.
+  - **Passive Opt. foi descartada** de propósito: seria ficar de TAB
+    limpando a sala inteira, em vez de matar só o boss e os guardas.
+- **O BC agora cuida da própria vida**: poções normais, battle potions
+  e self-heal de Fairy, cada um com limiar. Fica FORA do roteiro de
+  passos e roda a cada tick, porque precisar de poção acontece a
+  qualquer momento, não num passo específico -- se dependesse da vez,
+  o personagem morreria esperando. É o que completa a independência que
+  o usuário pediu: não precisa dos cards Potion nem Fairy ligados.
+- **AOE por mana**: a skill de AOE só entra na rotação enquanto a mana
+  estiver acima do limite. Custa caro, e ficar sem mana no meio do boss
+  é pior que matar devagar.
+- **Aba Stats**: runs, sucesso/falha, tempo da run atual, da última e
+  total, contagem de Courage Badge, botão de reset e auto-reset. Os
+  contadores vivem no script (quem sabe que uma run começou é a máquina
+  de estados); a GUI só lê, via `get_bot_engine()` -- que NÃO cria
+  engine, pra abrir o diálogo não ter efeito colateral.
+- Bug que um teste pegou: renomeei `stone_key` → `stone_charm_key` no
+  config mas o `voltar_para_stone` ficou com o nome antigo. Daria
+  KeyError só na hora de rodar no jogo. Virou trava estrutural:
+  `test_toda_chave_lida_pelo_roteiro_existe_no_default` varre o
+  `bc_steps.py` atrás de `cfg["x"]` e confere contra o DEFAULT_CONFIG.
+- 211 testes no total.
+
+**Ainda pendente:**
+
+- `treasure_box_pos` e `corpo_do_boss_pos` são **palpites centrados na
+  tela** -- nenhum macro cobria essas etapas. Precisam de calibração.
+- O NPC de saída da cave (nome e coordenadas).
+- Nada testado contra o jogo real.
+
+Status:
+🟡 Implementado, aguardando teste no jogo
+
+### Concluído — BC (Bewitcher Cave) e o motor de passos
 
 - O BC deixou de ser stub. Traduzidos os 4 macros antigos (~650
   cliques) num ciclo configurável. Ver `ADR-004-Motor-de-Passos.md`.

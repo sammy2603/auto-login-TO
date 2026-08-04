@@ -55,6 +55,18 @@ class BotEngine:
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def scripts(self) -> list:
+        """
+        Copia da lista de scripts registrados.
+
+        Copia, e nao a lista interna, pra quem inspecionar de fora (a
+        GUI lendo contadores, por exemplo) nao conseguir alterar o
+        registro sem passar por register/unregister.
+        """
+        with self._lock:
+            return list(self._scripts)
+
     @staticmethod
     def is_script_enabled(script_name: str, feature_enabled: dict) -> bool:
         """
