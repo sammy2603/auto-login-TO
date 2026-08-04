@@ -163,6 +163,44 @@ def test_retorno_recomeca_quando_repete_ciclo():
     assert bc.runs_feitas == 0, "o contador de runs precisa zerar no novo ciclo"
 
 
+def test_reseter_comeca_e_fica_na_propria_fase():
+    """
+    O reseter não percorre o ciclo: não prepara, não viaja, não luta.
+    Fica em laço aceitando o convite até o card ser desligado.
+    """
+    bc = BCScript({"reseter": True})
+
+    assert bc.fase == BCScript.FASE_RESETER
+    assert bc._proxima_fase() == BCScript.FASE_RESETER
+
+
+def test_reseter_continua_reseter_depois_do_reset():
+    """Religar o card não pode jogar o reseter no roteiro do runner."""
+    bc = BCScript({"reseter": True})
+    bc.reset()
+
+    assert bc.fase == BCScript.FASE_RESETER
+
+
+def test_roteiro_do_reseter_so_aceita_convite():
+    bc = BCScript({"reseter": True})
+    passos = bc._montar_reseter()
+
+    assert [p.kind for p in passos] == ["click_template", "wait"]
+    assert passos[0].args[0] == "botao_aceitar_team"
+
+
+def test_convite_ausente_nao_derruba_o_reseter():
+    """
+    Ficar sem convite é o estado NORMAL -- o reseter passa a run inteira
+    esperando. O passo tem que desistir em silêncio, não avisar.
+    """
+    passos = bc_steps.aceitar_team(DEFAULT_CONFIG)
+    obrigatorio = passos[0].args[4]
+
+    assert obrigatorio is False
+
+
 def test_ciclo_completo_de_tres_runs():
     """Percorre a máquina inteira e confere a sequência de fases."""
     bc = BCScript({"runs_por_ciclo": 3})
@@ -356,6 +394,21 @@ def test_team_key_e_segurada_e_solta():
     cfg = DEFAULT_CONFIG
     assert bc_steps.ajustes_iniciais(cfg)[0].kind == "key_down"
     assert bc_steps.sair_do_team(cfg)[0].kind == "key_up"
+
+
+def test_leave_team_desligado_ainda_solta_a_tecla():
+    """
+    Quem sai do team é o runner, dentro da cave -- mas desligar a opção
+    não pode deixar o painel de team travado: o key_up é o único do
+    roteiro e tem que sair mesmo assim.
+    """
+    passos = bc_steps.sair_do_team({**DEFAULT_CONFIG, "leave_team": False})
+    assert [p.kind for p in passos] == ["key_up"]
+
+
+def test_leave_team_ligado_desfaz_o_grupo():
+    passos = bc_steps.sair_do_team({**DEFAULT_CONFIG, "leave_team": True})
+    assert any(p.note == "sai do team" for p in passos)
 
 
 # ==========================================================

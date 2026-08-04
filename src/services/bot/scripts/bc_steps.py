@@ -168,8 +168,25 @@ def entrar_na_cave(cfg) -> list[Step]:
 
 
 def sair_do_team(cfg) -> list[Step]:
-    return [
-        key_up(cfg["team_key"], note="solta o painel de team"),
+    """
+    Solta o painel de team e, se 'leave_team' estiver ligado, desfaz o
+    grupo.
+
+    Quem sai do team e o RUNNER, ja dentro da cave: e o lado que a gente
+    controla no meio do roteiro, sem precisar sincronizar com o client
+    do reseter. O efeito na cave e o mesmo -- o grupo deixa de existir
+    de qualquer jeito.
+
+    O key_up fica FORA da condicao: 'ajustes_iniciais' segura a tecla do
+    painel e este e o unico ponto que solta. Sem soltar, o painel ficaria
+    travado pelo resto do ciclo.
+    """
+    passos = [key_up(cfg["team_key"], note="solta o painel de team")]
+
+    if not cfg.get("leave_team", True):
+        return passos
+
+    return passos + [
         right(50, 52),
         wait(0.5),
         left(104, 94, note="sai do team"),
@@ -461,6 +478,40 @@ def sair_da_cave(cfg) -> list[Step]:
     ]
 
     return passos
+
+
+# =====================================================
+# Reseter -- o outro lado da dupla
+# =====================================================
+
+def aceitar_team(cfg) -> list[Step]:
+    """
+    O roteiro INTEIRO do reseter: aceitar o convite do runner.
+
+    Ele nao entra na cave, nao anda e nao luta. So existe pra o grupo
+    poder ser formado -- e formar o grupo e o que reseta a cave e
+    devolve o boss. Quem desfaz o team e o runner, la dentro (ver
+    'sair_do_team'), entao aqui nao ha nada a fazer alem de aceitar de
+    novo na proxima run.
+
+    O botao e achado por IMAGEM: o popup de convite nao aparece sempre
+    no mesmo lugar, e clicar as cegas erraria. Precisa do recorte
+    'botao_aceitar_team.png' em templates/.
+
+    'obrigatorio=False' porque a ausencia do convite e o estado NORMAL:
+    o reseter passa a maior parte do tempo esperando o runner terminar
+    a run. No timeout o passo desiste em silencio e a fase remonta --
+    e isso que faz o laco de espera, sem bloquear o tick.
+    """
+    return [
+        click_template(
+            cfg["template_aceitar_team"],
+            timeout=cfg.get("timeout_convite", 60.0),
+            obrigatorio=False,
+            note="aceita o convite de team",
+        ),
+        wait(cfg.get("intervalo_convite", 2.0)),
+    ]
 
 
 def voltar_para_stone(cfg) -> list[Step]:

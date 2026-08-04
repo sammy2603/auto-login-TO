@@ -51,11 +51,22 @@ DEFAULT_CONFIG = {
     # Sem isso nao da pra saber quem forma par com quem quando ha varios
     # clients abertos.
     "member_name": "",
-    # Este personagem e o RESETER da dupla: nao faz a BC, so entra e sai
-    # do team. E a formacao do grupo que reseta a cave e devolve o boss,
-    # entao ele nao precisa de skills, rota nem pocoes.
+    # Este personagem e o RESETER da dupla: nao faz a BC, so aceita o
+    # convite de team. E a formacao do grupo que reseta a cave e devolve
+    # o boss, entao ele nao precisa de skills, rota nem pocoes -- e o
+    # roteiro dele e uma fase so, em laco.
     "reseter": False,
-    # O reseter sai do team depois que o parceiro entra na cave.
+    # Recorte do botao de aceitar convite. Por imagem porque o popup nao
+    # aparece sempre no mesmo lugar.
+    "template_aceitar_team": "botao_aceitar_team",
+    # Quanto o reseter espera por um convite antes de remontar a fase.
+    # Nao e limite de nada: so o tamanho de cada volta do laco de espera.
+    "timeout_convite": 60.0,
+    "intervalo_convite": 2.0,
+    # Desfazer o team e o RUNNER que faz, assim que entra na cave -- e o
+    # client que ja esta no meio do roteiro, entao nao precisa de nenhuma
+    # sincronizacao com o client do reseter. Desligar so faz sentido pra
+    # quem quer manter o grupo por outro motivo.
     "leave_team": True,
 
     # =========================================================
@@ -267,6 +278,8 @@ class BCScript:
     FASE_RUN = "run"
     FASE_RESET = "reset"
     FASE_RETORNO = "retorno"
+    # Fase unica do reseter: ele nao percorre o ciclo, fica nela em laco.
+    FASE_RESETER = "reseter"
     FASE_FIM = "fim"
 
     _MONTADORES = {
@@ -274,11 +287,12 @@ class BCScript:
         FASE_RUN: "_montar_run",
         FASE_RESET: "_montar_reset",
         FASE_RETORNO: "_montar_retorno",
+        FASE_RESETER: "_montar_reseter",
     }
 
     def __init__(self, config: dict | None = None):
         self._config = {**DEFAULT_CONFIG, **(config or {})}
-        self._fase = self.FASE_PREPARO
+        self._fase = self._fase_inicial()
         self._runner: StepRunner | None = None
         self._runs_feitas = 0
         self._anunciou_fim = False
@@ -288,6 +302,19 @@ class BCScript:
     # =====================================================
     # Configuracao / estado
     # =====================================================
+
+    def _fase_inicial(self) -> str:
+        """
+        O papel decide o roteiro inteiro, nao um passo dele.
+
+        Por isso a bifurcacao acontece aqui, na primeira fase, e nao
+        espalhada em 'if reseter' dentro do ciclo: o reseter nunca entra
+        no preparo, nunca viaja e nunca luta.
+        """
+        if self._config.get("reseter"):
+            logger.info("BC em modo RESETER: so aceita convite de team")
+            return self.FASE_RESETER
+        return self.FASE_PREPARO
 
     @property
     def config(self) -> dict:
@@ -303,7 +330,7 @@ class BCScript:
 
     def reset(self):
         """Volta o script ao inicio (usado ao religar o card)."""
-        self._fase = self.FASE_PREPARO
+        self._fase = self._fase_inicial()
         self._runner = None
         self._runs_feitas = 0
         self._anunciou_fim = False
@@ -432,6 +459,16 @@ class BCScript:
             *bc_steps.convidar_team(cfg),
         ]
 
+    def _montar_reseter(self) -> list:
+        """
+        Uma volta do laco de espera do reseter.
+
+        A fase termina rapido de proposito: quando o convite nao vem no
+        timeout, ela e remontada e espera de novo. Isso mantem o tick
+        curto -- o card do reseter nao trava os outros scripts da conta.
+        """
+        return list(bc_steps.aceitar_team(self._config))
+
     def _montar_retorno(self) -> list:
         cfg = self._config
         passos = list(bc_steps.voltar_para_stone(cfg))
@@ -446,6 +483,11 @@ class BCScript:
     # =====================================================
 
     def _proxima_fase(self) -> str:
+        # O reseter nao tem ciclo: volta pra propria fase e espera o
+        # convite seguinte. So para quando o usuario desliga o card.
+        if self._fase == self.FASE_RESETER:
+            return self.FASE_RESETER
+
         if self._fase == self.FASE_PREPARO:
             return self.FASE_RUN
 
@@ -491,7 +533,11 @@ class BCScript:
             if self._fase == self.FASE_RUN:
                 self.stats.iniciar_run()
 
-            logger.info("Fase '%s' iniciada (%s passos)", self._fase, len(passos))
+            # O laco do reseter remonta a cada timeout de convite; em
+            # info isso viraria uma linha por minuto, pra sempre.
+            registrar = (logger.debug if self._fase == self.FASE_RESETER
+                         else logger.info)
+            registrar("Fase '%s' iniciada (%s passos)", self._fase, len(passos))
 
         return True
 
