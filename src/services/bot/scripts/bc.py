@@ -179,6 +179,15 @@ DEFAULT_CONFIG = {
     # procura na janela toda.
     "inventario_regiao": None,
 
+    # --- Reset de camera ---
+    # Botao do jogo que devolve a camera ao angulo padrao. Usado antes
+    # dos cliques de CHAO (entrar na cave, sair pelo NPC), que sao os
+    # unicos que dependem do angulo -- as caminhadas sao no minimapa e
+    # nao se importam.
+    "template_view_reset": "view_reset",
+    "timeout_view_reset": 5.0,
+    "espera_view_reset": 0.5,
+
     # --- Saida da cave (NPC "Skull Herald") ---
     # Aparece depois que o boss morre e teleporta de volta pro NPC de
     # entrada. E o que permite repetir a run sem passar pela cidade.

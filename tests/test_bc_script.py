@@ -396,6 +396,25 @@ def test_team_key_e_segurada_e_solta():
     assert bc_steps.sair_do_team(cfg)[0].kind == "key_up"
 
 
+def test_view_reset_antecede_os_cliques_de_chao():
+    """
+    Entrar na cave e sair pelo NPC são os únicos pontos que dependem do
+    ângulo da câmera (as caminhadas são no minimapa). Se o reset não vier
+    ANTES, os cliques caem no lugar errado quando a câmera girou.
+    """
+    for passos in (bc_steps.entrar_na_cave(DEFAULT_CONFIG),
+                   bc_steps.sair_da_cave(DEFAULT_CONFIG)):
+        assert passos[0].kind == "click_template"
+        assert passos[0].args[0] == "view_reset"
+
+
+def test_view_reset_nao_derruba_o_ciclo_se_o_botao_nao_aparecer():
+    """Câmera torta ainda tem chance de dar certo; parar ali não tem."""
+    obrigatorio = bc_steps.view_reset(DEFAULT_CONFIG)[0].args[4]
+
+    assert obrigatorio is False
+
+
 def test_leave_team_desligado_ainda_solta_a_tecla():
     """
     Quem sai do team é o runner, dentro da cave -- mas desligar a opção

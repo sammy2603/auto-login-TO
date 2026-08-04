@@ -142,6 +142,31 @@ def ir_para_cave(cfg) -> list[Step]:
     ]
 
 
+def view_reset(cfg) -> list[Step]:
+    """
+    Clica no botao de reset de camera do jogo.
+
+    Existe pra proteger os cliques de CHAO: a entrada da cave e a volta
+    pelo NPC sao coordenadas de tela, e coordenada de tela so vale se a
+    camera estiver no angulo de sempre. Basta o jogador (ou um clique
+    perdido) girar a camera pra elas caírem no lugar errado.
+
+    Por template e nao por coordenada fixa porque o proprio botao e um
+    elemento de UI que a gente quer achar mesmo se a barra mudar de
+    lugar. 'obrigatorio=False': se o recorte nao casar, seguir com a
+    camera torta ainda tem chance de dar certo -- parar ali nao tem.
+    """
+    return [
+        click_template(
+            cfg["template_view_reset"],
+            timeout=cfg.get("timeout_view_reset", 5.0),
+            obrigatorio=False,
+            note="reseta a camera",
+        ),
+        wait(cfg.get("espera_view_reset", 0.5)),
+    ]
+
+
 def entrar_na_cave(cfg) -> list[Step]:
     """
     Entrada na cave, com retentativa.
@@ -149,8 +174,13 @@ def entrar_na_cave(cfg) -> list[Step]:
     E o unico ponto dos macros com realimentacao real: o original
     repetia num 'while_not' ate o pixel (945,148) ficar verde. Aqui a
     retentativa tem LIMITE -- o original podia ficar preso pra sempre.
+
+    A camera e resetada dentro de CADA tentativa: se a primeira falhou
+    por angulo errado, repetir os mesmos cliques com a mesma camera
+    torta falharia igual.
     """
     tentativa = [
+        *view_reset(cfg),
         double_right(467, 417), double_right(471, 394), double_right(479, 377),
         double_right(479, 362), double_right(486, 390), double_right(479, 393),
         double_right(508, 405),
@@ -454,7 +484,9 @@ def sair_da_cave(cfg) -> list[Step]:
     caixa de dialogo do NPC nao aparece sempre no mesmo lugar, e clicar
     as cegas erraria.
     """
-    passos: list[Step] = []
+    # Camera reta antes de procurar o NPC: o clique nele e por imagem,
+    # mas a Skull Herald so aparece no recorte se estiver enquadrada.
+    passos: list[Step] = list(view_reset(cfg))
 
     # Se houver coordenada do NPC, confirma a chegada pela posicao lida
     # da memoria em vez de contar segundos.
