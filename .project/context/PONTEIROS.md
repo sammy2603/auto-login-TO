@@ -101,19 +101,43 @@ EvUiForm (13722200)...Scarp [392,889]...
 ```
 
 Ou seja, mapa e coordenada **do personagem**, não a lista de NPCs do
-painel Surrounding. Essa lista existe: um scan pelo literal `text="`
-achou 118 entradas renderizadas em heap, como
+painel Surrounding. Essa lista tem base própria, achada por pointer scan
+reverso (ver abaixo).
+
+As strings da UI são **UTF-8**, não UTF-16 — um scan por `text="` em
+UTF-16LE devolve zero ocorrências.
+
+### SUR_LISTA — a lista de NPCs do painel Surrounding
+
+Base `0x0150C314`, cadeia `[0xA0, 0xA0]`. Entrega o **XML inteiro** do
+painel, um `UiRichText` onde cada linha sai como:
 
 ```
 text="Courage Merchant [231,-517] (1269 m)" color="#ff00ff00" hlink="String:task:locate?px=231&py=-517..."
 ```
 
-mas nenhum dword aponta para o meio delas, e ainda não há cadeia estável
-até o início do buffer. Achar isso é o trabalho que falta para
-automatizar a coleta de coordenada de NPC.
+Isso é mais do que o RamoraBOT tinha: o `FIRST_LINK_SUR` dele alcançava
+só o primeiro link. Exposto em `MemoryReader.surrounding()`, que devolve
+`(nome, x, y, distância_em_metros)` já deduplicado — o buffer repete a
+mesma entrada a cada passada de renderização.
 
-As strings da UI são **UTF-8**, não UTF-16 — um scan por `text="` em
-UTF-16LE devolve zero ocorrências.
+**É daqui que sai a coordenada de NPC sem anotar à mão.**
+
+Outros três estáticos convergem para o mesmo buffer e servem de reserva
+caso este morra numa atualização:
+
+| Estático | Offsets |
+|---|---|
+| `0x0150C314` | `[0xA0, 0xA0]` |
+| `0x00F3FED4` | `[0xD8, 0xA0]` |
+| `0x015109F4` | `[0x88, 0xA0]` |
+| `0x01510A24` | `[0x4C, 0xA0]` |
+
+Como foi achada: scan pelo literal `text="` filtrado por `[x,y]` com
+dígitos reais (o template `[%d,%d]` também casa e engana), depois busca
+reversa em níveis — em cada nível, procurar na memória um dword valendo
+`alvo - offset`. Nível 1 deu 22 donos, nenhum estático; nível 2 deu 293
+donos, quatro deles na faixa do módulo.
 
 ### CAMERA: unidades e layout
 

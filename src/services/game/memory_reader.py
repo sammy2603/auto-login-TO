@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import re
 from ctypes import wintypes
 from typing import Optional
 
@@ -94,6 +95,7 @@ class MemoryReader:
     SPLIT_BASE = 0x012CE340
     TEAM_SIZE_BASE = 0x0106D388
     ENTIDADES_BASE = 0x012C0628
+    SUR_LISTA_BASE = 0x0150C314
 
     def __init__(self, pid: int):
         self._pid = pid
@@ -340,6 +342,43 @@ class MemoryReader:
     # =====================================================
     # Outros
     # =====================================================
+
+    # O painel Surrounding e renderizado como um UiRichText; cada linha
+    # sai como text="Nome [x,y] (d m)".
+    _SURROUNDING = re.compile(
+        r'text="([^"]+?)\s*\[(-?\d+),(-?\d+)\]\s*\((\d+) m\)"'
+    )
+
+    def surrounding(self, max_bytes: int = 16384) -> list[tuple[str, int, int, int]]:
+        """
+        Lista o painel Surrounding: (nome, x, y, distancia_em_metros).
+
+        E daqui que sai a coordenada de NPC sem precisar anotar a mao.
+        O buffer traz a mesma entrada repetida a cada passada de
+        renderizacao, entao a saida vem deduplicada, na ordem original.
+        """
+        addr = self._follow_chain(self.SUR_LISTA_BASE, [0xA0, 0xA0])
+        if not addr:
+            return []
+
+        buf = ctypes.create_string_buffer(max_bytes)
+        lidos = ctypes.c_size_t()
+        if not kernel32.ReadProcessMemory(
+            wintypes.HANDLE(self._hProcess), wintypes.LPCVOID(addr),
+            buf, max_bytes, ctypes.byref(lidos),
+        ):
+            return []
+
+        texto = buf.raw[: lidos.value].split(b"\x00", 1)[0].decode("utf-8", "replace")
+
+        vistos = set()
+        saida = []
+        for nome, x, y, dist in self._SURROUNDING.findall(texto):
+            item = (nome.strip(), int(x), int(y), int(dist))
+            if item not in vistos:
+                vistos.add(item)
+                saida.append(item)
+        return saida
 
     @property
     def team_size(self) -> int:

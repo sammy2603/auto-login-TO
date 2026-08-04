@@ -66,6 +66,9 @@ BASES = {
     "ENTIDADES": {"loginto": 0x012C0628, "ramora": 0x012C05C8},
     "SUR":       {"loginto": 0x012CE33C, "ramora": 0x012CE2DC},
     "CAMERA":    {"loginto": 0x01170054, "ramora": 0x0116FFF4},
+    # Achada por pointer scan reverso; nao tem equivalente no ramora,
+    # que so alcancava o primeiro link do painel.
+    "SUR_LISTA": {"loginto": 0x0150C314},
     "XP":        {"loginto": 0x01139700},
 }
 
@@ -163,6 +166,8 @@ CAMPOS = [
     # no meio dele e devolvia um fragmento.
     ("sur_info",      "SUR",    [0x18, 0x8C, 0x3C], "texto_longo", tem_coordenada,
      [0x18, 0x8C, 0x3C, 0x64]),
+    # XML inteiro do painel Surrounding, com a lista de NPCs.
+    ("sur_lista", "SUR_LISTA", [0xA0, 0xA0], "texto_longo", tem_coordenada, None),
     # Graus, conferidos com o scan de valor no ver.6400.
     ("camera_rot",    "CAMERA", [0x5C], "float", faixa(0, 360), None),
     ("camera_ang",    "CAMERA", [0x60], "float", faixa(0, 360), None),
@@ -258,8 +263,9 @@ def ler_campo(proc: Processo, endereco: int, tipo: str):
     if tipo == "float":
         return proc.flutuante(endereco), ""
     if tipo in ("str", "texto_longo"):
-        # texto_longo: marcacao de UI, nao cabe nos 51 bytes de um nome
-        largura = 300 if tipo == "texto_longo" else 51
+        # texto_longo: marcacao de UI. O XML do painel Surrounding tem
+        # cabecalho longo antes da primeira coordenada.
+        largura = 4000 if tipo == "texto_longo" else 51
         aceita = tem_coordenada if tipo == "texto_longo" else texto_sensato
         direto = proc.texto(endereco, largura)
         if aceita(direto):
