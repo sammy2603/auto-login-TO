@@ -46,9 +46,17 @@ DEFAULT_CONFIG = {
     # =========================================================
     # Main / Team
     # =========================================================
+    # Nome do personagem que forma dupla com este. O vinculo e CRUZADO:
+    # o runner aponta pro reseter e o reseter aponta de volta pro runner.
+    # Sem isso nao da pra saber quem forma par com quem quando ha varios
+    # clients abertos.
     "member_name": "",
-    # Marca este client como o que reconstitui o team entre as runs.
+    # Este personagem e o RESETER da dupla: nao faz a BC, so entra e sai
+    # do team. E a formacao do grupo que reseta a cave e devolve o boss,
+    # entao ele nao precisa de skills, rota nem pocoes.
     "reseter": False,
+    # O reseter sai do team depois que o parceiro entra na cave.
+    "leave_team": True,
 
     # =========================================================
     # Main / General
