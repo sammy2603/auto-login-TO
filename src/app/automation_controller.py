@@ -154,6 +154,20 @@ class AutomationController:
 
         return bool(engine and engine.is_running)
 
+    def get_bot_engine(self, label: str | None):
+        """
+        BotEngine JÁ EXISTENTE da sessão, ou None.
+
+        Diferente de get_or_create_bot_engine: aqui não cria nada. Serve
+        pra quem só quer inspecionar o estado (ex: a GUI lendo os
+        contadores de um script), sem provocar efeito colateral.
+        """
+
+        if not label:
+            return None
+
+        return self._bot_engines.get(label)
+
     # =====================================================
     # Leitura de memória
     # =====================================================

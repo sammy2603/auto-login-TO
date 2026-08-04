@@ -53,14 +53,15 @@ class Settings:
     match_threshold: float = 0.85
 
     # --- Timeouts (segundos) ---
+    # Nao ha timeout de fila: entrar no servidor pode levar horas, e
+    # qualquer limite aqui viraria erro numa espera normal. O
+    # CharacterWorkflow espera indefinidamente.
     timeout_login_screen: float = 30.0
     timeout_server_selection: float = 20.0
     timeout_game_load: float = 30.0
-    timeout_queue: float = 1800.0
 
     # --- Tentativas em caso de conexao interrompida ---
     max_connection_retries: int = 5
-    max_ip_retries: int = 10
 
     # --- Slot de personagem: LEFT, CENTER ou RIGHT ---
     character_slot: str = "RIGHT"

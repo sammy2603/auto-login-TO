@@ -1,6 +1,6 @@
 from src.domain.workflows.base_workflow import BaseWorkflow
 
-from src.shared.templates import CharacterTemplates, GameTemplates, ErrorTemplates
+from src.shared.templates import CharacterTemplates, GameTemplates, LoginTemplates
 from src.shared.delays import Delays
 from src.shared.character_slots import CHARACTER_SLOT_POSITIONS
 from src.domain.exceptions import ServerConnectionInterrupted
@@ -49,10 +49,25 @@ class CharacterWorkflow(BaseWorkflow):
     # =====================================================
 
     def wait_character_screen(self):
+        """
+        Espera SEM LIMITE DE TEMPO.
+
+        Fila de servidor dura o que durar -- às vezes horas. Qualquer
+        timeout que a gente escolhesse seria um palpite, e estourá-lo
+        transformaria "a fila está longa" (situação normal) em erro,
+        derrubando um login que ia dar certo se tivesse esperado mais.
+        Então a única pergunta é: o botão de entrar no jogo apareceu?
+
+        A espera não é cega: se a tela de LOGIN reaparecer, o servidor
+        caiu e nos jogou pra fora -- aí não adianta esperar, é caso de
+        refazer o login. Reconhecemos pelo próprio campo de usuário, sem
+        template de mensagem de erro: qual popup apareceu não muda o que
+        vamos fazer.
+        """
 
         self.log(
             "Aguardando tela de seleção de personagem "
-            "(pode demorar se houver fila no servidor)..."
+            "(sem limite de tempo -- a fila do servidor pode durar horas)..."
         )
 
         label, position = self.wait_for_any_template_patient(
@@ -61,29 +76,23 @@ class CharacterWorkflow(BaseWorkflow):
                     CharacterTemplates.ENTER_GAME_BUTTON,
                     (0, 0),
                 ),
-                "connection_error": (
-                    ErrorTemplates.CONNECTION_INTERRUPTED,
+                "login_screen": (
+                    LoginTemplates.USERNAME,
                     (0, 0),
                 ),
             },
-            timeout=self.settings.timeout_queue,
+            timeout=None,
             poll_interval=Delays.QUEUE_POLL_INTERVAL,
             heartbeat_interval=Delays.QUEUE_HEARTBEAT_INTERVAL,
             waiting_message="Ainda em fila / carregando...",
         )
 
-        if label is None:
-            raise TimeoutError(
-                "Tela de seleção de personagem não apareceu "
-                f"(timeout de fila de {int(self.settings.timeout_queue)}s excedido)."
-            )
-
-        if label == "connection_error":
+        if label == "login_screen":
             self.log(
-                "Conexão interrompida! O servidor ficou indisponível "
-                "e o jogo voltou pra tela de login."
+                "Voltamos pra tela de login: o servidor ficou "
+                "indisponível durante a entrada."
             )
-            self._dismiss_connection_error()
+            self.dismiss_dialogs()
             raise ServerConnectionInterrupted(
                 "Conexão interrompida ao entrar no servidor "
                 f"'{self.settings.server_name}'."
@@ -94,25 +103,6 @@ class CharacterWorkflow(BaseWorkflow):
         self.log(
             f"Botão de entrar no jogo localizado em {self.enter_game_button}"
         )
-
-    def _dismiss_connection_error(self):
-
-        ok_button = self.find_template(
-            ErrorTemplates.OK_BUTTON
-        )
-
-        if not ok_button:
-            self.log(
-                "Aviso: botão OK do popup de erro não foi encontrado. "
-                "Tentando prosseguir mesmo assim."
-            )
-            return
-
-        self.log("Fechando popup de erro (clicando em OK)...")
-
-        self.click(ok_button)
-
-        self.wait(Delays.AFTER_CLICK)
 
     # =====================================================
     # Seleção do personagem (slot esquerda/centro/direita)

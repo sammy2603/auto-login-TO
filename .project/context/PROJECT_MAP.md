@@ -50,6 +50,7 @@ ou workflows diretamente.
 | AutomationEngine (orquestra o login) | `src/app/automation_engine.py` |
 | BotEngine (loop de scripts) | `src/services/bot/bot_engine.py` |
 | ScriptRegistry (catálogo) | `src/services/bot/script_registry.py` |
+| StepRunner (roteiros longos) | `src/services/bot/step_runner.py` |
 | EventBus (publish/subscribe) | `src/shared/event_bus.py` |
 
 ## Workflows
@@ -95,9 +96,16 @@ que cada linha diga de qual conta veio. Saída em console, em
 Todos em `src/services/bot/scripts/`, registrados em
 `script_registry.py`.
 
-Implementados: attack, potion, pet_food, buff, helper, fairy, revive
+Implementados: attack, potion, pet_food, buff, helper, fairy, revive,
+bc
 
-Stubs (retornam `False`): bc, hollow, sell, delete, dr_lure
+Stubs (retornam `False`): hollow, sell, delete, dr_lure
+
+O **BC** é o único que usa o `StepRunner`: o ciclo dele tem ~900
+passos e vários minutos, então o roteiro vive como dado em
+`scripts/bc_steps.py` e a máquina de estados em `scripts/bc.py`. Ver
+`ADR-004-Motor-de-Passos.md`. Scripts curtos continuam implementando
+`tick()` direto.
 
 Para adicionar um script: criar a classe (com `name` e `tick()`,
 conforme o protocolo `BotScript`) e adicionar UMA linha em

@@ -1,8 +1,12 @@
 .env
 gui_settings.json
 accounts.json
+# Screenshots e saidas de debug das ferramentas ficam de fora...
 *.png
-!templates/.gitkeep
+# ...mas os templates NAO: sem eles o bot nao acha nada na tela. Sao
+# ativos de runtime, nao arquivo temporario -- perde-los significa
+# recapturar tudo dentro do jogo.
+!templates/*.png
 __pycache__/
 *.pyc
 logs/

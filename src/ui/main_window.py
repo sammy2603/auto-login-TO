@@ -23,7 +23,9 @@ from src.infrastructure.logging.service import (
 from src.services.license.service import LicenseService
 from src.services.game.memory_reader import MemoryReader
 from src.services.bot.script_registry import ScriptRegistry
+from src.services.bot.scripts.bc import DEFAULT_CONFIG as BC_DEFAULT_CONFIG
 from src.shared.character_slots import CharacterSlot
+from src.shared.servers import SERVERS, has_template, missing_templates
 from src.ui.log_handler import TextboxLogHandler
 
 logger = get_logger(__name__)
@@ -113,14 +115,16 @@ class AccountDialog:
         self.label_var = ctk.StringVar(value=account.label if account else "")
         self.username_var = ctk.StringVar(value=account.username if account else "")
         self.password_var = ctk.StringVar(value=account.password if account else "")
-        self.server_var = ctk.StringVar(value=account.server_name if account else "")
+        self.server_var = ctk.StringVar(
+            value=account.server_name if account else SERVERS[0]
+        )
         self.slot_var = ctk.StringVar(value=account.character_slot if account else CharacterSlot.CENTER)
         self.auto_var = ctk.BooleanVar(value=account.auto_login if account else False)
 
         self._field(outer, "Apelido da conta", self.label_var)
         self._field(outer, "Usuário", self.username_var)
         self._field(outer, "Senha", self.password_var, show="*")
-        self._field(outer, "Servidor", self.server_var)
+        self._server_field(outer)
 
         slot_frame = ctk.CTkFrame(outer, fg_color="transparent")
         slot_frame.pack(fill="x", pady=(0, 14))
@@ -152,6 +156,51 @@ class AccountDialog:
         d.grab_set()
         d.wait_window()
 
+    def _server_field(self, parent):
+        """
+        Dropdown de servidores.
+
+        A seleção na tela de servidores é feita por template matching,
+        então um servidor sem o recorte 'servidor_<nome>.png' falha no
+        login com TimeoutError -- depois de esperar o timeout inteiro.
+        Por isso o dropdown MARCA quais ainda não dá pra usar: descobrir
+        isso só na hora de logar seria bem pior.
+        """
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="x", pady=(0, 14))
+
+        ctk.CTkLabel(frame, text="Servidor", font=FONT_SMALL,
+                     text_color=TEXT2).pack(anchor="w", pady=(0, 4))
+
+        faltando = set(missing_templates())
+
+        def rotular(servidor):
+            return f"{servidor}  (sem template)" if servidor in faltando else servidor
+
+        # A var guarda o rótulo mostrado; _save tira o sufixo antes de
+        # gravar, pra o nome do servidor continuar limpo no accounts.json.
+        self._rotulos_servidor = {rotular(s): s for s in SERVERS}
+
+        atual = self.server_var.get()
+        self.server_var.set(rotular(atual) if atual in self._rotulos_servidor.values()
+                            else rotular(SERVERS[0]))
+
+        ctk.CTkOptionMenu(
+            frame, variable=self.server_var,
+            values=[rotular(s) for s in SERVERS],
+            font=FONT_TEXT, fg_color=CARD, button_color=HOVER,
+            button_hover_color=BLUE, dropdown_fg_color=CARD,
+            dropdown_text_color=TEXT, text_color=TEXT,
+        ).pack(fill="x")
+
+        if faltando:
+            ctk.CTkLabel(
+                frame,
+                text=("Servidores marcados precisam do recorte da tela de\n"
+                      "seleção. Capture com: python tools/calibrar.py"),
+                font=ctk.CTkFont(size=10), text_color=YELLOW, justify="left",
+            ).pack(anchor="w", pady=(4, 0))
+
     def _field(self, parent, label, var, show=None):
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.pack(fill="x", pady=(0, 14))
@@ -174,11 +223,26 @@ class AccountDialog:
             )
             return
 
+        # O dropdown mostra "Nome  (sem template)" nos servidores ainda
+        # não capturados; grava só o nome limpo.
+        rotulo = self.server_var.get().strip()
+        servidor = self._rotulos_servidor.get(rotulo, rotulo)
+
+        if not has_template(servidor):
+            if not messagebox.askyesno(
+                "Servidor sem template",
+                f"O servidor '{servidor}' ainda não tem o recorte da tela de "
+                f"seleção (templates/servidor_{servidor}.png).\n\n"
+                f"O login vai falhar por timeout até ele ser capturado com "
+                f"tools/calibrar.py.\n\nSalvar mesmo assim?",
+            ):
+                return
+
         self.result = Account(
             label=label,
             username=username,
             password=self.password_var.get(),
-            server_name=self.server_var.get().strip(),
+            server_name=servidor,
             character_slot=self.slot_var.get(),
             auto_login=self.auto_var.get(),
         )
@@ -257,6 +321,8 @@ class MainWindow:
         self._client_cards: dict[str, any] = {}
         self._kill_track: dict = {}
         self._script_cards: dict[str, ScriptCard] = {}
+        # Config do BC por conta -- ver _bc_config_da_conta().
+        self._bc_configs: dict[str, dict] = {}
         self._login_win = None; self._config_win = None
 
         self._build_top_bar()
@@ -610,6 +676,447 @@ class MainWindow:
         self._buff_config["skills"] = [{"key":v[1].get().strip(),"enabled":v[0].get()} for v in sv]
         self._buff_config["self_buff"] = {"enabled":sbe.get(),"interval_min":sbi.get()}
         d.destroy()
+
+    def _cfg_bc(self, name):
+        """
+        Configuração do Bewitcher Cave, em 4 abas.
+
+        O BC é auto-contido: tem as próprias skills, teclas E POÇÕES.
+        Por isso o diálogo repete campos que existem em Attack, Potion e
+        Fairy -- é intencional, não duplicação por descuido.
+        """
+        label = self._selected_window
+
+        if not label:
+            messagebox.showinfo(
+                "BC",
+                "Selecione um client antes de configurar o BC.\n\n"
+                "A configuração é por conta: numa dupla, um personagem "
+                "roda a BC e o outro é o reseter.",
+            )
+            return
+
+        cfg = self._bc_config_da_conta(label)
+        campos = {}
+
+        def grupo(pai, titulo):
+            caixa = ctk.CTkFrame(pai, fg_color="transparent", border_width=1,
+                                 border_color="#1A2540", corner_radius=6)
+            caixa.pack(fill="x", pady=(4, 8), padx=2)
+            ctk.CTkLabel(caixa, text=titulo, font=ctk.CTkFont(size=10),
+                         text_color=TEXT2).pack(anchor="w", padx=8, pady=(4, 0))
+            interno = ctk.CTkFrame(caixa, fg_color="transparent")
+            interno.pack(fill="x", padx=8, pady=(2, 8))
+            return interno
+
+        def texto(pai, rotulo, chave, largura=70):
+            r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=2)
+            ctk.CTkLabel(r, text=rotulo, width=150, font=FONT_SMALL,
+                         anchor="e").pack(side="left", padx=(0, 8))
+            v = tk.StringVar(value=str(cfg.get(chave, "")))
+            ctk.CTkEntry(r, textvariable=v, width=largura, font=FONT_SMALL).pack(side="left")
+            campos[chave] = v
+
+        def tecla(pai, rotulo, chave):
+            """Campo de atalho. Vazio aparece como 'unset', como na referência."""
+            r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=2)
+            ctk.CTkLabel(r, text=rotulo, width=105, font=FONT_SMALL,
+                         anchor="e").pack(side="left", padx=(0, 6))
+            atual = cfg.get(chave, "")
+            v = tk.StringVar(value=atual if atual else "unset")
+            ctk.CTkEntry(r, textvariable=v, width=70, font=FONT_SMALL,
+                         justify="center").pack(side="left")
+            campos[chave] = v
+
+        def marcar(pai, rotulo, chave):
+            v = ctk.BooleanVar(value=bool(cfg.get(chave)))
+            ctk.CTkCheckBox(pai, text=rotulo, variable=v,
+                            font=FONT_SMALL).pack(anchor="w", pady=1)
+            campos[chave] = v
+
+        def deslizar(pai, rotulo, chave, cor):
+            """Limiar de poção: barra colorida + slider, como na referência."""
+            r = ctk.CTkFrame(pai, fg_color="transparent"); r.pack(fill="x", pady=4)
+            v = tk.IntVar(value=int(cfg.get(chave, 30)))
+            etiqueta = ctk.CTkLabel(r, text=f"{rotulo}: {v.get()}%", width=110,
+                                    font=FONT_SMALL, fg_color=cor, corner_radius=4)
+            etiqueta.pack(side="left", padx=(0, 10))
+            ctk.CTkSlider(
+                r, from_=0, to=100, variable=v, width=150,
+                command=lambda _x, lb=etiqueta, var=v, rt=rotulo: lb.configure(
+                    text=f"{rt}: {int(var.get())}%"
+                ),
+            ).pack(side="left")
+            campos[chave] = v
+
+        # Papel atual do personagem. Fica fora do build() porque o
+        # formulario e RECONSTRUIDO ao alternar: o reseter usa uma tela
+        # completamente diferente, nao a mesma com campos escondidos.
+        estado = {"reseter": bool(cfg.get("reseter"))}
+
+        def build(d):
+            for w in d.winfo_children():
+                w.destroy()
+            campos.clear()
+
+            sessoes = self.controller.get_sessions()
+            eu = sessoes.get(label, {}).get("display", label)
+
+            ctk.CTkLabel(d, text=f"Configurando: {eu}", font=FONT_SMALL,
+                         text_color=BLUE).pack(anchor="w", padx=14, pady=(8, 0))
+
+            def bloco_team(pai):
+                """
+                Vinculo da dupla -- a unica parte que os dois papeis
+                compartilham.
+                """
+                g = grupo(pai, "Team")
+                texto(g, "Member Name", "member_name", largura=160)
+
+                linha = ctk.CTkFrame(g, fg_color="transparent")
+                linha.pack(fill="x", pady=2)
+
+                v_reseter = ctk.BooleanVar(value=estado["reseter"])
+                v_leave = ctk.BooleanVar(value=bool(cfg.get("leave_team", True)))
+                campos["reseter"] = v_reseter
+                campos["leave_team"] = v_leave
+
+                def alternar():
+                    estado["reseter"] = v_reseter.get()
+                    build(d)
+
+                ctk.CTkCheckBox(linha, text="Reseter", variable=v_reseter,
+                                font=FONT_SMALL,
+                                command=alternar).pack(side="left", padx=(0, 12))
+                ctk.CTkCheckBox(linha, text="Leave Team", variable=v_leave,
+                                font=FONT_SMALL).pack(side="left")
+
+            # =================================================
+            # Reseter: so o vinculo. Sem skills, rota nem pocoes.
+            # =================================================
+            if estado["reseter"]:
+                painel = ctk.CTkFrame(d, fg_color="transparent")
+                painel.pack(fill="both", expand=True, padx=8, pady=4)
+
+                bloco_team(painel)
+
+                ctk.CTkLabel(
+                    painel,
+                    text=("Este personagem so entra e sai do team.\n\n"
+                          "E a formacao do grupo que reseta a cave e devolve\n"
+                          "o boss -- por isso ele nao precisa de skills, rota\n"
+                          "nem pocoes.\n\n"
+                          "Em 'Member Name' vai o nome do personagem que FAZ\n"
+                          "a BC, e la no BC dele o 'Member Name' tem que ser\n"
+                          "este aqui."),
+                    font=ctk.CTkFont(size=10), text_color=TEXT3, justify="left",
+                ).pack(anchor="w", padx=10, pady=(6, 0))
+
+                ctk.CTkButton(d, text="Save", font=FONT_SMALL, width=100,
+                              command=lambda: self._save_bc(campos, label, d)).pack(pady=8)
+                return
+
+            # =================================================
+            # Runner: o ciclo completo, nas 4 abas.
+            # =================================================
+            abas = ctk.CTkTabview(d, fg_color="transparent", height=440)
+            abas.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+            for titulo in ("Main", "Shortcuts", "Potions", "Stats"):
+                abas.add(titulo)
+
+            # ---------------- Main ----------------
+            main = ctk.CTkScrollableFrame(abas.tab("Main"), fg_color="transparent")
+            main.pack(fill="both", expand=True)
+
+            bloco_team(main)
+
+            g = grupo(main, "General")
+            texto(g, "Return to Stone every (runs)", "runs_por_ciclo", largura=50)
+            texto(g, "Initial Selling Slot", "slot_inicial_venda", largura=50)
+            marcar(g, "Buy Return Charm after selling", "comprar_return_charm")
+            marcar(g, "Get Treasure Box", "pegar_treasure_box")
+            marcar(g, "Manual Pick (clica no corpo do boss)", "manual_pick")
+
+            g = grupo(main, "Route")
+            v_rota = tk.StringVar(value=cfg.get("rota", "standard"))
+            ctk.CTkRadioButton(g, text="Standard (direto pro boss)", value="standard",
+                               variable=v_rota, font=FONT_SMALL).pack(anchor="w", pady=1)
+            ctk.CTkRadioButton(g, text="Safe (mata as Gun Witches antes)", value="safe",
+                               variable=v_rota, font=FONT_SMALL).pack(anchor="w", pady=1)
+            campos["rota"] = v_rota
+            marcar(g, "Lure Powerfuls (mobs do corredor)", "lure_powerfuls")
+            marcar(g, "Heal Before Second Phase", "heal_antes_segunda_fase")
+
+            g = grupo(main, "Misc")
+            texto(g, "Usar AOE ate mana (%)", "aoe_ate_mana", largura=50)
+
+            g = grupo(main, "Etapas do ciclo")
+            marcar(g, "Comprar pocao antes de ir", "comprar_pot")
+            marcar(g, "Vender ao voltar", "vender")
+            marcar(g, "Abrir as bags de courage", "usar_courage")
+            marcar(g, "Repetir o ciclo indefinidamente", "repetir_ciclo")
+
+            # ---------------- Shortcuts ----------------
+            atalhos = ctk.CTkScrollableFrame(abas.tab("Shortcuts"), fg_color="transparent")
+            atalhos.pack(fill="both", expand=True)
+
+            g = grupo(atalhos, "Skills")
+            v_ataques = []
+            atuais = cfg.get("attack_keys", [])
+            for i in range(3):
+                r = ctk.CTkFrame(g, fg_color="transparent"); r.pack(fill="x", pady=2)
+                ctk.CTkLabel(r, text=f"Attack {i+1}", width=105, font=FONT_SMALL,
+                             anchor="e").pack(side="left", padx=(0, 6))
+                v = tk.StringVar(value=atuais[i] if i < len(atuais) else "unset")
+                ctk.CTkEntry(r, textvariable=v, width=70, font=FONT_SMALL,
+                             justify="center").pack(side="left")
+                v_ataques.append(v)
+            campos["attack_keys"] = v_ataques
+            tecla(g, "Attack AOE", "aoe_key")
+            tecla(g, "Super Skill", "super_skill_key")
+            tecla(g, "Buff", "buff_key")
+            tecla(g, "Break Soul", "break_soul_key")
+            tecla(g, "Healing Spell", "healing_spell_key")
+
+            g = grupo(atalhos, "General")
+            tecla(g, "Mount", "mount_key")
+            tecla(g, "Speed Skill", "speed_skill_key")
+            tecla(g, "Summon Pet", "summon_pet_key")
+            tecla(g, "Pet Food", "pet_food_key")
+            tecla(g, "Stone Charm", "stone_charm_key")
+            tecla(g, "Inventario", "inventory_key")
+            tecla(g, "Painel de team", "team_key")
+
+            g = grupo(atalhos, "Potions")
+            tecla(g, "HP", "hp_potion_key")
+            tecla(g, "Battle HP", "battle_hp_key")
+            tecla(g, "Mana", "mana_potion_key")
+            tecla(g, "Battle Mana", "battle_mana_key")
+
+            ctk.CTkLabel(
+                atalhos, text="Deixe 'unset' pra nao usar o item/skill.",
+                font=ctk.CTkFont(size=10), text_color=TEXT3,
+            ).pack(anchor="w", pady=(2, 0))
+
+            # ---------------- Potions ----------------
+            pocoes = ctk.CTkScrollableFrame(abas.tab("Potions"), fg_color="transparent")
+            pocoes.pack(fill="both", expand=True)
+
+            ctk.CTkLabel(
+                pocoes,
+                text="O BC cuida da propria vida: nao precisa dos\ncards Potion nem Fairy ligados.",
+                font=ctk.CTkFont(size=10), text_color=TEXT3, justify="left",
+            ).pack(anchor="w", pady=(0, 6))
+
+            g = grupo(pocoes, "Potions")
+            deslizar(g, "HP", "hp_potion_pct", "#7F1D1D")
+            deslizar(g, "MP", "mana_potion_pct", "#1E3A8A")
+
+            g = grupo(pocoes, "Battle Potions")
+            deslizar(g, "HP", "battle_hp_pct", "#7F1D1D")
+            deslizar(g, "MP", "battle_mana_pct", "#1E3A8A")
+
+            g = grupo(pocoes, "Fairy self-heal -> Healing Spell")
+            deslizar(g, "HP", "fairy_heal_pct", "#7F1D1D")
+
+            # ---------------- Stats ----------------
+            estat = ctk.CTkScrollableFrame(abas.tab("Stats"), fg_color="transparent")
+            estat.pack(fill="both", expand=True)
+            self._build_bc_stats(estat, campos, cfg)
+
+            ctk.CTkButton(d, text="Save", font=FONT_SMALL, width=100,
+                          command=lambda: self._save_bc(campos, label, d)).pack(pady=8)
+
+        self._cfg_window("BC", 470, 590, build)
+
+    def _build_bc_stats(self, pai, campos, cfg):
+        """
+        Aba Stats. Le os contadores do script vivo da conta selecionada;
+        sem sessao rodando, mostra zeros.
+        """
+        from src.services.bot.scripts.bc import BCStats
+
+        stats = self._bc_stats_da_sessao()
+
+        if stats is None:
+            ctk.CTkLabel(pai, text="Nenhuma sessao com BC rodando.",
+                         font=FONT_SMALL, text_color=TEXT3).pack(pady=(0, 6))
+            stats = BCStats()
+
+        def caixa(rotulo, valor):
+            f = ctk.CTkFrame(pai, fg_color=CARD, corner_radius=6,
+                             border_width=1, border_color="#1A2540")
+            f.pack(fill="x", pady=3, padx=2)
+            ctk.CTkLabel(f, text=rotulo, font=ctk.CTkFont(size=10),
+                         text_color=TEXT3).pack(anchor="w", padx=8, pady=(4, 0))
+            ctk.CTkLabel(f, text=str(valor), font=FONT_TEXT,
+                         text_color=TEXT).pack(anchor="w", padx=8, pady=(0, 6))
+
+        caixa("Runs", stats.runs)
+        caixa("Success", stats.sucessos)
+        caixa("Fail", stats.falhas)
+        caixa("Run Time", BCStats.formatar(stats.run_atual))
+        caixa("Last Run Time", BCStats.formatar(stats.tempo_ultima_run))
+        caixa("Total Running Time", BCStats.formatar_longo(stats.tempo_total))
+        caixa("Courage Badge", stats.courage)
+
+        ctk.CTkButton(pai, text="Reset Stats", font=FONT_SMALL, width=110,
+                      fg_color="transparent", border_width=1, border_color=TEXT3,
+                      command=self._reset_bc_stats).pack(pady=(8, 4))
+
+        v = ctk.BooleanVar(value=bool(cfg.get("auto_reset_stats", True)))
+        ctk.CTkCheckBox(pai, text="Auto Reset Stats ao iniciar o bot",
+                        variable=v, font=FONT_SMALL).pack(anchor="w")
+        campos["auto_reset_stats"] = v
+
+    def _bc_stats_da_sessao(self):
+        """Contadores do BC da conta selecionada, ou None se nao houver."""
+        engine = self.controller.get_bot_engine(self._selected_window)
+        if engine is None:
+            return None
+        for script in engine.scripts:
+            if getattr(script, "name", "") == "BC":
+                return getattr(script, "stats", None)
+        return None
+
+    def _reset_bc_stats(self):
+        stats = self._bc_stats_da_sessao()
+        if stats is None:
+            messagebox.showinfo("Stats", "Nenhuma sessao com BC rodando.")
+            return
+        stats.zerar()
+        logger.info("Stats do BC zerados")
+
+    def _save_bc(self, campos, label, d):
+        cfg = self._bc_config_da_conta(label)
+
+        def limpar_tecla(valor: str) -> str:
+            """'unset' e vazio significam a mesma coisa: sem atalho."""
+            valor = (valor or "").strip()
+            return "" if valor.lower() == "unset" else valor
+
+        # O formulario do reseter tem SO o bloco Team, entao todo campo
+        # daqui pra baixo e lido apenas se estiver presente. Sem isso,
+        # salvar como reseter estouraria KeyError.
+        if "attack_keys" in campos:
+            ataques = [limpar_tecla(v.get()) for v in campos["attack_keys"]]
+            cfg["attack_keys"] = [a for a in ataques if a] or list(
+                BC_DEFAULT_CONFIG["attack_keys"]
+            )
+
+        for chave in ("aoe_key", "super_skill_key", "buff_key", "break_soul_key",
+                      "healing_spell_key", "mount_key", "speed_skill_key",
+                      "summon_pet_key", "pet_food_key", "stone_charm_key",
+                      "inventory_key", "team_key", "hp_potion_key",
+                      "mana_potion_key", "battle_hp_key", "battle_mana_key"):
+            if chave in campos:
+                cfg[chave] = limpar_tecla(campos[chave].get())
+
+        cfg["member_name"] = campos["member_name"].get().strip()
+
+        if "rota" in campos:
+            cfg["rota"] = campos["rota"].get()
+
+        for chave in ("reseter", "leave_team", "comprar_return_charm",
+                      "pegar_treasure_box", "manual_pick", "lure_powerfuls",
+                      "heal_antes_segunda_fase", "comprar_pot", "vender",
+                      "usar_courage", "repetir_ciclo", "auto_reset_stats"):
+            if chave in campos:
+                cfg[chave] = bool(campos[chave].get())
+
+        for chave in ("hp_potion_pct", "mana_potion_pct", "battle_hp_pct",
+                      "battle_mana_pct", "fairy_heal_pct"):
+            if chave in campos:
+                cfg[chave] = int(campos[chave].get())
+
+        for chave, conversor, minimo in (
+            ("runs_por_ciclo", int, 1),
+            ("slot_inicial_venda", int, 1),
+            ("aoe_ate_mana", int, 0),
+        ):
+            if chave not in campos:
+                continue
+            try:
+                cfg[chave] = max(minimo, conversor(str(campos[chave].get()).strip()))
+            except (TypeError, ValueError):
+                # Campo com lixo digitado: mantem o valor anterior em vez
+                # de gravar algo que quebraria o roteiro.
+                logger.warning("Valor invalido para '%s'; mantendo o anterior", chave)
+
+        if cfg["reseter"]:
+            logger.info(
+                "Config do BC de '%s' salva: RESETER, parceiro '%s'",
+                label, cfg["member_name"],
+            )
+        else:
+            logger.info(
+                "Config do BC de '%s' salva: rota=%s, %s run(s) por ciclo",
+                label, cfg["rota"], cfg["runs_por_ciclo"],
+            )
+
+        aviso = self._conferir_vinculo_bc(label, cfg)
+        d.destroy()
+
+        if aviso:
+            messagebox.showwarning("Vínculo do BC", aviso)
+
+    def _conferir_vinculo_bc(self, label: str, cfg: dict) -> str:
+        """
+        Confere o vínculo da dupla e devolve um aviso, ou "" se estiver ok.
+
+        A dupla se reconhece por nomes CRUZADOS: o runner aponta pro
+        reseter e o reseter aponta de volta pro runner. Sem isso não dá
+        pra saber quem forma par com quem quando há vários clients
+        abertos.
+
+        Só avisa -- não impede de salvar. O parceiro pode simplesmente
+        ainda não estar logado.
+        """
+        parceiro_nome = (cfg.get("member_name") or "").strip()
+
+        if not parceiro_nome:
+            return ("Sem 'Member Name' não há dupla: o BC precisa de um "
+                    "parceiro pra formar e desfazer o team, que é o que "
+                    "reseta a cave.")
+
+        sessoes = self.controller.get_sessions()
+        eu = sessoes.get(label, {}).get("display", label)
+
+        parceiro_label = next(
+            (l for l, s in sessoes.items()
+             if s.get("display", l).strip().lower() == parceiro_nome.lower()),
+            None,
+        )
+
+        if parceiro_label is None:
+            return (f"'{parceiro_nome}' não está logado agora. O vínculo só "
+                    f"pode ser conferido com os dois clients abertos.")
+
+        cfg_parceiro = self._bc_configs.get(parceiro_label)
+
+        if cfg_parceiro is None:
+            return f"'{parceiro_nome}' ainda não tem o BC configurado."
+
+        problemas = []
+
+        if bool(cfg_parceiro.get("reseter")) == bool(cfg.get("reseter")):
+            papel = "reseter" if cfg.get("reseter") else "runner"
+            problemas.append(
+                f"os dois estão marcados como {papel} — um tem que ser o "
+                f"reseter e o outro não."
+            )
+
+        nome_de_volta = (cfg_parceiro.get("member_name") or "").strip()
+        if nome_de_volta.lower() != eu.lower():
+            mostrado = nome_de_volta or "(vazio)"
+            problemas.append(
+                f"'{parceiro_nome}' aponta para '{mostrado}' em vez de '{eu}'."
+            )
+
+        if problemas:
+            return "Vínculo incompleto: " + " E ".join(problemas)
+
+        return ""
 
     # ============================================================
     # LOGIN / WINDOWS / PERSISTENCE / POLLING / BOT ENGINE
@@ -1045,13 +1552,31 @@ class MainWindow:
     def _on_account_finished(self, label):
         self.controller.forget_session(label)
 
-    def _current_script_configs(self):
+    def _bc_config_da_conta(self, label: str | None) -> dict:
+        """
+        Config do BC de UMA conta, criando na primeira vez.
+
+        Diferente dos outros scripts, a do BC NÃO pode ser global: numa
+        dupla, um personagem é o que roda a BC e o outro é o reseter --
+        com config compartilhada seria impossível marcar só um deles.
+        """
+        if not label:
+            # Sem conta selecionada, devolve um rascunho descartável em
+            # vez de None, pra o diálogo nunca abrir vazio.
+            return dict(BC_DEFAULT_CONFIG)
+
+        return self._bc_configs.setdefault(label, dict(BC_DEFAULT_CONFIG))
+
+    def _current_script_configs(self, label: str | None = None):
         """
         Configuração atual de cada script, editada pelos diálogos que
         abrem no botão de engrenagem de cada ScriptCard. É estado de
         apresentação (a GUI é quem edita), por
         isso continua vivendo aqui -- o Controller só recebe e repassa
         pros scripts na hora de ligar o motor.
+
+        'label' define de qual conta vem a config do BC. Os demais
+        scripts continuam com config global.
         """
         return {
             "pet": getattr(self, "_pet_config", {}),
@@ -1061,6 +1586,7 @@ class MainWindow:
             "helper": getattr(self, "_helper_config", {}),
             "fairy": getattr(self, "_fairy_config", {}),
             "revive": getattr(self, "_revive_config", {}),
+            "bc": self._bc_config_da_conta(label),
         }
 
     def _start_bot_for_window(self, label):
@@ -1076,7 +1602,7 @@ class MainWindow:
         self.controller.start_scripts(
             label, hwnd, pid,
             self._feature_vars.get(label) if hasattr(self, "_feature_vars") else {},
-            self._current_script_configs(),
+            self._current_script_configs(label),
         )
 
     def _stop_bot_for_window(self, label):

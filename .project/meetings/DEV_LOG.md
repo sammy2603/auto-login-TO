@@ -61,6 +61,116 @@ Status:
 Status:
 🟢 Funcionando
 
+### Concluído — BC: config completa espelhando a referência
+
+- **Correção de nome:** BC é **Bewitcher** Cave, não Battle Cave. Eu
+  tinha assumido errado; corrigido em 7 lugares (código e docs).
+- O usuário mostrou a UI de um bot de referência, com 4 abas (Main,
+  Shortcuts, Potions, Stats). São ~44 campos contra os 17 que eu tinha.
+  O diálogo agora espelha essa estrutura.
+- **Conhecimento de domínio registrado** (não estava em lugar nenhum):
+  - **Gun Witches**: mobs em frente ao boss, última defesa da sala.
+    Rota "safe" mata antes de encarar o boss.
+  - **Powerfuls**: mobs das duas fileiras do corredor da sala, uma em
+    cada parede.
+  - **Treasure Box**: caixa no limite final da sala; clique direito e
+    espera o casting. **Nascem mobs depois de aberta** -- o roteiro já
+    segue lutando.
+  - **Manual Pick**: pra quem não tem pet com loot automático; clica no
+    corpo do boss pra lotear.
+  - **Break Soul**: skill de quem tem mount de combine máximo (+12);
+    debuff que reduz a defesa do inimigo.
+  - **O boss tem DUAS fases** -- daí a opção de curar entre elas.
+  - **Passive Opt. foi descartada** de propósito: seria ficar de TAB
+    limpando a sala inteira, em vez de matar só o boss e os guardas.
+- **O BC agora cuida da própria vida**: poções normais, battle potions
+  e self-heal de Fairy, cada um com limiar. Fica FORA do roteiro de
+  passos e roda a cada tick, porque precisar de poção acontece a
+  qualquer momento, não num passo específico -- se dependesse da vez,
+  o personagem morreria esperando. É o que completa a independência que
+  o usuário pediu: não precisa dos cards Potion nem Fairy ligados.
+- **AOE por mana**: a skill de AOE só entra na rotação enquanto a mana
+  estiver acima do limite. Custa caro, e ficar sem mana no meio do boss
+  é pior que matar devagar.
+- **Aba Stats**: runs, sucesso/falha, tempo da run atual, da última e
+  total, contagem de Courage Badge, botão de reset e auto-reset. Os
+  contadores vivem no script (quem sabe que uma run começou é a máquina
+  de estados); a GUI só lê, via `get_bot_engine()` -- que NÃO cria
+  engine, pra abrir o diálogo não ter efeito colateral.
+- Bug que um teste pegou: renomeei `stone_key` → `stone_charm_key` no
+  config mas o `voltar_para_stone` ficou com o nome antigo. Daria
+  KeyError só na hora de rodar no jogo. Virou trava estrutural:
+  `test_toda_chave_lida_pelo_roteiro_existe_no_default` varre o
+  `bc_steps.py` atrás de `cfg["x"]` e confere contra o DEFAULT_CONFIG.
+- 211 testes no total.
+
+**Ainda pendente:**
+
+- `treasure_box_pos` e `corpo_do_boss_pos` são **palpites centrados na
+  tela** -- nenhum macro cobria essas etapas. Precisam de calibração.
+- O NPC de saída da cave (nome e coordenadas).
+- Nada testado contra o jogo real.
+
+Status:
+🟡 Implementado, aguardando teste no jogo
+
+### Concluído — BC (Bewitcher Cave) e o motor de passos
+
+- O BC deixou de ser stub. Traduzidos os 4 macros antigos (~650
+  cliques) num ciclo configurável. Ver `ADR-004-Motor-de-Passos.md`.
+- **Os macros não eram Lua** -- eram de um gravador de macros
+  (`left x,y`, `double_right`, `send_down {f12}`, `findcolor`). Não
+  precisou de interpretador; foi tradução conceitual.
+- **Motor de passos** (`step_runner.py`): o roteiro virou lista
+  declarativa e o runner guarda em que passo está. Cada tick executa um
+  passo. Espera não dorme -- anota prazo. É o que permite os ~6 minutos
+  do BC sem travar a Potion.
+- **Roteiro como dado** (`bc_steps.py`): as coordenadas são o que mais
+  envelhece, então ficam numa tabela, longe da lógica.
+- **Ciclo configurável**: preparo → [run → reset] ×N → retorno. Ao
+  matar o boss, sai pelo NPC que aparece (teleporta pro NPC de entrada)
+  e repete a run; só depois da última volta pra cidade e vende.
+- **Auto-contido por decisão do usuário**: o BC não conversa com os
+  outros scripts nem depende deles. Tem as próprias 4 skills e teclas.
+  Ligar o card Attack junto é escolha de quem usa -- o BC não
+  interfere nem avisa. Mesma regra vale pro DR Lure.
+- **Courage por template matching**, não por cor. O macro procurava a
+  cor 5391624 (formato não documentado) e usava UMA vez. Agora acha o
+  ícone e repete enquanto encontrar -- não se sabe quantas bags o boss
+  dropou, então contagem fixa erra pros dois lados. Precisa do recorte
+  `templates/courage_bag.png`.
+- Primitivas novas que faltavam: clique direito e duplo-direito (87%
+  do macro), `key_down`/`key_up`/`held_key`, F1–F12 (`press_key("F12")`
+  levantava ValueError), e checagem de cor de pixel/região.
+- Diálogo de configuração na GUI: 4 skills, mount, stone, inventário,
+  team, runs por ciclo, repetir, e liga/desliga de comprar/vender/
+  courage.
+- Achados que os testes pegaram:
+  - Eu vinha citando "~75 caminhadas"; o teste falhou com 76.
+    Conferido contra o arquivo original: são **76**, e a transcrição
+    está idêntica. O errado era minha estimativa.
+  - `test_create_instance_ignora_config_de_quem_nao_declara` usava o
+    `bc` como exemplo de `has_config=False`. Ao mudar o BC pra
+    `True`, o teste continuou passando **sem testar nada** -- trocado
+    pro `hollow`.
+  - Fixture de template matching com cor uniforme casava em qualquer
+    lugar: `TM_CCOEFF_NORMED` é degenerado com variância zero. O
+    template de teste passou a ter padrão.
+- 67 testes novos (180 no total).
+
+**Pendente:**
+
+- O NPC de saída da cave: o usuário confirmou que existe e teleporta
+  pro NPC de entrada, mas o nome e as coordenadas ainda não. A fase de
+  `reset` hoje só reconstitui o team.
+- As cores herdadas 64511 e 5391624 não foram reaproveitadas -- formato
+  não documentado.
+- Nada foi testado contra o jogo real. Todas as ~650 coordenadas vêm
+  dos macros e assumem 1024x768.
+
+Status:
+🟡 Implementado, aguardando teste no jogo
+
 ### Concluído — Logger estruturado
 
 - Fecha o item "Logger estruturado" da Fase 3. Ver `ADR-003-Logging.md`

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 
 import win32api
 import win32con
@@ -15,7 +16,13 @@ _VK_MAP = {
     "DOWN": win32con.VK_DOWN,
     "LEFT": win32con.VK_LEFT,
     "RIGHT": win32con.VK_RIGHT,
+    "SPACE": win32con.VK_SPACE,
+    "BACKSPACE": win32con.VK_BACK,
 }
+
+# F1..F12 -- os codigos virtuais sao contiguos (VK_F1 = 0x70).
+for _n in range(1, 13):
+    _VK_MAP[f"F{_n}"] = win32con.VK_F1 + (_n - 1)
 
 
 class InputService:
@@ -47,6 +54,44 @@ class InputService:
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
         time.sleep(delay)
         win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+
+    def right_click(self, hwnd, x: int, y: int, delay: float = 0.05):
+        """
+        Clique DIREITO em (x, y).
+
+        No Talisman é o botão de movimento: clicar com o direito no
+        chão ou no minimapa manda o personagem andar até lá.
+        """
+
+        lparam = self._make_lparam(x, y)
+
+        win32api.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
+        time.sleep(delay)
+        win32api.PostMessage(hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, lparam)
+        time.sleep(delay)
+        win32api.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, lparam)
+
+    def double_right_click(self, hwnd, x: int, y: int, delay: float = 0.05):
+        """
+        Duplo clique direito em (x, y).
+
+        Manda o WM_RBUTTONDBLCLK explicitamente além dos dois cliques:
+        janelas com a flag CS_DBLCLKS esperam essa mensagem, e só
+        repetir dois RBUTTONDOWN seguidos não equivale a um duplo
+        clique de verdade pra elas.
+        """
+
+        lparam = self._make_lparam(x, y)
+
+        win32api.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
+        time.sleep(delay)
+        win32api.PostMessage(hwnd, win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, lparam)
+        time.sleep(delay)
+        win32api.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, lparam)
+        time.sleep(delay)
+        win32api.PostMessage(hwnd, win32con.WM_RBUTTONDBLCLK, win32con.MK_RBUTTON, lparam)
+        time.sleep(delay)
+        win32api.PostMessage(hwnd, win32con.WM_RBUTTONUP, 0, lparam)
 
     # =====================================================
     # Teclado
@@ -80,36 +125,84 @@ class InputService:
         "P": 0x19, "Q": 0x10, "R": 0x13, "S": 0x1F, "T": 0x14,
         "U": 0x16, "V": 0x2F, "W": 0x11, "X": 0x2D, "Y": 0x15,
         "Z": 0x2C,
+        "SPACE": 0x39, "BACKSPACE": 0x0E,
+        "F1": 0x3B, "F2": 0x3C, "F3": 0x3D, "F4": 0x3E, "F5": 0x3F,
+        "F6": 0x40, "F7": 0x41, "F8": 0x42, "F9": 0x43, "F10": 0x44,
+        "F11": 0x57, "F12": 0x58,
     }
 
-    def press_key(self, hwnd, key, delay: float = 0.05):
+    def _resolve_key(self, key) -> tuple[int, int]:
         """
-        Pressiona uma tecla. Aceita:
-        - Chave simbolica (ex: "TAB", "ENTER")
-        - Codigo de tecla virtual (int)
-        - Caractere unico (ex: "1", "a", "F5")
+        Traduz a tecla para (codigo virtual, scan code).
+
+        Aceita codigo virtual (int), caractere unico ("1", "a") ou nome
+        simbolico ("TAB", "F12", "ENTER").
         """
 
         if isinstance(key, int):
-            vk_code = key
-            scan = 0
-        elif isinstance(key, str) and len(key) == 1:
-            vk_code = ord(key.upper()) if key.isalpha() else ord(key)
-            scan = self._SCAN_MAP.get(key.upper(), 0)
-        else:
-            key_upper = key.upper() if isinstance(key, str) else key
-            vk_code = _VK_MAP.get(key_upper, key_upper)
-            scan = self._SCAN_MAP.get(key_upper, 0)
+            return key, 0
 
-        if not isinstance(vk_code, int):
+        if isinstance(key, str) and len(key) == 1:
+            vk = ord(key.upper()) if key.isalpha() else ord(key)
+            return vk, self._SCAN_MAP.get(key.upper(), 0)
+
+        key_upper = key.upper() if isinstance(key, str) else key
+        vk = _VK_MAP.get(key_upper)
+
+        if not isinstance(vk, int):
             raise ValueError(f"Tecla não reconhecida: {key!r}")
 
-        # lparam com scan code (bits 16-23) + repeat (0) + flags
-        lparam = (scan << 16) | 0x0001
+        return vk, self._SCAN_MAP.get(key_upper, 0)
 
+    def key_down(self, hwnd, key):
+        """
+        Segura uma tecla, sem soltar.
+
+        Existe pro caso do 'send_down {f12}' dos macros antigos, em que
+        uma tecla fica pressionada enquanto várias outras ações
+        acontecem. Quem chama é responsável por chamar key_up() depois
+        -- de preferência num 'finally', pra tecla não ficar presa se
+        algo falhar no meio.
+        """
+
+        vk_code, scan = self._resolve_key(key)
+        lparam = (scan << 16) | 0x0001
         win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk_code, lparam)
-        time.sleep(delay)
+
+    def key_up(self, hwnd, key):
+        """Solta uma tecla segurada por key_down()."""
+
+        vk_code, scan = self._resolve_key(key)
+        lparam = (scan << 16) | 0x0001
         win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, lparam | 0xC0000000)
+
+    @contextmanager
+    def held_key(self, hwnd, key):
+        """
+        Segura a tecla durante o bloco e solta ao sair, inclusive se
+        houver exceção:
+
+            with input_service.held_key(hwnd, "F12"):
+                ...
+        """
+
+        self.key_down(hwnd, key)
+        try:
+            yield
+        finally:
+            self.key_up(hwnd, key)
+
+    def press_key(self, hwnd, key, delay: float = 0.05):
+        """
+        Pressiona e solta uma tecla. Aceita:
+        - Chave simbolica (ex: "TAB", "ENTER", "F12")
+        - Codigo de tecla virtual (int)
+        - Caractere unico (ex: "1", "a")
+        """
+
+        self.key_down(hwnd, key)
+        time.sleep(delay)
+        self.key_up(hwnd, key)
 
     # =====================================================
     # Limpeza de campos

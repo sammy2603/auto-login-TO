@@ -6,13 +6,21 @@ como PNG. Use isso pra confirmar visualmente se cada template está
 batendo no lugar certo ANTES de rodar o fluxo completo.
 
 Uso:
-    python tools/debug_templates.py                  # testa todos os templates
+    python tools/debug_templates.py                   # testa todos os templates
     python tools/debug_templates.py campo_usuario.png # testa só um
+    python tools/debug_templates.py skull_herald.png Bot1   # escolhe a janela
+
+Com mais de um client aberto, o segundo argumento é o que decide QUAL
+janela é capturada: sem ele vale config.WINDOW_TITLE, que casa com a
+primeira janela do jogo que aparecer -- e "primeira" não é escolha
+nenhuma. O bot renomeia cada janela com o apelido da conta, então esse
+apelido é o filtro certo.
 """
 
 import sys
 import os
 import cv2
+import win32gui
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -71,11 +79,17 @@ def main():
     window = WindowService()
     vision = VisionService(window_service=window, templates_dir=config.TEMPLATES_DIR)
 
+    titulo = sys.argv[2] if len(sys.argv) > 2 else config.WINDOW_TITLE
+
     try:
-        window.connect(title_substring=config.WINDOW_TITLE, timeout=10)
+        window.connect(title_substring=titulo, timeout=10)
     except Exception as e:
-        print(f"Janela '{config.WINDOW_TITLE}' não encontrada: {e}")
+        print(f"Janela '{titulo}' não encontrada: {e}")
         sys.exit(1)
+
+    # Imprime em qual janela caiu: com vários clients abertos, testar o
+    # template na janela errada dá um resultado plausível e falso.
+    print(f"Janela: {win32gui.GetWindowText(window.hwnd)!r} (hwnd {window.hwnd})")
 
     screenshot = window.capture()
     output_dir = os.getcwd()
