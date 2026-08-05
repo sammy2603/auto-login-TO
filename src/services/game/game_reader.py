@@ -21,6 +21,11 @@ class CharInfo:
     resource_pct: float = 0.0
     in_battle: bool = False
     pet_alive: bool | None = None
+    # Nome do mapa. Vem da memoria; a leitura por pixel nunca soube
+    # disso. E o que permite "se nao estou em Stone City, usa o charm".
+    location: str = ""
+    mounted: bool = False
+    sitting: bool = False
     kill_count: int = 0
     x: int = 0
     y: int = 0

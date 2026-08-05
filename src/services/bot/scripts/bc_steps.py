@@ -25,6 +25,8 @@ from src.services.bot.step_runner import (
     double_right,
     key,
     key_down,
+    pular_se,
+    esperar_ate,
     left,
     repeat,
     retry_until_color,
@@ -73,9 +75,109 @@ def ajustes_iniciais(cfg) -> list[Step]:
     return [
         key_down(cfg["esconder_jogadores_key"],
                  note="segura escondendo os outros jogadores"),
-        *repeat(3, [left(997, 97, note="zoom/camera")]),
-        left(864, 55),
+        *repeat(3, [left(997, 97, note="zoom out do minimapa")]),
+        # O macro clicava em (864, 55), que e o botao de reset de
+        # camera. Por template em vez de coordenada: e o mesmo botao, e
+        # view_reset ja trata timeout e avisa sem parar o roteiro.
+        *view_reset(cfg),
         wait(0.5),
+    ]
+
+
+def garantir_pet(cfg) -> list[Step]:
+    """
+    Invoca o pet se ele nao estiver ativo.
+
+    Decide pela memoria (pet_alive), nao por pixel: o icone do pet muda
+    de lugar conforme a UI, o booleano nao.
+    """
+    invocar = [
+        key(cfg["summon_pet_key"], note="invoca o pet"),
+        wait(cfg.get("espera_pet", 2.0)),
+    ]
+    return [
+        pular_se(lambda ci: bool(ci.pet_alive), len(invocar),
+                 note="pet ja esta ativo"),
+        *invocar,
+    ]
+
+
+def garantir_cidade(cfg) -> list[Step]:
+    """
+    Volta para a cidade com o Return Charm, se ja nao estiver la.
+
+    Sem isto o roteiro sairia andando para a coordenada do NPC de venda
+    a partir de qualquer mapa -- e coordenada de mundo de um mapa nao
+    quer dizer nada em outro.
+    """
+    cidade = cfg["mapa_cidade"]
+    volta = voltar_para_stone(cfg)
+    return [
+        pular_se(lambda ci: ci.location == cidade, len(volta),
+                 note=f"ja esta em {cidade}"),
+        *volta,
+    ]
+
+
+def montar_se_preciso(cfg) -> list[Step]:
+    """Monta so se estiver desmontado -- a tecla e toggle."""
+    passos = montar(cfg)
+    return [
+        pular_se(lambda ci: ci.mounted, len(passos), note="ja esta montado"),
+        *passos,
+    ]
+
+
+def ir_ate_npc(cfg, chave: str) -> list[Step]:
+    """Caminhada ate um NPC do catalogo (ver pos_npc)."""
+    return andar_ate(cfg, pos_npc(cfg, chave))
+
+
+def esperar_hp_e_mana(cfg) -> list[Step]:
+    """
+    Segura o roteiro ate HP e mana chegarem no minimo configurado,
+    sentando para acelerar a regeneracao.
+
+    Sentar exige desmontar. Os dois passos sao condicionais e nao
+    toggles cegos: se a montaria tivesse falhado antes, um toggle cego
+    montaria aqui e o personagem chegaria desmontado no teleporte --
+    exatamente o contrario do que se queria.
+
+    Sem sit_key configurada, espera em pe: regenera mais devagar, mas
+    nao inventa tecla.
+    """
+    hp_min = cfg.get("hp_min_para_seguir", 100.0)
+    mana_min = cfg.get("mana_min_para_seguir", 90.0)
+
+    def pronto(ci):
+        return ci.hp_pct >= hp_min and ci.resource_pct >= mana_min
+
+    espera = esperar_ate(
+        pronto,
+        timeout=cfg.get("timeout_regen", 300.0),
+        note=f"espera HP >= {hp_min}% e mana >= {mana_min}%",
+    )
+
+    sit_key = cfg.get("sit_key")
+    if not sit_key:
+        descanso = [espera]
+    else:
+        descanso = [
+            pular_se(lambda ci: not ci.mounted, 2, note="ja esta desmontado"),
+            key(cfg["mount_key"], note="desmonta para sentar"),
+            wait(1.0),
+            key(sit_key, note="senta para regenerar"),
+            espera,
+            key(sit_key, note="levanta"),
+            wait(0.5),
+            pular_se(lambda ci: ci.mounted, 2, note="ja esta montado"),
+            key(cfg["mount_key"], note="monta de novo"),
+            wait(cfg.get("espera_mount", 2.0)),
+        ]
+
+    return [
+        pular_se(pronto, len(descanso), note="HP e mana ja estao no minimo"),
+        *descanso,
     ]
 
 

@@ -799,3 +799,104 @@ def test_config_do_bc_resolve_a_entrada_pelo_catalogo(tmp_path):
     )
 
     assert bc_steps.pos_npc(cfg, "npc_entrada") == (1395, -636)
+
+
+# =====================================================
+# Preparo condicional (pet, cidade, montaria, regeneração)
+# =====================================================
+#
+# O erro clássico aqui é o pular_se contar errado: sobra ou falta um
+# passo e o roteiro executa metade do bloco que deveria ter pulado.
+# Todo teste abaixo confere a contagem, não só o conteúdo.
+
+
+class CharFalso:
+    def __init__(self, **kw):
+        self.hp_pct = kw.get("hp_pct", 100.0)
+        self.resource_pct = kw.get("resource_pct", 100.0)
+        self.pet_alive = kw.get("pet_alive", True)
+        self.location = kw.get("location", "Stone City")
+        self.mounted = kw.get("mounted", False)
+
+
+def salta_o_bloco_inteiro(passos):
+    """O primeiro passo tem que pular exatamente o resto do bloco."""
+    return passos[0].kind == "skip_if" and passos[0].args[1] == len(passos) - 1
+
+
+def test_garantir_pet_pula_o_bloco_inteiro_quando_tem_pet():
+    passos = bc_steps.garantir_pet(DEFAULT_CONFIG)
+
+    assert salta_o_bloco_inteiro(passos)
+    assert passos[0].args[0](CharFalso(pet_alive=True)) is True
+    assert passos[0].args[0](CharFalso(pet_alive=False)) is False
+    assert passos[1].args == (DEFAULT_CONFIG["summon_pet_key"],)
+
+
+def test_garantir_cidade_so_usa_o_charm_fora_da_cidade():
+    passos = bc_steps.garantir_cidade(DEFAULT_CONFIG)
+    condicao = passos[0].args[0]
+
+    assert salta_o_bloco_inteiro(passos)
+    assert condicao(CharFalso(location="Stone City")) is True
+    assert condicao(CharFalso(location="Ghost Din Woods")) is False
+    assert passos[1].args == (DEFAULT_CONFIG["stone_charm_key"],)
+
+
+def test_montar_se_preciso_nao_desmonta_quem_ja_esta_montado():
+    """A tecla é toggle: apertar montado desmontaria."""
+    passos = bc_steps.montar_se_preciso(DEFAULT_CONFIG)
+    condicao = passos[0].args[0]
+
+    assert salta_o_bloco_inteiro(passos)
+    assert condicao(CharFalso(mounted=True)) is True
+    assert condicao(CharFalso(mounted=False)) is False
+
+
+def test_espera_de_regeneracao_usa_os_limiares_configurados():
+    cfg = {**DEFAULT_CONFIG, "hp_min_para_seguir": 100.0,
+           "mana_min_para_seguir": 90.0}
+    condicao = bc_steps.esperar_hp_e_mana(cfg)[0].args[0]
+
+    assert condicao(CharFalso(hp_pct=100.0, resource_pct=90.0)) is True
+    assert condicao(CharFalso(hp_pct=100.0, resource_pct=89.9)) is False
+    assert condicao(CharFalso(hp_pct=99.0, resource_pct=100.0)) is False
+
+
+def test_sem_sit_key_espera_em_pe():
+    """Sem tecla confirmada no jogo, não inventa: espera de pé."""
+    passos = bc_steps.esperar_hp_e_mana({**DEFAULT_CONFIG, "sit_key": ""})
+
+    assert [p.kind for p in passos] == ["skip_if", "wait_until"]
+
+
+def test_com_sit_key_desmonta_senta_e_volta_a_montar():
+    cfg = {**DEFAULT_CONFIG, "sit_key": "R"}
+    passos = bc_steps.esperar_hp_e_mana(cfg)
+    teclas = [p.args[0] for p in passos if p.kind == "key"]
+
+    assert salta_o_bloco_inteiro(passos)
+    assert teclas == [cfg["mount_key"], "R", "R", cfg["mount_key"]]
+    assert [p.kind for p in passos].count("wait_until") == 1
+
+
+def test_preparo_segue_a_ordem_do_fluxo():
+    """
+    Ordem que importa: o Return Charm antes da caminhada (coordenada de
+    mundo só vale dentro do mapa certo) e a espera de HP/mana no NPC de
+    teleporte, não no de venda.
+    """
+    bc = BCScript()
+    passos = bc._montar_preparo()
+    notas = [p.note for p in passos if p.note]
+
+    def antes(a, b):
+        pos = lambda alvo: next(i for i, n in enumerate(notas) if alvo in n)
+        return pos(a) < pos(b)
+
+    assert antes("escondendo os outros jogadores", "zoom out do minimapa")
+    assert antes("zoom out do minimapa", "volta pra Stone City")
+    assert antes("volta pra Stone City", f'anda ate {DEFAULT_CONFIG["npc_venda_pos"]}')
+    assert antes(f'anda ate {DEFAULT_CONFIG["npc_venda_pos"]}',
+                 f'anda ate {DEFAULT_CONFIG["npc_teleporte_pos"]}')
+    assert antes(f'anda ate {DEFAULT_CONFIG["npc_teleporte_pos"]}', "espera HP")
