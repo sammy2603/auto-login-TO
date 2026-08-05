@@ -208,9 +208,12 @@ DEFAULT_CONFIG = {
     # com o personagem no pe dele e a camera resetada. O ponto de tela
     # foi medido clicando no NPC e conferindo onde o clique caiu.
     # --- Cidade: venda, compra do charm e teleporte ---
-    # O mapa e lido da memoria (char_info.location) e comparado com
-    # este nome; diferente disso, o roteiro usa o Return Charm.
-    "mapa_cidade": "Stone City",
+    # LISTA, porque char_info.location traz a SUB-AREA e nao o mapa:
+    # White Bear Village e Ghost Din Woods sao o mesmo mapa (Vast
+    # Mountain). Estar em qualquer sub-area listada conta como "ja
+    # estou na cidade"; fora delas, o roteiro usa o Return Charm.
+    # Se Stone City tiver mais sub-areas, e so acrescentar aqui.
+    "areas_da_cidade": ["Stone City"],
     "npc_venda_mapa": "Stone City",
     "npc_venda_nome": "Rich Man",
     "npc_venda_pos": (153, -493),

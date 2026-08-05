@@ -110,11 +110,16 @@ def garantir_cidade(cfg) -> list[Step]:
     a partir de qualquer mapa -- e coordenada de mundo de um mapa nao
     quer dizer nada em outro.
     """
-    cidade = cfg["mapa_cidade"]
+    # LISTA de sub-areas, e nao um nome so: o que a memoria devolve em
+    # location e a SUB-AREA, nao o mapa (White Bear Village e Ghost Din
+    # Woods sao o mesmo mapa, Vast Mountain). Comparar com um nome unico
+    # faria o personagem no mapa certo, em outro canto, ler "nao estou
+    # na cidade" e queimar um Return Charm a toa.
+    areas = cfg["areas_da_cidade"]
     volta = voltar_para_stone(cfg)
     return [
-        pular_se(lambda ci: ci.location == cidade, len(volta),
-                 note=f"ja esta em {cidade}"),
+        pular_se(lambda ci: ci.location in areas, len(volta),
+                 note=f"ja esta em {'/'.join(areas)}"),
         *volta,
     ]
 

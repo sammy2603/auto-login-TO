@@ -1,6 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Catalogo de NPCs por mapa, capturado do painel Surrounding.
+Catalogo de NPCs por SUB-AREA, capturado do painel Surrounding.
+
+A chave e o que a memoria devolve em location, que e a sub-area
+(White Bear Village), e nao o mapa (Vast Mountain). O painel lista os
+NPCs do mapa INTEIRO, entao capturar de duas sub-areas do mesmo mapa
+grava duas entradas com conteudo identico.
+
+Isso e desperdicio de alguns KB e foi escolhido de proposito: a
+alternativa era achar o id do mapa na memoria, e nao existe um obvio --
+o mapid=1 que aparece nos hlinks do painel e o mesmo em Stone City e em
+Vast Mountain, ou seja, nao identifica mapa. Duplicar a lista custa
+menos que uma cacada de ponteiro para resolver um problema que nao
+atrapalha.
 
 Existe porque NPC de mapa nao anda: nome e coordenada sao fixos. Varrer
 a memoria a cada run e refazer trabalho para obter sempre a mesma

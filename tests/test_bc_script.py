@@ -843,6 +843,20 @@ def test_garantir_cidade_so_usa_o_charm_fora_da_cidade():
     assert passos[1].args == (DEFAULT_CONFIG["stone_charm_key"],)
 
 
+def test_qualquer_sub_area_da_cidade_conta_como_estar_la():
+    """
+    location traz a SUB-ÁREA, não o mapa: White Bear Village e Ghost Din
+    Woods são o mesmo mapa. Comparar com um nome único faria o
+    personagem no mapa certo, em outro canto, queimar um Return Charm.
+    """
+    cfg = {**DEFAULT_CONFIG, "areas_da_cidade": ["Stone City", "Praca Leste"]}
+    condicao = bc_steps.garantir_cidade(cfg)[0].args[0]
+
+    assert condicao(CharFalso(location="Stone City")) is True
+    assert condicao(CharFalso(location="Praca Leste")) is True
+    assert condicao(CharFalso(location="Ghost Din Woods")) is False
+
+
 def test_montar_se_preciso_nao_desmonta_quem_ja_esta_montado():
     """A tecla é toggle: apertar montado desmontaria."""
     passos = bc_steps.montar_se_preciso(DEFAULT_CONFIG)

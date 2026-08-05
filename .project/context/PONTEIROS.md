@@ -221,9 +221,19 @@ Isso também explica a Skull Herald aparecer em `(1395,-636)` na
 captura feita de White Bear Village enquanto um personagem parado em
 Ghost Din Woods lê `(1395,-635)`: é **o mesmo NPC**, não duas cópias.
 
-O identificador certo já vem nos dados — cada linha traz `mapid=1` no
-hlink. Falta achar o mapid do personagem na memória para casar os
-dois; com ele, a chave do catálogo passa a ser o mapa de verdade.
+**Não há identificador de mapa fácil, e o `mapid` do hlink não é um.**
+Medido: `mapid=1` tanto nas linhas de Stone City quanto nas de Vast
+Mountain — é tipo de link, não mapa. O objeto de onde sai o `location`
+(`CHAR + [0x7F8, 0xF4] + 0x44C`) também só tem o nome da sub-área;
+logo depois dele sobra lixo do mapa anterior (`'ods'`, resto de
+`Ghost Din Woods`), ou seja, buffer reaproveitado e não campo
+separado.
+
+Por isso o catálogo continua indexado por **sub-área**, e a comparação
+de "estou na cidade?" virou **lista de sub-áreas** (`areas_da_cidade`
+no config do BC). Capturar de duas sub-áreas do mesmo mapa grava duas
+entradas idênticas — alguns KB — e isso custa menos que uma caçada de
+ponteiro para um problema que não atrapalha.
 
 **Armadilha medida:** fechar o painel NÃO limpa o bloco — com ele
 fechado, as mesmas 33 entradas continuam sendo achadas. A regra real é
