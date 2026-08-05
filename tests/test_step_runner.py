@@ -873,3 +873,34 @@ def test_esperar_ate_segue_no_timeout():
         pass
 
     assert [a for a in entrada.acoes if a[0] == "key"] == [("key", "0")]
+
+
+def test_click_template_clica_deslocado_do_que_achou():
+    """
+    Ancora no que é estável e clica no que não é: o nome flutuante de um
+    NPC é texto, sempre igual; o corpo é sprite animado que não casa em
+    threshold nenhum. Medido no Transport Fay -- +45px abre o diálogo.
+    """
+    entrada = FakeInput()
+    visao = FakeVision(achados=[(485, 429)])
+    runner = StepRunner([
+        click_template("label_transport_fay", botao="double_right",
+                       deslocamento=(0, 45)),
+    ])
+    ctx = contexto(entrada, vision=visao)
+
+    while runner.tick(ctx):
+        pass
+
+    assert entrada.acoes == [("double_right", 485, 474)]
+
+
+def test_click_template_sem_deslocamento_clica_no_centro():
+    entrada = FakeInput()
+    visao = FakeVision(achados=[(485, 429)])
+    runner = StepRunner([click_template("botao_qualquer")])
+
+    while runner.tick(contexto(entrada, vision=visao)):
+        pass
+
+    assert entrada.acoes == [("left", 485, 429)]
