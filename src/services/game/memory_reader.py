@@ -95,7 +95,7 @@ class MemoryReader:
     SPLIT_BASE = 0x012CE340
     TEAM_SIZE_BASE = 0x0106D388
     ENTIDADES_BASE = 0x012C0628
-    SUR_LISTA_BASE = 0x0150C314
+    MISSOES_BASE = 0x0150C314
 
     def __init__(self, pid: int):
         self._pid = pid
@@ -345,14 +345,14 @@ class MemoryReader:
 
     # O painel Surrounding e renderizado como um UiRichText; cada linha
     # sai como text="Nome [x,y] (d m)".
-    _SURROUNDING = re.compile(
+    _OBJETIVO = re.compile(
         r'text="([^"]+?)\s*\[(-?\d+),(-?\d+)\]\s*\((\d+) m\)"'
     )
 
     @staticmethod
-    def parse_surrounding(texto: str) -> list[tuple[str, int, int, int]]:
+    def parse_objetivos(texto: str) -> list[tuple[str, int, int, int]]:
         """
-        Extrai (nome, x, y, distancia) do XML do painel.
+        Extrai (nome, x, y, distancia) do XML do rastreador de missoes.
 
         Separado da leitura de memoria de proposito: e a unica parte
         testavel sem o jogo aberto, e e onde mora o risco de regressao.
@@ -362,21 +362,31 @@ class MemoryReader:
         """
         vistos = set()
         saida = []
-        for nome, x, y, dist in MemoryReader._SURROUNDING.findall(texto or ""):
+        for nome, x, y, dist in MemoryReader._OBJETIVO.findall(texto or ""):
             item = (nome.strip(), int(x), int(y), int(dist))
             if item not in vistos:
                 vistos.add(item)
                 saida.append(item)
         return saida
 
-    def surrounding(self, max_bytes: int = 16384) -> list[tuple[str, int, int, int]]:
+    def objetivos_de_missao(self, max_bytes: int = 16384) -> list[tuple[str, int, int, int]]:
         """
-        Lista o painel Surrounding: (nome, x, y, distancia_em_metros).
+        NPCs-objetivo das missoes ativas: (nome, x, y, distancia).
 
-        E daqui que sai a coordenada de NPC sem precisar anotar a mao.
-        So lista o MAPA ATUAL -- nao ha como ver NPC de outro mapa.
+        ATENCAO -- isto NAO e o painel Surrounding, apesar de ter sido
+        rotulado assim quando foi descoberto. E o rastreador de missoes:
+        o buffer vem agrupado por mapa, cada quest com o NPC que ela
+        manda procurar, e cada linha carrega um hlink 'task:locate'.
+
+        Duas consequencias medidas no ver.6400:
+
+        - So aparece NPC ligado a uma missao ATIVA do personagem. NPC
+          qualquer (uma Skull Herald, por exemplo) nunca vai estar aqui.
+        - A distancia e do ultimo render, nao do instante da leitura:
+          andando 115 unidades, os metros nao mudaram. A coordenada do
+          NPC nao sofre com isso, que e fixa; a distancia sim.
         """
-        addr = self._follow_chain(self.SUR_LISTA_BASE, [0xA0, 0xA0])
+        addr = self._follow_chain(self.MISSOES_BASE, [0xA0, 0xA0])
         if not addr:
             return []
 
@@ -389,7 +399,7 @@ class MemoryReader:
             return []
 
         texto = buf.raw[: lidos.value].split(b"\x00", 1)[0].decode("utf-8", "replace")
-        return self.parse_surrounding(texto)
+        return self.parse_objetivos(texto)
 
     @property
     def team_size(self) -> int:

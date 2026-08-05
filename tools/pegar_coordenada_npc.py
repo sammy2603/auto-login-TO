@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Coordenada de mundo de um NPC, lida do painel Surrounding.
+Coordenada de mundo dos NPCs-objetivo das missoes ativas.
 
-Substitui anotar a coordenada a mao: com o personagem no mapa certo,
-um comando devolve a linha pronta pra colar no DEFAULT_CONFIG do BC.
+Devolve a linha pronta pra colar no DEFAULT_CONFIG do BC, sem anotar a
+coordenada a mao.
 
-O painel so lista NPCs do MAPA ATUAL. Para pegar a Skull Herald e
-preciso estar no mapa da Bewitcher Cave -- personagem de nivel baixo
-nao alcanca, e nao ha contorno por software.
+LIMITE, e ele e grande: a fonte e o rastreador de missoes, nao o painel
+Surrounding. So aparece NPC ligado a uma missao ATIVA do personagem --
+NPC qualquer, como a Skull Herald, nunca vai estar aqui. Ver
+.project/context/PONTEIROS.md.
+
+A distancia em metros e do ultimo render, nao do instante da leitura.
+A coordenada nao sofre com isso, que e fixa.
 
 Com varias contas abertas, diga qual cliente com --pid: sem isso vale o
 primeiro client.exe encontrado, que pode ser um que nem terminou de
@@ -15,8 +19,8 @@ logar.
 
 Uso:
     python tools/pegar_coordenada_npc.py             # lista tudo
-    python tools/pegar_coordenada_npc.py skull       # filtra por nome
-    python tools/pegar_coordenada_npc.py skull --pid 38640
+    python tools/pegar_coordenada_npc.py eagle       # filtra por nome
+    python tools/pegar_coordenada_npc.py eagle --pid 38640
     python tools/pegar_coordenada_npc.py --autoteste
 """
 
@@ -60,9 +64,9 @@ def outros_clientes(pid_usado):
 
 def imprimir(entradas, termo, pid=None):
     if not entradas:
-        print(f"  Nenhum NPC{f' com {termo!r}' if termo else ''} no painel.")
-        print("  O Surrounding so lista o mapa atual -- confira se o")
-        print("  personagem esta no mapa certo.")
+        print(f"  Nenhum NPC{f' com {termo!r}' if termo else ''} na lista.")
+        print("  A fonte e o rastreador de MISSOES: so aparece NPC de")
+        print("  missao ativa deste personagem, nunca um NPC qualquer.")
         for outro, titulo in outros_clientes(pid).items():
             print(f"  Ha outro cliente aberto: --pid {outro}  ({titulo[:40]})")
         return
@@ -114,7 +118,7 @@ def main():
 
     mr = MemoryReader(pid)
     try:
-        imprimir(filtrar(mr.surrounding(), args.nome), args.nome, pid)
+        imprimir(filtrar(mr.objetivos_de_missao(), args.nome), args.nome, pid)
     finally:
         mr.close()
 

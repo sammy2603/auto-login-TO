@@ -12,7 +12,7 @@ Amostras copiadas do cliente ver.6400.
 from src.services.game.memory_reader import MemoryReader
 
 
-parse = MemoryReader.parse_surrounding
+parse = MemoryReader.parse_objetivos
 
 
 def item(nome, x, y, dist):
