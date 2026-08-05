@@ -46,6 +46,8 @@ SKIP_IF_COLOR = "skip_if_color"  # pula N passos se a cor ja estiver la
 CLICK_TEMPLATE = "click_template"  # espera um elemento aparecer e clica nele
 WAIT_POSITION = "wait_position"  # espera o personagem chegar numa coordenada
 SKIP_IF = "skip_if"              # pula N passos se a MEMORIA disser que sim
+SKIP_IF_TEMPLATE = "skip_if_template"  # pula N passos se um elemento ja esta na tela
+WAIT_TEMPLATE = "wait_template"   # espera um elemento aparecer, SEM clicar nele
 WAIT_UNTIL = "wait_until"        # espera ate a MEMORIA satisfazer a condicao
 USE_ALL_ITEMS = "use_all_items"  # acha um item por imagem e usa, ate acabar
 ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
@@ -320,6 +322,45 @@ def esperar_ate(condicao: Callable, timeout: float = 120.0,
     return Step(WAIT_UNTIL, (condicao,), timeout=timeout, note=note)
 
 
+def pular_se_template(template: str, steps_ahead: int, threshold: float = 0.85,
+                      region=None, note: str = "") -> Step:
+    """
+    Pula 'steps_ahead' passos se o elemento ja esta na tela.
+
+    E o irmao do skip_if_color para o que nao tem cor caracteristica:
+    uma caixa de dialogo se reconhece pelo texto dentro dela, nao por um
+    pixel. Serve para "tenta abrir o dialogo; se ja abriu, para de
+    tentar".
+
+    Sem vision_service o passo NAO pula -- mesma regra do pular_se: errar
+    para o lado de tentar de novo custa um clique, errar para o lado de
+    pular quebra o roteiro.
+    """
+    return Step(SKIP_IF_TEMPLATE, (template, steps_ahead, threshold, region),
+                note=note)
+
+
+def esperar_template(template: str, timeout: float = 15.0,
+                     threshold: float = 0.85, region=None,
+                     note: str = "") -> Step:
+    """
+    Espera um elemento aparecer, sem clicar nele.
+
+    O click_template ja espera, mas clica no que achou -- e as vezes o
+    que prova "a janela abriu" nao e o que se quer clicar. Esperar com
+    tempo fixo no lugar disto foi o que fez a primeira versao da venda
+    falhar: o roteiro dormia 1,5s apos pedir a lista, a janela demorava
+    mais, e o clique do slot caia no dialogo atras -- sem erro nenhum,
+    so sem vender.
+
+    Vencido o timeout o roteiro SEGUE, como o wait_color: os passos
+    seguintes erram em cima de tela errada, mas parar o ciclo por causa
+    de um frame lento e pior.
+    """
+    return Step(WAIT_TEMPLATE, (template, threshold, region),
+                timeout=timeout, note=note)
+
+
 def call(fn: Callable, note: str = "") -> Step:
     """Delega a um callable do proprio script (logica que nao vira dado)."""
     return Step(CALL, (fn,), note=note)
@@ -518,6 +559,31 @@ class StepRunner:
                                step.note or "sem nota")
                 return True
             return ctx.char_info is not None and bool(step.args[0](ctx.char_info))
+
+        if kind == WAIT_TEMPLATE:
+            template, threshold, region = step.args
+            if ctx.vision_service is None:
+                logger.warning("esperar_template sem vision_service; pulando")
+                return True
+            if ctx.vision_service.find_template(
+                ctx.hwnd, template, threshold=threshold, region=region
+            ) is not None:
+                return True
+            if self._timed_out(step):
+                logger.warning("'%s' nao apareceu em %ss; seguindo",
+                               template, step.timeout)
+                return True
+            return False
+
+        if kind == SKIP_IF_TEMPLATE:
+            template, adiante, threshold, region = step.args
+            if ctx.vision_service is not None and ctx.vision_service.find_template(
+                ctx.hwnd, template, threshold=threshold, region=region
+            ) is not None:
+                logger.info("'%s' ja esta na tela; pulando %s passos",
+                            template, adiante)
+                self._index += adiante
+            return True
 
         if kind == CLICK_TEMPLATE:
             return self._do_click_template(step, ctx)

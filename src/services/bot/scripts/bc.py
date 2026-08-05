@@ -214,6 +214,30 @@ DEFAULT_CONFIG = {
     # estou na cidade"; fora delas, o roteiro usa o Return Charm.
     # Se Stone City tiver mais sub-areas, e so acrescentar aqui.
     "areas_da_cidade": ["Stone City"],
+    # --- Janela de venda ---
+    # Geometria da grade, medida no ver.6400 e conferida por variancia
+    # (slots com item deram ~5000; vazios, entre 2 e 9).
+    "venda_origem": (452, 292),
+    "venda_passo": (35, 36),
+    "venda_colunas": 6,
+    # A grade se REORDENA a cada venda: o item seguinte desce para o
+    # slot que esvaziou. Por isso o roteiro bate sempre no mesmo slot, e
+    # tudo antes deste indice fica intocado -- e como o usuario protege
+    # pocao de HP e mana.
+    "max_itens_vendidos": 20,
+    "espera_venda": 0.8,
+    "timeout_confirmacao": 2.0,
+    # Ancoras da venda. O NPC nao entra por template: o nome flutuante
+    # dele so aparece em certas condicoes, entao o roteiro tenta alguns
+    # pontos e usa o PROPRIO DIALOGO como prova de que acertou.
+    "pontos_do_npc": [(490, 390), (470, 400), (510, 395), (490, 420)],
+    "espera_dialogo": 1.5,
+    "template_opcao_vender": "opcao_sell_item",
+    "template_opcao_comprar": "opcao_purchase_item",
+    "template_janela_venda": "janela_sell",
+    "timeout_janela_venda": 10.0,
+    "template_ok_venda": "botao_ok_venda",
+    "template_fechar_venda": "botao_cancel",
     "npc_venda_mapa": "Stone City",
     "npc_venda_nome": "Rich Man",
     "npc_venda_pos": (153, -493),

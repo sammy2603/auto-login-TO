@@ -26,6 +26,8 @@ from src.services.bot.step_runner import (
     key,
     key_down,
     pular_se,
+    pular_se_template,
+    esperar_template,
     esperar_ate,
     left,
     repeat,
@@ -270,22 +272,98 @@ def comprar_pot(cfg) -> list[Step]:
     return repeat(cfg["rodadas_de_compra"], rodada)
 
 
-def vender(cfg) -> list[Step]:
-    """Ciclo de venda: abre menu, navega ate o NPC, vende."""
-    return [
-        left(974, 55), wait(1.0),
-        left(597, 391), wait(1.0),
-        left(378, 328), wait(1.0),
-        left(607, 164), wait(5.0),
+def slot_de_venda(cfg, indice: int) -> tuple[int, int]:
+    """
+    Centro do slot 'indice' (1-based) na grade da janela de venda.
 
-        double_right(477, 345), double_right(466, 391), double_right(510, 384),
-        double_right(481, 427), double_right(488, 330), double_right(513, 373),
-        double_right(465, 377), double_right(459, 371), double_right(522, 398),
-        wait(1.0),
-        left(269, 396, note="abre a loja"),
-        wait(1.0),
-        *repeat(6, [left(450, 326), left(445, 325)]),
-        left(488, 714, note="fecha"),
+    Geometria medida no ver.6400: origem (452, 292), passo 35x36, 6
+    colunas. Conferida por variancia -- com dois itens na bag, os slots
+    1 e 2 deram ~5000 e os vazios entre 2 e 9.
+    """
+    ox, oy = cfg["venda_origem"]
+    px, py = cfg["venda_passo"]
+    colunas = cfg["venda_colunas"]
+    i = max(1, indice) - 1
+    return ox + (i % colunas) * px, oy + (i // colunas) * py
+
+
+def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
+    """
+    Duplo-clique-direito no NPC, tentando alguns pontos ate o dialogo
+    abrir.
+
+    O NPC de venda nao serve para a ancora de texto que resolveu o
+    teleporte: o nome flutuante dele so aparece em certas condicoes
+    (conferido -- nao casa em 0.85, 0.72 nem 0.65 com a tela parada).
+
+    Entao a prova de que o clique acertou e o PROPRIO DIALOGO: tenta um
+    ponto, olha se o elemento 'prova' apareceu, e so tenta o proximo se
+    nao apareceu. Isso tambem cobre o caso de outro jogador passar na
+    frente na hora errada.
+    """
+    pontos = cfg["pontos_do_npc"]
+    passos: list[Step] = []
+    for n, (x, y) in enumerate(pontos):
+        restantes = (len(pontos) - n - 1) * 3
+        passos += [
+            double_right(x, y, note=f"tenta abrir o dialogo em ({x},{y})"),
+            wait(cfg.get("espera_dialogo", 1.5)),
+        ]
+        if restantes:
+            passos.append(
+                pular_se_template(prova, restantes, note="dialogo ja abriu")
+            )
+    return passos
+
+
+def vender(cfg) -> list[Step]:
+    """
+    Venda a partir de um slot configuravel.
+
+    O macro antigo dava 12 cliques em dois pontos fixos e ainda carregava
+    a navegacao de mapa que hoje e feita por coordenada. Fora isso,
+    vendia o que estivesse no slot, sem criterio.
+
+    Duas coisas medidas no jogo desenham este passo:
+
+    1. **Duplo-clique-direito no slot vende direto.** Nao precisa mover
+       o item para a grade de baixo e apertar 'Sell'.
+    2. **A grade se reordena a cada venda.** Vendido o item de um slot,
+       o seguinte desce para a posicao dele -- conferido por variancia:
+       o slot 1 continuou ocupado e o 2 esvaziou. Por isso o roteiro
+       bate SEMPRE NO MESMO SLOT, em vez de andar pela grade.
+
+    Dai o 'slot_inicial_venda' proteger o inicio da bag: itens antes
+    dele nunca sao tocados, que e como o usuario guarda pocao de HP e
+    mana.
+
+    Item "precioso" abre uma caixa de confirmacao. O clique no Ok e
+    obrigatorio=False de proposito: item comum nao abre caixa nenhuma,
+    e ai o passo desiste em silencio em vez de acusar falha.
+    """
+    slot = slot_de_venda(cfg, cfg["slot_inicial_venda"])
+    vender_um = [
+        double_right(*slot, note="vende o item do primeiro slot liberado"),
+        wait(cfg.get("espera_venda", 0.8)),
+        click_template(
+            cfg["template_ok_venda"],
+            timeout=cfg.get("timeout_confirmacao", 2.0),
+            obrigatorio=False,
+            note="confirma item precioso, se a caixa aparecer",
+        ),
+    ]
+    return [
+        *abrir_dialogo_npc(cfg, cfg["template_opcao_vender"]),
+        click_template(cfg["template_opcao_vender"], note="abre a lista de venda"),
+        # Espera a JANELA, e nao um tempo fixo. A primeira versao dormia
+        # 1,5s aqui; quando a janela demorava mais, o duplo-clique do
+        # slot caia no dialogo atras e nada era vendido -- sem erro.
+        esperar_template(cfg["template_janela_venda"],
+                         timeout=cfg.get("timeout_janela_venda", 10.0),
+                         note="espera a janela de venda abrir"),
+        *repeat(cfg.get("max_itens_vendidos", 20), vender_um),
+        click_template(cfg["template_fechar_venda"], obrigatorio=False,
+                       note="fecha a janela de venda"),
         wait(0.5),
     ]
 

@@ -914,3 +914,78 @@ def test_preparo_segue_a_ordem_do_fluxo():
     assert antes(f'anda ate {DEFAULT_CONFIG["npc_venda_pos"]}',
                  f'anda ate {DEFAULT_CONFIG["npc_teleporte_pos"]}')
     assert antes(f'anda ate {DEFAULT_CONFIG["npc_teleporte_pos"]}', "espera HP")
+
+
+# =====================================================
+# Venda -- grade, slot protegido e confirmação
+# =====================================================
+
+def test_slot_de_venda_calcula_a_grade():
+    """Geometria medida: origem (452,292), passo 35x36, 6 colunas."""
+    cfg = DEFAULT_CONFIG
+
+    assert bc_steps.slot_de_venda(cfg, 1) == (452, 292)
+    assert bc_steps.slot_de_venda(cfg, 2) == (487, 292)
+    assert bc_steps.slot_de_venda(cfg, 6) == (627, 292)
+    assert bc_steps.slot_de_venda(cfg, 7) == (452, 328)   # quebra de linha
+    assert bc_steps.slot_de_venda(cfg, 13) == (452, 364)
+
+
+def test_slot_zero_ou_negativo_cai_no_primeiro():
+    """Config errada não pode virar clique fora da janela."""
+    assert bc_steps.slot_de_venda(DEFAULT_CONFIG, 0) == (452, 292)
+    assert bc_steps.slot_de_venda(DEFAULT_CONFIG, -5) == (452, 292)
+
+
+def test_venda_bate_sempre_no_mesmo_slot():
+    """
+    A grade se reordena a cada venda -- medido: vendido o slot 1, o item
+    do slot 2 desce para ele. Andar pela grade pularia itens.
+    """
+    cfg = {**DEFAULT_CONFIG, "slot_inicial_venda": 5, "max_itens_vendidos": 4}
+    alvo = bc_steps.slot_de_venda(cfg, 5)
+
+    cliques = [p.args for p in bc_steps.vender(cfg)
+               if p.kind == "double_right" and p.note.startswith("vende")]
+
+    assert cliques == [alvo] * 4
+
+
+def test_slot_inicial_protege_o_comeco_da_bag():
+    """É como o usuário guarda poção de HP e mana."""
+    cfg = {**DEFAULT_CONFIG, "slot_inicial_venda": 3}
+
+    cliques = {p.args for p in bc_steps.vender(cfg)
+               if p.kind == "double_right" and p.note.startswith("vende")}
+
+    assert cliques == {bc_steps.slot_de_venda(cfg, 3)}
+    assert bc_steps.slot_de_venda(cfg, 1) not in cliques
+    assert bc_steps.slot_de_venda(cfg, 2) not in cliques
+
+
+def test_confirmacao_de_item_precioso_nao_e_obrigatoria():
+    """
+    Item comum não abre caixa nenhuma. Marcar o clique como obrigatório
+    encheria o log de falha a cada item comum vendido.
+    """
+    passos = [p for p in bc_steps.vender(DEFAULT_CONFIG)
+              if p.kind == "click_template"
+              and p.args[0] == DEFAULT_CONFIG["template_ok_venda"]]
+
+    assert passos
+    assert all(p.args[4] is False for p in passos)
+
+
+def test_abrir_dialogo_desiste_quando_o_dialogo_ja_apareceu():
+    """
+    O nome flutuante do NPC de venda não casa como template, então a
+    prova de que o clique acertou é o próprio diálogo.
+    """
+    cfg = {**DEFAULT_CONFIG, "pontos_do_npc": [(1, 2), (3, 4), (5, 6)]}
+    passos = bc_steps.abrir_dialogo_npc(cfg, "opcao_sell_item")
+    pulos = [p for p in passos if p.kind == "skip_if_template"]
+
+    # um pulo por tentativa, menos a última (não há o que pular depois)
+    assert len(pulos) == 2
+    assert pulos[0].args[1] == 6   # duas tentativas restantes x 3 passos
+    assert pulos[1].args[1] == 3
