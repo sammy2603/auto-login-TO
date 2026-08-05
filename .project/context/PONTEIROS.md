@@ -67,7 +67,7 @@ genérico. Corrigido em `memory_reader.py`.
 | `sit` hardcoded | `0x305F08B8` | lê 0 — era heap, nunca foi base |
 | XP | `0x01139700` | lê 0, cadeia nunca resolve |
 | `notification` | `0x0117097C` | lê `86581704` (um ponteiro), nunca `1` |
-| `class_id` | CHAR+`0x3C8` | lê 760 — offset mudou |
+| `class_id` | CHAR+`0x3C8` | lê 722 no Monk, 0 no Wizard — offset mudou, ver abaixo |
 | todas as bases `ramora` | — | 0, lixo, ou cadeia quebra |
 
 ### Recuperado pelo rebase de 0x60
@@ -147,6 +147,43 @@ dígitos reais (o template `[%d,%d]` também casa e engana), depois busca
 reversa em níveis — em cada nível, procurar na memória um dword valendo
 `alvo - offset`. Nível 1 deu 22 donos, nenhum estático; nível 2 deu 293
 donos, quatro deles na faixa do módulo.
+
+### Classe (profession) — CHAR+`0xD4`
+
+O `0x3C8` herdado das duas fontes morreu: lê 722 no Monk e 0 no Wizard.
+A tabela de IDs também mudou — em toda a struct (`0x0`–`0x8000`) não
+existe offset que valha 10 no Monk e 4 no Wizard ao mesmo tempo.
+
+O campo vivo é **`CHAR+0xD4`, um byte**, e o vizinho `CHAR+0xD5` é o
+gênero (`1` = feminino). Lidos juntos como dword, uma personagem feminina
+dá `256`, que é só o byte de gênero na parte alta.
+
+| Personagem | Classe | `+0xD4` | `+0xD5` |
+|---|---|---|---|
+| DudePY | Monk | 1 | 0 |
+| TestpY | Wizard female | 0 | 1 |
+| FrostGuy | Wizard male | 0 | 0 |
+| Nord | Assassin | 2 | 0 |
+| HealASF | Fairy | 3 | 1 |
+| BeastHit | Tamer | 4 | 1 |
+
+**A classe não muda com o gênero**: Wizard male e female leem `0` nos
+dois. Tabela completa: `0` Wizard, `1` Monk, `2` Assassin, `3` Fairy,
+`4` Tamer — as cinco conferidas com um personagem de cada.
+
+Como foi achado, e o que economizou tempo: quatro clientes abertos ao
+mesmo tempo, um dump da struct por personagem, e um filtro de três
+condições — mesmo valor nos dois Wizard, valor diferente no Monk e no
+Assassin, e estável ao reler quatro segundos depois. Sobrou o bloco de
+atributos base (`0xEC`, `0xF4`, `0x118`, que variam com o level e não
+servem) e o `0xD4`.
+
+Dois personagens não bastavam: com só Monk e Wizard, 64 offsets passavam
+no filtro. O que corta de verdade é o **par da mesma classe com gênero
+diferente** — ele elimina tudo que é aparência — somado a um terceiro de
+classe distinta. O `0xD4` ainda se confirma por repetir em `+0x474`, o
+mesmo delta `0x3A0` do bloco de atributos, ou seja, faz parte do
+registro do personagem.
 
 ### CAMERA: unidades e layout
 
@@ -237,11 +274,13 @@ A base contém um ponteiro; todos os campos abaixo são `read(base) + offset`.
 | `0xDC` | HP máximo (base) | int | somar buff e aplicar `plus` |
 | `0xE0` | HP de buff | int | |
 | `0xE4` | HP `plus` (%) | byte | se ≥ 100, subtrair 100 |
+| `0xD4` | classe (profession) | byte | `0` Wizard, `1` Monk, `2` Assassin, `3` Fairy, `4` Tamer |
+| `0xD5` | gênero | byte | `1` = feminino |
 | `0x290` | sentado | byte | `200` = sentado |
 | `0x3B8` | HP atual | int | |
 | `0x3BC` | mana atual | int | |
 | `0x3C4` | level | word | `loginto` lê 2 bytes, `ramora` 1 |
-| `0x3C8` | class ID | word | 2 Assassin, 3 Tamer, 4 Wizard, 5 Fairy, 10 Monk |
+| `0x3C8` | class ID (build antigo) | word | 2 Assassin, 3 Tamer, 4 Wizard, 5 Fairy, 10 Monk — **morto no `ver.6400`** |
 | `0x3DC` | stamina | int | só `loginto` |
 | `0x3E0` | passiva Monk | int | `loginto` chama de `breakpoint` |
 | `0x3E4` | passiva Assassin | int | só `ramora` |
