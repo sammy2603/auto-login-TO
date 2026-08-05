@@ -120,7 +120,10 @@ DEFAULT_CONFIG = {
     "pet_food_key": "6",
     "stone_charm_key": "8",
     "inventory_key": "I",
-    "team_key": "F12",
+    # F12 no jogo esconde os outros PERSONAGENS, deixando so os
+    # NPCs -- menos poluicao na tela para os cliques de chao e a
+    # busca por template. E toggle: um toque basta.
+    "esconder_jogadores_key": "F12",
 
     # =========================================================
     # Shortcuts / Potions  +  limiares

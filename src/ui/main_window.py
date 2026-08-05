@@ -885,7 +885,7 @@ class MainWindow:
             tecla(g, "Pet Food", "pet_food_key")
             tecla(g, "Stone Charm", "stone_charm_key")
             tecla(g, "Inventario", "inventory_key")
-            tecla(g, "Painel de team", "team_key")
+            tecla(g, "Esconder jogadores", "esconder_jogadores_key")
 
             g = grupo(atalhos, "Potions")
             tecla(g, "HP", "hp_potion_key")
@@ -1007,7 +1007,7 @@ class MainWindow:
         for chave in ("aoe_key", "super_skill_key", "buff_key", "break_soul_key",
                       "healing_spell_key", "mount_key", "speed_skill_key",
                       "summon_pet_key", "pet_food_key", "stone_charm_key",
-                      "inventory_key", "team_key", "hp_potion_key",
+                      "inventory_key", "esconder_jogadores_key", "hp_potion_key",
                       "mana_potion_key", "battle_hp_key", "battle_mana_key"):
             if chave in campos:
                 cfg[chave] = limpar_tecla(campos[chave].get())

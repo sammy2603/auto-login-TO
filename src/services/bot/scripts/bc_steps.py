@@ -25,7 +25,6 @@ from src.services.bot.step_runner import (
     double_right,
     key,
     key_down,
-    key_up,
     left,
     repeat,
     retry_until_color,
@@ -48,9 +47,32 @@ PIXEL_DENTRO_DA_CAVE = (945, 148)
 # =====================================================
 
 def ajustes_iniciais(cfg) -> list[Step]:
-    """Abre o painel de team e ajusta a camera."""
+    """
+    Esconde os outros jogadores e ajusta a camera.
+
+    A tecla (F12 por padrao) some com os PERSONAGENS da tela, deixando
+    so os NPCs. E o que faz os cliques de chao e a busca por template
+    pararem de competir com jogador parado em cima do NPC.
+
+    A tecla precisa ficar SEGURADA: soltar traz os jogadores de volta.
+    Por isso key_down sem key_up nenhum no roteiro.
+
+    Segurar aqui nao prende tecla de verdade. O InputService manda
+    WM_KEYDOWN por PostMessage para o hwnd daquele cliente
+    (infrastructure/input/service.py), entao "segurar" e so nunca
+    postar o WM_KEYUP: nada vaza para outros clientes nem para o
+    desktop, e varios scripts rodam juntos sem disputar a tecla.
+
+    Jogador humano consegue o mesmo efeito segurando F12 e apertando
+    Enter (o chat rouba o foco e o jogo nao ve o release). Aqui esse
+    truque nao serve para nada -- e uma volta para enganar teclado
+    fisico, e nos simplesmente nao mandamos o release.
+
+    O nome antigo era "painel de team", que nao e o que a tecla faz.
+    """
     return [
-        key_down(cfg["team_key"], note="segura o painel de team aberto"),
+        key_down(cfg["esconder_jogadores_key"],
+                 note="segura escondendo os outros jogadores"),
         *repeat(3, [left(997, 97, note="zoom/camera")]),
         left(864, 55),
         wait(0.5),
@@ -93,8 +115,9 @@ def comprar_pot(cfg) -> list[Step]:
     """
     Compra de pocoes: 16 rodadas de 24 cliques no item.
 
-    Vem do macro 'comprar pot', que segura o team_key durante todo o
-    processo -- mantido igual.
+    Vem do macro 'comprar pot'. O macro original segurava a tecla F12
+    durante todo o processo, o que nao faz sentido: F12 e o toggle de
+    esconder jogadores, apertado uma vez no preparo.
     """
     rodada = [
         right(481, 387), right(494, 423), right(490, 403),
@@ -316,16 +339,13 @@ def sair_do_team(cfg) -> list[Step]:
     do reseter. O efeito na cave e o mesmo -- o grupo deixa de existir
     de qualquer jeito.
 
-    O key_up fica FORA da condicao: 'ajustes_iniciais' segura a tecla do
-    painel e este e o unico ponto que solta. Sem soltar, o painel ficaria
-    travado pelo resto do ciclo.
+    Nao ha nada a soltar aqui: a tecla de esconder jogadores e um
+    toggle apertado uma vez no preparo, nao uma tecla segurada.
     """
-    passos = [key_up(cfg["team_key"], note="solta o painel de team")]
-
     if not cfg.get("leave_team", True):
-        return passos
+        return []
 
-    return passos + [
+    return [
         right(50, 52),
         wait(0.5),
         left(104, 94, note="sai do team"),

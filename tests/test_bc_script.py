@@ -60,7 +60,7 @@ def teclas_usadas(acoes):
 def test_config_default_completa():
     bc = BCScript()
     for chave in ("attack_keys", "aoe_key", "mount_key", "stone_charm_key",
-                  "inventory_key", "team_key", "runs_por_ciclo", "rota",
+                  "inventory_key", "esconder_jogadores_key", "runs_por_ciclo", "rota",
                   "hp_potion_key", "fairy_heal_pct"):
         assert chave in bc.config
 
@@ -306,10 +306,9 @@ def test_usa_a_tecla_de_stone_configurada():
     assert passos[0].args == ("8",)
 
 
-def test_usa_a_tecla_de_team_configurada():
-    cfg = {**DEFAULT_CONFIG, "team_key": "F5"}
+def test_usa_a_tecla_de_esconder_jogadores_configurada():
+    cfg = {**DEFAULT_CONFIG, "esconder_jogadores_key": "F5"}
     assert bc_steps.ajustes_iniciais(cfg)[0].args == ("F5",)
-    assert bc_steps.sair_do_team(cfg)[0].args == ("F5",)
 
 
 def test_ataque_recebe_as_skills_configuradas():
@@ -388,14 +387,18 @@ def test_manual_pick_so_com_a_opcao_ligada():
     assert bc_steps.lotear_boss({**DEFAULT_CONFIG, "manual_pick": True}) != []
 
 
-def test_team_key_e_segurada_e_solta():
+def test_esconder_jogadores_e_segurada_e_nunca_solta():
     """
-    Segurar sem soltar deixaria o painel de team travado. O preparo
-    segura; a saída do team solta.
+    Soltar traz os jogadores de volta, então o roteiro não pode ter
+    key_up nenhum. Não prende tecla de verdade: o input vai por
+    PostMessage para o hwnd daquele cliente, então "segurar" é só nunca
+    postar o WM_KEYUP.
     """
-    cfg = DEFAULT_CONFIG
-    assert bc_steps.ajustes_iniciais(cfg)[0].kind == "key_down"
-    assert bc_steps.sair_do_team(cfg)[0].kind == "key_up"
+    passos = bc_steps.ajustes_iniciais(DEFAULT_CONFIG)
+
+    assert passos[0].kind == "key_down"
+    assert [p for p in bc_steps.sair_do_team(DEFAULT_CONFIG)
+            if p.kind == "key_up"] == []
 
 
 def test_anda_ate_a_coordenada_antes_de_falar_com_o_npc():
@@ -457,14 +460,13 @@ def test_view_reset_avisa_quando_nao_acha_o_botao():
     assert obrigatorio is True
 
 
-def test_leave_team_desligado_ainda_solta_a_tecla():
+def test_leave_team_desligado_nao_faz_nada():
     """
-    Quem sai do team é o runner, dentro da cave -- mas desligar a opção
-    não pode deixar o painel de team travado: o key_up é o único do
-    roteiro e tem que sair mesmo assim.
+    Quem sai do team é o runner, dentro da cave. Com a opção desligada
+    não sobra passo nenhum: antes sobrava o key_up da tecla que o
+    preparo segurava, e essa tecla virou um toque só.
     """
-    passos = bc_steps.sair_do_team({**DEFAULT_CONFIG, "leave_team": False})
-    assert [p.kind for p in passos] == ["key_up"]
+    assert bc_steps.sair_do_team({**DEFAULT_CONFIG, "leave_team": False}) == []
 
 
 def test_leave_team_ligado_desfaz_o_grupo():
