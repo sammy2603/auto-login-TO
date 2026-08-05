@@ -204,6 +204,11 @@ DEFAULT_CONFIG = {
     # Coordenada do MUNDO (a mesma que o jogo mostra) e ponto na TELA
     # com o personagem no pe dele e a camera resetada. O ponto de tela
     # foi medido clicando no NPC e conferindo onde o clique caiu.
+    # Mapa + nome sao a fonte: pos_npc() resolve pelo npcs.json,
+    # capturado do painel Surrounding. A coordenada literal fica como
+    # reserva, para o caso de o catalogo nao ter esse mapa ainda.
+    "npc_entrada_mapa": "White Bear Village",
+    "npc_entrada_nome": "Skull Herald",
     "npc_entrada_pos": (1395, -636),
     "npc_entrada_tela": (479, 410),
     "template_enter_bc": "enter_bc",
@@ -216,6 +221,11 @@ DEFAULT_CONFIG = {
     # entrada. E o que permite repetir a run sem passar pela cidade.
     # A coordenada e do MUNDO (a mesma que o jogo mostra), lida da
     # memoria -- nao e posicao de tela.
+    # Sem mapa aqui: o nome do mapa de DENTRO da cave ainda nao foi
+    # lido no jogo. Assim que for, basta capturar com
+    # 'pegar_coordenada_npc.py --salvar' la dentro e por o nome em
+    # "npc_saida_mapa" -- o literal abaixo vira reserva sozinho.
+    "npc_saida_nome": "Skull Herald",
     "npc_saida_pos": (82, -396),
     "template_npc_saida": "skull_herald",
     "template_leave_bc": "leave_bc",

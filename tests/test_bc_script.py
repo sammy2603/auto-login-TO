@@ -10,6 +10,8 @@ o que se garante é que as fases montam, encadeiam e usam as teclas
 configuradas.
 """
 
+import json
+
 import pytest
 
 from src.services.bot.scripts import bc_steps
@@ -733,3 +735,65 @@ def test_bot_engine_expoe_copia_dos_scripts():
 
     exposta.clear()
     assert script in engine.scripts, "a lista interna foi alterada de fora"
+
+
+# =====================================================
+# pos_npc -- catalogo de NPCs, com o config como reserva
+# =====================================================
+
+def catalogo_temp(tmp_path, dados):
+    caminho = tmp_path / "npcs.json"
+    caminho.write_text(json.dumps(dados), encoding="utf-8")
+    return caminho
+
+
+def test_pos_npc_usa_o_catalogo_quando_o_mapa_esta_capturado(tmp_path):
+    cfg = {
+        "npc_entrada_mapa": "White Bear Village",
+        "npc_entrada_nome": "Skull Herald",
+        "npc_entrada_pos": (0, 0),
+        "npcs_catalogo": catalogo_temp(
+            tmp_path, {"White Bear Village": {"Skull Herald": [[1395, -636]]}}
+        ),
+    }
+
+    assert bc_steps.pos_npc(cfg, "npc_entrada") == (1395, -636)
+
+
+def test_pos_npc_cai_no_literal_quando_o_mapa_nao_foi_capturado(tmp_path):
+    """Catalogo faltando nao pode quebrar a run."""
+    cfg = {
+        "npc_entrada_mapa": "Mapa Nunca Capturado",
+        "npc_entrada_nome": "Skull Herald",
+        "npc_entrada_pos": (1395, -636),
+        "npcs_catalogo": catalogo_temp(tmp_path, {}),
+    }
+
+    assert bc_steps.pos_npc(cfg, "npc_entrada") == (1395, -636)
+
+
+def test_pos_npc_cai_no_literal_sem_mapa_configurado(tmp_path):
+    """E o caso do NPC de dentro da cave: nome sim, mapa ainda nao."""
+    cfg = {
+        "npc_saida_nome": "Skull Herald",
+        "npc_saida_pos": (82, -396),
+        "npcs_catalogo": catalogo_temp(
+            tmp_path, {"White Bear Village": {"Skull Herald": [[1395, -636]]}}
+        ),
+    }
+
+    assert bc_steps.pos_npc(cfg, "npc_saida") == (82, -396)
+
+
+def test_config_do_bc_resolve_a_entrada_pelo_catalogo(tmp_path):
+    """
+    Guarda contra o erro silencioso: mapa/nome no config que nao casam
+    com o catalogo passariam despercebidos, porque o literal cobre.
+    """
+    cfg = dict(DEFAULT_CONFIG)
+    cfg["npcs_catalogo"] = catalogo_temp(
+        tmp_path,
+        {cfg["npc_entrada_mapa"]: {cfg["npc_entrada_nome"]: [[1395, -636]]}},
+    )
+
+    assert bc_steps.pos_npc(cfg, "npc_entrada") == (1395, -636)

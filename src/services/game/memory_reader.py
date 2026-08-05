@@ -96,6 +96,12 @@ class MemoryReader:
     TEAM_SIZE_BASE = 0x0106D388
     ENTIDADES_BASE = 0x012C0628
     MISSOES_BASE = 0x0150C314
+    # Painel Surrounding de verdade -- lista TODOS os NPCs do mapa. Este
+    # Painel Surrounding: NAO tem cadeia estatica confiavel. As tres
+    # que o pointer scan reverso deu (0x004AB3B8, 0x0090F17C,
+    # 0x00F04948) resolviam para o buffer de UMA renderizacao e
+    # apontavam para lixo assim que o painel era fechado e reaberto.
+    # A fonte e npcs_ao_redor(), que varre a memoria pelo marcador.
 
     def __init__(self, pid: int):
         self._pid = pid
@@ -103,9 +109,13 @@ class MemoryReader:
         self._open()
 
     def _open(self):
-        """Abre o processo com acesso de leitura."""
+        """Abre o processo com acesso de leitura.
+
+        QUERY_INFORMATION alem de VM_READ porque npcs_ao_redor() precisa
+        de VirtualQueryEx para saber quais regioes existem.
+        """
         self._hProcess = kernel32.OpenProcess(
-            win32con.PROCESS_VM_READ,
+            win32con.PROCESS_VM_READ | win32con.PROCESS_QUERY_INFORMATION,
             False,
             self._pid,
         )
@@ -407,6 +417,108 @@ class MemoryReader:
 
         texto = buf.raw[: lidos.value].split(b"\x00", 1)[0].decode("utf-8", "replace")
         return self.parse_objetivos(texto)
+
+    # Painel Surrounding: mesma marcacao do rastreador de missoes, mas
+    # sem a distancia em metros -- sai so text="Nome [x,y]".
+    _NPC_SUR = re.compile(r'text="([^"\[]+?)\s*\[(-?\d+),(-?\d+)\]"')
+
+    @staticmethod
+    def parse_npcs(texto: str) -> list[tuple[str, int, int]]:
+        """
+        Extrai (nome, x, y) do XML do painel Surrounding.
+
+        Deduplicado preservando a ordem: o buffer repete a mesma entrada
+        a cada passada de renderizacao.
+        """
+        vistos = set()
+        saida = []
+        for nome, x, y in MemoryReader._NPC_SUR.findall(texto or ""):
+            item = (nome.strip(), int(x), int(y))
+            if item not in vistos:
+                vistos.add(item)
+                saida.append(item)
+        return saida
+
+    # Marcador do bloco: toda linha do painel carrega este hlink. E o
+    # que separa a lista dos objetos de definicao de NPC, que tambem
+    # tem o nome mas nenhuma coordenada.
+    _MARCADOR_SUR = b"String:task:locate?px="
+
+    def _regioes(self):
+        """Regioes de memoria commitadas e legiveis do processo."""
+        class _MBI(ctypes.Structure):
+            _fields_ = [
+                ("BaseAddress", ctypes.c_void_p),
+                ("AllocationBase", ctypes.c_void_p),
+                ("AllocationProtect", wintypes.DWORD),
+                ("RegionSize", ctypes.c_size_t),
+                ("State", wintypes.DWORD),
+                ("Protect", wintypes.DWORD),
+                ("Type", wintypes.DWORD),
+            ]
+
+        LEGIVEL = (0x02, 0x04, 0x08, 0x20, 0x40, 0x80)
+        mbi = _MBI()
+        lidos = ctypes.c_size_t()
+        endereco = 0
+        while endereco < 0x7FFF0000:
+            if not kernel32.VirtualQueryEx(
+                wintypes.HANDLE(self._hProcess), wintypes.LPCVOID(endereco),
+                ctypes.byref(mbi), ctypes.sizeof(mbi),
+            ):
+                return
+            base = mbi.BaseAddress or 0
+            tam = mbi.RegionSize
+            if mbi.State == 0x1000 and mbi.Protect in LEGIVEL:
+                buf = ctypes.create_string_buffer(tam)
+                if kernel32.ReadProcessMemory(
+                    wintypes.HANDLE(self._hProcess), wintypes.LPCVOID(base),
+                    buf, tam, ctypes.byref(lidos),
+                ):
+                    yield buf.raw[: lidos.value]
+            endereco = base + tam
+
+    def npcs_ao_redor(self, minimo: int = 5) -> list[tuple[str, int, int]]:
+        """
+        Todos os NPCs do mapa atual: (nome, x, y).
+
+        Esta e a fonte para coordenada de NPC QUALQUER -- inclusive os
+        que nao tem nada a ver com missao, como a Skull Herald da
+        entrada da BC. Nao confundir com objetivos_de_missao(), que le
+        outro buffer e so conhece NPC de quest ativa.
+
+        Exige que o painel Surrounding tenha sido ABERTO pelo menos uma
+        vez neste mapa. Lista vazia quase sempre quer dizer "o painel
+        nunca foi aberto", nao "nao ha NPC".
+
+        ARMADILHA: fechar o painel NAO limpa o bloco -- medido, 33
+        entradas continuam sendo achadas com ele fechado. Quem troca de
+        mapa sem reabrir o painel recebe a lista do mapa ANTERIOR, com
+        cara de valida. Abra o painel no mapa em que voce quer ler.
+
+        Por VARREDURA, e nao por cadeia de ponteiros, de proposito: o
+        pointer scan reverso achou tres estaticos que resolviam para o
+        buffer de uma renderizacao especifica e passavam a apontar para
+        lixo assim que o painel era fechado e reaberto. O marcador nao
+        tem esse problema -- acha o bloco onde ele estiver.
+
+        # ponytail: varredura O(memoria do processo), ~1 s. Chamada
+        # one-shot para anotar coordenada, nao serve para laco de bot.
+        """
+        melhor: list[tuple[str, int, int]] = []
+        for dados in self._regioes():
+            inicio = dados.find(self._MARCADOR_SUR)
+            while inicio >= 0:
+                ini = dados.rfind(b"\x00", 0, inicio) + 1
+                fim = dados.find(b"\x00", inicio)
+                bloco = dados[ini:fim if fim >= 0 else len(dados)]
+                entradas = self.parse_npcs(bloco.decode("utf-8", "replace"))
+                # O bloco mais completo e o render mais recente; os
+                # antigos sobrevivem na heap com listas menores.
+                if len(entradas) > len(melhor):
+                    melhor = entradas
+                inicio = dados.find(self._MARCADOR_SUR, max(fim, inicio + 1))
+        return melhor if len(melhor) >= minimo else []
 
     @property
     def team_size(self) -> int:

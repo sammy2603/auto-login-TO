@@ -105,9 +105,10 @@ Ou seja, mapa e coordenada **do personagem**.
 As strings da UI são **UTF-8**, não UTF-16 — um scan por `text="` em
 UTF-16LE devolve zero ocorrências.
 
-**A lista de NPCs do painel Surrounding continua não encontrada.** O que
-achamos por pointer scan e chegamos a rotular como Surrounding é outra
-coisa (ver a seção seguinte), e a confusão custou tempo.
+**A lista de NPCs do painel Surrounding foi encontrada depois** — ver a
+seção "SURROUNDING" mais abaixo. O que achamos primeiro por pointer scan
+e chegamos a rotular como Surrounding é outra coisa (o rastreador de
+missões, na seção seguinte), e a confusão custou tempo.
 
 ### MISSOES — os NPCs-objetivo das missões ativas
 
@@ -135,8 +136,8 @@ Duas consequências que importam na prática:
 
 1. **NPC qualquer nunca vai estar aqui.** Buscar `skull` devolve vazio
    mesmo com o personagem no mapa certo, porque a Skull Herald não é
-   objetivo de missão. Para NPC arbitrário ainda não há fonte em
-   memória — continua sendo anotar à mão.
+   objetivo de missão. Para NPC arbitrário a fonte é o painel
+   Surrounding de verdade — seção abaixo.
 2. **A distância é do último render.** Medido: o personagem andou de
    `(392, 889)` para `(392, 1004)` e os metros não mudaram nem um
    dígito. A coordenada do NPC não sofre com isso, que é fixa; a
@@ -175,6 +176,54 @@ dígitos reais (o template `[%d,%d]` também casa e engana), depois busca
 reversa em níveis — em cada nível, procurar na memória um dword valendo
 `alvo - offset`. Nível 1 deu 22 donos, nenhum estático; nível 2 deu 293
 donos, quatro deles na faixa do módulo.
+
+### SURROUNDING — todos os NPCs do mapa
+
+O painel Surrounding lista **todos** os NPCs do mapa atual, sejam de
+missão ou não. Cada linha sai assim:
+
+```
+<Item type="TEXT" hlink="String:task:locate?px=1395&py=-636&hint=Skull Herald&mapid=1" text="Skull Herald [1395,-636]"></Item>
+```
+
+Mesma marcação do rastreador de missões, **sem a distância em metros**.
+Exposto em `MemoryReader.npcs_ao_redor()` → `(nome, x, y)` deduplicado.
+
+**Não há cadeia de ponteiros para ele — a fonte é varredura.** O bloco
+é achado pelo marcador `String:task:locate?px=`, ficando com o maior
+bloco encontrado (o render mais recente; os antigos sobrevivem na heap
+com listas menores). Custa ~0,6 s por leitura, o que serve para anotar
+coordenada e **não** para laço de bot.
+
+Por que varredura e não cadeia — isto é o registro de uma tentativa que
+falhou: a busca reversa em dois níveis deu três estáticos
+(`0x004AB3B8` `[0x3A0]+0x200`, `0x0090F17C` `[0x4C]`, `0x00F04948`
+`[0xD4]+0xFC`) e os três resolviam certo, com 33, 24 e 24 entradas.
+**Todos morreram ao fechar e reabrir o painel** — o painel realoca, e
+as cadeias passaram a apontar para lixo binário. Eram donos ocasionais
+daquela alocação, não o caminho do objeto de UI. O marcador não tem
+esse problema: acha o bloco onde ele estiver.
+
+**Armadilha medida:** fechar o painel NÃO limpa o bloco — com ele
+fechado, as mesmas 33 entradas continuam sendo achadas. A regra real é
+"o painel precisa ter sido aberto **pelo menos uma vez neste mapa**".
+Quem troca de mapa sem reabrir o painel recebe a lista do mapa
+anterior, com cara de válida.
+
+Conferido com o `DudePY` em *White Bear Village*: a Skull Herald da
+entrada da BC sai como `(1395, -636)` — exatamente o `npc_entrada_pos`
+que estava anotado à mão no `bc.py`. A anotação estava certa, e agora
+tem fonte em memória confirmando.
+
+Detalhe do scan que economiza tempo: filtrar por blocos com 20+
+entradas no formato `text="Nome [x,y]"` separa a lista dos objetos de
+definição de NPC (`table_npc_4334`), que também contêm o nome mas
+nenhuma coordenada.
+
+Lição de método que se repetiu: **buscar o endereço exato do buffer não
+acha dono nenhum** — o ponteiro guardado aponta para o objeto que
+contém a string, não para a string. A busca reversa só funciona
+procurando dwords na faixa `alvo - offset`.
 
 ### Classe (profession) — CHAR+`0xD4`
 

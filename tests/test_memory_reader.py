@@ -107,3 +107,65 @@ def test_xml_inteiro_como_vem_do_jogo():
         ("Buddhist Novice Shan", 373, 1114, 205),
         ("Talisman Fairy (right-click me)", 385, 1122, 212),
     ]
+
+
+# =====================================================
+# Painel Surrounding -- lista de TODOS os NPCs do mapa
+# =====================================================
+#
+# Outro buffer, outro formato: sem a distancia em metros. E a unica
+# fonte que traz NPC que nao e objetivo de missao (a Skull Herald da
+# entrada da BC, por exemplo).
+
+parse_npcs = MemoryReader.parse_npcs
+
+
+def npc(nome, x, y):
+    return (
+        f'<Item type="TEXT" hlink="String:task:locate?px={x}&py={y}'
+        f'&hint={nome}&mapid=1" text="{nome} [{x},{y}]"></Item>'
+    )
+
+
+def test_npc_sem_distancia():
+    assert parse_npcs(npc("Skull Herald", 1395, -636)) == [
+        ("Skull Herald", 1395, -636)
+    ]
+
+
+def test_npc_coordenada_negativa_nos_dois_eixos():
+    assert parse_npcs(npc("Green Clay", -1183, -466)) == [
+        ("Green Clay", -1183, -466)
+    ]
+
+
+def test_npc_deduplica_preservando_a_ordem():
+    texto = npc("Auctioneer", 860, -595) * 3 + npc("Post Officer", 863, -602)
+
+    assert parse_npcs(texto) == [
+        ("Auctioneer", 860, -595),
+        ("Post Officer", 863, -602),
+    ]
+
+
+def test_npc_ignora_o_template_de_formato():
+    """O cliente deixa o template '[%d,%d]' na memoria; nao e NPC."""
+    texto = '<Item type="TEXT" text="Nome [%d,%d]"></Item>'
+
+    assert parse_npcs(texto) == []
+
+
+def test_npc_texto_vazio_ou_ausente():
+    assert parse_npcs("") == []
+    assert parse_npcs(None) == []
+
+
+def test_npc_nao_casa_a_linha_do_rastreador_de_missoes():
+    """
+    O rastreador traz '(1269 m)' colado no fecha-colchete. Casar essa
+    linha aqui misturaria as duas fontes -- e a de missao ja tem parser
+    proprio, com a distancia.
+    """
+    texto = '<Item type="TEXT" text="Courage Merchant [231,-517] (1269 m)" />'
+
+    assert parse_npcs(texto) == []
