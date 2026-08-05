@@ -1,4 +1,286 @@
 {
+  "Stone City": {
+    "Apothecary": [
+      [
+        119,
+        -508
+      ]
+    ],
+    "Arcane Warrior": [
+      [
+        267,
+        -548
+      ]
+    ],
+    "Ascetic Fuhu": [
+      [
+        274,
+        -529
+      ]
+    ],
+    "Auctioneer": [
+      [
+        316,
+        -548
+      ]
+    ],
+    "Blacksmith": [
+      [
+        113,
+        -508
+      ]
+    ],
+    "Buddha Lotus": [
+      [
+        471,
+        -517
+      ]
+    ],
+    "Bulletin Board of Guild War": [
+      [
+        235,
+        -468
+      ]
+    ],
+    "Charm Shop": [
+      [
+        306,
+        -547
+      ]
+    ],
+    "Chase Geezer": [
+      [
+        50,
+        -389
+      ]
+    ],
+    "Competition Merchant": [
+      [
+        311,
+        -525
+      ]
+    ],
+    "Counterjumper": [
+      [
+        88,
+        -393
+      ]
+    ],
+    "Courage Herald": [
+      [
+        229,
+        -510
+      ]
+    ],
+    "Courage Merchant": [
+      [
+        229,
+        -517
+      ]
+    ],
+    "Examinee Song": [
+      [
+        81,
+        -393
+      ]
+    ],
+    "Flower Faerie": [
+      [
+        280,
+        -535
+      ]
+    ],
+    "Forest Hunter": [
+      [
+        228,
+        -468
+      ]
+    ],
+    "Gem Dealer": [
+      [
+        244,
+        -523
+      ]
+    ],
+    "Gem Inlay Admin": [
+      [
+        233,
+        -522
+      ]
+    ],
+    "Gem Trader": [
+      [
+        247,
+        -523
+      ]
+    ],
+    "Gentleman": [
+      [
+        253,
+        -539
+      ]
+    ],
+    "Guild Admin": [
+      [
+        311,
+        -534
+      ]
+    ],
+    "Janitor of Guild Demesne": [
+      [
+        244,
+        -477
+      ]
+    ],
+    "Jiang Hai": [
+      [
+        340,
+        -486
+      ]
+    ],
+    "Junior PK Arena": [
+      [
+        321,
+        -518
+      ]
+    ],
+    "Kitchener": [
+      [
+        340,
+        -478
+      ]
+    ],
+    "Lady Cristina": [
+      [
+        473,
+        -517
+      ]
+    ],
+    "Master Jade": [
+      [
+        469,
+        -407
+      ]
+    ],
+    "Mutual Quest Woman": [
+      [
+        283,
+        -549
+      ]
+    ],
+    "Old Attendant": [
+      [
+        277,
+        -501
+      ]
+    ],
+    "Panda from Moon Dragon Village": [
+      [
+        287,
+        -501
+      ]
+    ],
+    "Phoenix City Royal Envoy": [
+      [
+        61,
+        -512
+      ],
+      [
+        59,
+        -490
+      ]
+    ],
+    "Post Officer": [
+      [
+        268,
+        -538
+      ]
+    ],
+    "Quest Commitment Man": [
+      [
+        353,
+        -525
+      ]
+    ],
+    "Reputation Merchant": [
+      [
+        312,
+        -353
+      ]
+    ],
+    "Rich Man": [
+      [
+        153,
+        -493
+      ]
+    ],
+    "Senior PK Arena": [
+      [
+        321,
+        -523
+      ]
+    ],
+    "Shopman": [
+      [
+        282,
+        -504
+      ]
+    ],
+    "Sir Adam": [
+      [
+        469,
+        -517
+      ]
+    ],
+    "Tie Yan": [
+      [
+        312,
+        -350
+      ]
+    ],
+    "Transport Fay": [
+      [
+        178,
+        -518
+      ]
+    ],
+    "Villager of White Bear Village": [
+      [
+        307,
+        -530
+      ]
+    ],
+    "Warehouse Man": [
+      [
+        269,
+        -498
+      ]
+    ],
+    "White Eagle": [
+      [
+        180,
+        -512
+      ]
+    ],
+    "Zhang Qi": [
+      [
+        312,
+        -346
+      ]
+    ],
+    "Zhang Yaoqing": [
+      [
+        312,
+        -342
+      ]
+    ],
+    "Zhou Chun": [
+      [
+        339,
+        -724
+      ]
+    ]
+  },
   "White Bear Village": {
     "Apothecary": [
       [

@@ -69,6 +69,8 @@ BASES = {
     # Rastreador de missoes, achado por pointer scan reverso. Nao e o
     # painel Surrounding -- ver PONTEIROS.md.
     "MISSOES":   {"loginto": 0x0150C314},
+    # Aponta direto para a entidade do alvo. Mesma struct do CHAR.
+    "ALVO":      {"loginto": 0x0107D410},
     "XP":        {"loginto": 0x01139700},
 }
 
@@ -168,6 +170,9 @@ CAMPOS = [
      [0x18, 0x8C, 0x3C, 0x64]),
     # XML do rastreador de missoes, com os NPCs-objetivo.
     ("missoes", "MISSOES", [0xA0, 0xA0], "texto_longo", tem_coordenada, None),
+    ("alvo_nome",  "ALVO", [0xBC],   "str",  texto_sensato,      None),
+    ("alvo_hp",    "ALVO", [0x3B8],  "int",  faixa(0, 500_000),  None),
+    ("alvo_level", "ALVO", [0x3C4],  "word", faixa(0, 150),      None),
     # Graus, conferidos com o scan de valor no ver.6400.
     ("camera_rot",    "CAMERA", [0x5C], "float", faixa(0, 360), None),
     ("camera_ang",    "CAMERA", [0x60], "float", faixa(0, 360), None),

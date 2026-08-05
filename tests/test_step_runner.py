@@ -27,6 +27,8 @@ from src.services.bot.step_runner import (
     click_template,
     click_until_target,
     skip_if_color,
+    pular_se,
+    esperar_ate,
     walk_to,
     use_all_items,
     wait_position,
@@ -767,3 +769,107 @@ def test_wait_position_sem_char_info_pula(entrada):
     ctx = StepContext(hwnd=1, input_service=entrada, char_info=None)
     rodar_ate_terminar(runner, ctx)
     assert entrada.acoes == [("left", 1, 1)]
+
+
+# =====================================================
+# Condicoes lidas da MEMORIA (pular_se / esperar_ate)
+# =====================================================
+#
+# As condicoes por pixel (skip_if_color) nao respondem "o pet esta
+# vivo?" nem "estou em Stone City?". Estas respondem.
+
+
+class CharMemoria:
+    def __init__(self, **kw):
+        self.hp_pct = kw.get("hp_pct", 100.0)
+        self.resource_pct = kw.get("resource_pct", 100.0)
+        self.pet_alive = kw.get("pet_alive", True)
+        self.location = kw.get("location", "Stone City")
+        self.mounted = kw.get("mounted", False)
+
+
+def test_pular_se_pula_quando_a_condicao_e_verdadeira():
+    entrada = FakeInput()
+    runner = StepRunner([
+        pular_se(lambda ci: ci.pet_alive, 1),
+        key("7", note="invoca o pet"),
+        key("0", note="monta"),
+    ])
+    ctx = contexto_char(entrada, CharMemoria(pet_alive=True))
+
+    while runner.tick(ctx):
+        pass
+
+    assert [a for a in entrada.acoes if a[0] == "key"] == [("key", "0")]
+
+
+def test_pular_se_executa_quando_a_condicao_e_falsa():
+    entrada = FakeInput()
+    runner = StepRunner([
+        pular_se(lambda ci: ci.pet_alive, 1),
+        key("7", note="invoca o pet"),
+    ])
+    ctx = contexto_char(entrada, CharMemoria(pet_alive=False))
+
+    while runner.tick(ctx):
+        pass
+
+    assert [a for a in entrada.acoes if a[0] == "key"] == [("key", "7")]
+
+
+def test_pular_se_sem_char_info_nao_pula():
+    """
+    Sem leitura, pular executaria o roteiro achando que a condição
+    estava satisfeita. Errar para o lado de fazer o passo é o barato.
+    """
+    entrada = FakeInput()
+    runner = StepRunner([
+        pular_se(lambda ci: ci.pet_alive, 1),
+        key("7"),
+    ])
+    ctx = contexto_char(entrada, None)
+
+    while runner.tick(ctx):
+        pass
+
+    assert [a for a in entrada.acoes if a[0] == "key"] == [("key", "7")]
+
+
+def test_esperar_ate_segura_o_roteiro_ate_a_condicao():
+    entrada = FakeInput()
+    char = CharMemoria(hp_pct=100.0, resource_pct=50.0)
+    runner = StepRunner([
+        esperar_ate(lambda ci: ci.resource_pct >= 90),
+        key("0", note="monta"),
+    ])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)
+    runner.tick(ctx)
+    assert [a for a in entrada.acoes if a[0] == "key"] == []          # mana baixa: nao passou
+
+    char.resource_pct = 92.0
+    while runner.tick(ctx):
+        pass
+
+    assert [a for a in entrada.acoes if a[0] == "key"] == [("key", "0")]
+
+
+def test_esperar_ate_segue_no_timeout():
+    """
+    Parar o ciclo por regeneração lenta custa mais que entrar na cave
+    com mana faltando -- vencido o prazo, o roteiro segue.
+    """
+    entrada = FakeInput()
+    runner = StepRunner([
+        esperar_ate(lambda ci: False, timeout=0.01),
+        key("0"),
+    ])
+    ctx = contexto_char(entrada, CharMemoria())
+
+    runner.tick(ctx)
+    time.sleep(0.02)
+    while runner.tick(ctx):
+        pass
+
+    assert [a for a in entrada.acoes if a[0] == "key"] == [("key", "0")]

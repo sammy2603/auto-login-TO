@@ -207,6 +207,31 @@ DEFAULT_CONFIG = {
     # Coordenada do MUNDO (a mesma que o jogo mostra) e ponto na TELA
     # com o personagem no pe dele e a camera resetada. O ponto de tela
     # foi medido clicando no NPC e conferindo onde o clique caiu.
+    # --- Cidade: venda, compra do charm e teleporte ---
+    # LISTA, porque char_info.location traz a SUB-AREA e nao o mapa:
+    # White Bear Village e Ghost Din Woods sao o mesmo mapa (Vast
+    # Mountain). Estar em qualquer sub-area listada conta como "ja
+    # estou na cidade"; fora delas, o roteiro usa o Return Charm.
+    # Se Stone City tiver mais sub-areas, e so acrescentar aqui.
+    "areas_da_cidade": ["Stone City"],
+    "npc_venda_mapa": "Stone City",
+    "npc_venda_nome": "Rich Man",
+    "npc_venda_pos": (153, -493),
+    "npc_teleporte_mapa": "Stone City",
+    "npc_teleporte_nome": "Transport Fay",
+    "npc_teleporte_pos": (178, -518),
+
+    # Espera de regeneracao, ao lado do NPC de teleporte.
+    "hp_min_para_seguir": 100.0,
+    "mana_min_para_seguir": 90.0,
+    "timeout_regen": 300.0,
+    # X e o padrao do jogo para sentar. Sentar regenera mais rapido, e
+    # e so por isso que o roteiro desmonta antes da espera. Vazio aqui
+    # significa "espera em pe": o bloco de sentar some inteiro.
+    "sit_key": "X",
+    "espera_pet": 3.0,
+    "espera_mount": 3.0,
+
     # Mapa + nome sao a fonte: pos_npc() resolve pelo npcs.json,
     # capturado do painel Surrounding. A coordenada literal fica como
     # reserva, para o caso de o catalogo nao ter esse mapa ainda.
@@ -455,12 +480,23 @@ class BCScript:
     # =====================================================
 
     def _montar_preparo(self) -> list:
+        """
+        Preparo, na ordem em que o fluxo foi especificado.
+
+        A ordem nao e arbitraria: o Return Charm vem ANTES da caminhada
+        porque coordenada de mundo so quer dizer alguma coisa dentro do
+        mapa certo; e a espera de HP/mana fica no NPC de teleporte, e
+        nao no de venda, para a regeneracao correr enquanto o
+        personagem ja esta onde precisa estar depois.
+        """
         cfg = self._config
         passos = []
-        passos += bc_steps.ajustes_iniciais(cfg)
+        passos += bc_steps.ajustes_iniciais(cfg)      # esconder + zoom + camera
+        passos += bc_steps.garantir_pet(cfg)
+        passos += bc_steps.garantir_cidade(cfg)       # Return Charm se preciso
         passos += bc_steps.convidar_team(cfg)
-        passos += bc_steps.montar(cfg)
-        passos += bc_steps.ir_para_ghost(cfg)
+        passos += bc_steps.montar_se_preciso(cfg)
+        passos += bc_steps.ir_ate_npc(cfg, "npc_venda")
 
         if cfg.get("comprar_pot"):
             passos += bc_steps.comprar_pot(cfg)
@@ -468,6 +504,9 @@ class BCScript:
         if cfg.get("vender"):
             passos += bc_steps.vender(cfg)
 
+        passos += bc_steps.ir_ate_npc(cfg, "npc_teleporte")
+        passos += bc_steps.esperar_hp_e_mana(cfg)
+        passos += bc_steps.ir_para_ghost(cfg)         # dialogo do Transport Fay
         passos += bc_steps.ir_para_cave(cfg)
         return passos
 

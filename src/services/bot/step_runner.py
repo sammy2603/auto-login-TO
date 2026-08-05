@@ -45,6 +45,8 @@ WAIT_COLOR = "wait_color"        # espera um pixel ficar de certa cor
 SKIP_IF_COLOR = "skip_if_color"  # pula N passos se a cor ja estiver la
 CLICK_TEMPLATE = "click_template"  # espera um elemento aparecer e clica nele
 WAIT_POSITION = "wait_position"  # espera o personagem chegar numa coordenada
+SKIP_IF = "skip_if"              # pula N passos se a MEMORIA disser que sim
+WAIT_UNTIL = "wait_until"        # espera ate a MEMORIA satisfazer a condicao
 USE_ALL_ITEMS = "use_all_items"  # acha um item por imagem e usa, ate acabar
 ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
 CLICK_UNTIL_TARGET = "click_until_target"  # clica ate selecionar certo alvo
@@ -280,6 +282,37 @@ def click_until_target(x: int, y: int, nome: str, timeout: float = 20.0,
     )
 
 
+def pular_se(condicao: Callable, steps_ahead: int, note: str = "") -> Step:
+    """
+    Pula 'steps_ahead' passos quando a condicao diz que sim.
+
+    A condicao recebe o char_info do tick e devolve bool -- ou seja,
+    decide pela MEMORIA. O skip_if_color decide por PIXEL, que serve
+    para caixa de dialogo aberta mas nao responde "o pet esta vivo?"
+    nem "estou em Stone City?".
+
+    Sem char_info a condicao nao roda e o passo NAO pula: pular por
+    falta de leitura executaria o roteiro achando que a condicao estava
+    satisfeita, que e o jeito errado de errar.
+    """
+    return Step(SKIP_IF, (condicao, steps_ahead), note=note)
+
+
+def esperar_ate(condicao: Callable, timeout: float = 120.0,
+                note: str = "") -> Step:
+    """
+    Segura o roteiro ate a condicao ficar verdadeira, ou ate o timeout.
+
+    Mesma ideia do wait_color, so que lendo memoria: "HP em 100% e mana
+    em 90%" e condicao de numero, nao de cor de pixel.
+
+    Vencido o timeout o roteiro SEGUE, e nao aborta: parar o ciclo por
+    causa de regeneracao lenta custa mais que entrar na cave com mana
+    faltando.
+    """
+    return Step(WAIT_UNTIL, (condicao,), timeout=timeout, note=note)
+
+
 def call(fn: Callable, note: str = "") -> Step:
     """Delega a um callable do proprio script (logica que nao vira dado)."""
     return Step(CALL, (fn,), note=note)
@@ -463,6 +496,21 @@ class StepRunner:
                 logger.info("Condicao satisfeita; pulando %s passos", adiante)
                 self._index += adiante
             return True
+
+        if kind == SKIP_IF:
+            condicao, adiante = step.args
+            if ctx.char_info is not None and condicao(ctx.char_info):
+                logger.info("Condicao de memoria satisfeita; pulando %s passos",
+                            adiante)
+                self._index += adiante
+            return True
+
+        if kind == WAIT_UNTIL:
+            if self._timed_out(step):
+                logger.warning("Timeout esperando condicao de memoria: %s",
+                               step.note or "sem nota")
+                return True
+            return ctx.char_info is not None and bool(step.args[0](ctx.char_info))
 
         if kind == CLICK_TEMPLATE:
             return self._do_click_template(step, ctx)

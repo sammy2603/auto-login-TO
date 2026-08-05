@@ -104,6 +104,9 @@ class BotEngine:
                     char_info.resource_pct = memory_reader.mana_pct
                     char_info.in_battle = memory_reader.in_battle
                     char_info.pet_alive = memory_reader.pet_alive
+                    char_info.location = memory_reader.location
+                    char_info.mounted = memory_reader.is_mounted
+                    char_info.sitting = memory_reader.is_sitting
                     char_info.x = memory_reader.x
                     char_info.y = memory_reader.y
                     target_info.hp_pct = memory_reader.target_hp_pct
