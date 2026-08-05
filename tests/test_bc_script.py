@@ -420,7 +420,8 @@ def test_entrada_abre_o_dialogo_no_ponto_calibrado():
     """
     passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
 
-    dialogo = [p for p in passos if p.kind == "double_right"]
+    # Direito SIMPLES: duplo direito seleciona o NPC sem abrir dialogo.
+    dialogo = [p for p in passos if p.kind == "right"]
     assert dialogo[0].args == DEFAULT_CONFIG["npc_entrada_tela"]
 
     opcoes = [p for p in passos if p.kind == "click_template"
@@ -440,7 +441,7 @@ def test_saida_sem_ponto_calibrado_procura_o_npc_por_imagem():
 def test_saida_com_ponto_calibrado_clica_direto():
     passos = bc_steps.sair_da_cave({**DEFAULT_CONFIG, "npc_saida_tela": (500, 400)})
 
-    assert any(p.kind == "double_right" and p.args == (500, 400) for p in passos)
+    assert any(p.kind == "right" and p.args == (500, 400) for p in passos)
 
 
 def test_view_reset_avisa_quando_nao_acha_o_botao():
