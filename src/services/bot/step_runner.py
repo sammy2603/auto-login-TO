@@ -143,7 +143,8 @@ def retry_until_color(tentativa: list[Step], x: int, y: int, color,
 
 def click_template(template: str, region=None, timeout: float = 20.0,
                    threshold: float = 0.85, botao: str = "left",
-                   obrigatorio: bool = True, note: str = "") -> Step:
+                   obrigatorio: bool = True, deslocamento=(0, 0),
+                   note: str = "") -> Step:
     """
     Espera um elemento aparecer na tela e clica nele.
 
@@ -154,10 +155,16 @@ def click_template(template: str, region=None, timeout: float = 20.0,
 
     'obrigatorio=False' faz o passo desistir em silencio no timeout,
     pra elementos que podem simplesmente nao aparecer.
+
+    'deslocamento' clica a (dx, dy) do centro do que foi achado. Serve
+    pra ancorar no que e ESTAVEL e clicar no que nao e: o nome flutuante
+    de um NPC e texto, sempre igual, enquanto o corpo dele e sprite
+    animado que nao casa em threshold nenhum. Medido no Transport Fay --
+    ancora no nome, clica 45px abaixo.
     """
     return Step(
         CLICK_TEMPLATE,
-        (template, region, threshold, botao, obrigatorio),
+        (template, region, threshold, botao, obrigatorio, deslocamento),
         timeout=timeout,
         note=note,
     )
@@ -564,7 +571,7 @@ class StepRunner:
         return False
 
     def _do_click_template(self, step: Step, ctx: StepContext) -> bool:
-        template, region, threshold, botao, obrigatorio = step.args
+        template, region, threshold, botao, obrigatorio, deslocamento = step.args
 
         if ctx.vision_service is None:
             logger.warning("click_template sem vision_service; pulando")
@@ -575,7 +582,7 @@ class StepRunner:
         )
 
         if posicao is not None:
-            x, y = posicao
+            x, y = posicao[0] + deslocamento[0], posicao[1] + deslocamento[1]
             if botao == "right":
                 ctx.input_service.right_click(ctx.hwnd, x, y)
             elif botao == "double_right":

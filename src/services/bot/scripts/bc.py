@@ -217,6 +217,17 @@ DEFAULT_CONFIG = {
     "npc_venda_mapa": "Stone City",
     "npc_venda_nome": "Rich Man",
     "npc_venda_pos": (153, -493),
+    # Ancoras de imagem do teleporte. O NOME flutuante do NPC em vez do
+    # sprite: ele anda e e animado, o texto nao. O clique vai deslocado
+    # para baixo, no corpo -- medido, +45px abre o dialogo e +30 nao.
+    "template_npc_teleporte": "label_transport_fay",
+    "threshold_nome_npc": 0.72,
+    "deslocamento_corpo_npc": 45,
+    "timeout_npc_teleporte": 15.0,
+    # Linha do destino dentro do dialogo. Por template porque a lista
+    # muda de tamanho conforme o nivel do personagem e ainda rola.
+    "template_destino": "destino_ghost_din_woods",
+    "timeout_destino": 10.0,
     "npc_teleporte_mapa": "Stone City",
     "npc_teleporte_nome": "Transport Fay",
     "npc_teleporte_pos": (178, -518),

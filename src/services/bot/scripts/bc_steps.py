@@ -203,14 +203,45 @@ def montar(cfg) -> list[Step]:
 
 
 def ir_para_ghost(cfg) -> list[Step]:
-    """Caminhada ate o ghost -- cliques no minimapa."""
+    """
+    Teleporte para Ghost Din Woods, pelo NPC de transporte.
+
+    Substitui a sequencia gravada do macro (8 cliques no minimapa mais
+    um clique fixo de confirmacao), que vinha de outro trajeto e erraria
+    agora que a chegada e por coordenada.
+
+    Duas ancoras de imagem, e nenhuma coordenada fixa:
+
+    1. O NOME flutuante do NPC. O Transport Fay anda -- medido, saiu de
+       (455,430) para (485,470) entre duas capturas -- e o sprite dele e
+       animado, nao casa em threshold nenhum (0.85, 0.75, 0.65 todos
+       falharam). Ja o nome e texto, sempre igual. Dai ancorar no nome e
+       clicar deslocado para baixo, no corpo: medido, +45px abre o
+       dialogo e +30px nao.
+    2. A LINHA do destino dentro do dialogo. A lista muda de tamanho
+       conforme o nivel do personagem (cada destino tem um Level minimo)
+       e ainda rola, entao coordenada fixa funcionaria neste char e
+       erraria no proximo.
+
+    O threshold do nome e mais frouxo (0.72) porque o texto e desenhado
+    por cima do cenario, que muda atras dele.
+    """
     return [
-        double_right(507, 472), double_right(463, 474), double_right(463, 474),
-        double_right(479, 482), double_right(457, 467), double_right(516, 478),
-        double_right(454, 469), double_right(456, 439),
-        wait(0.1),
-        left(303, 592, note="confirma"),
-        wait(2.0),
+        click_template(
+            cfg["template_npc_teleporte"],
+            botao="double_right",
+            threshold=cfg.get("threshold_nome_npc", 0.72),
+            deslocamento=(0, cfg.get("deslocamento_corpo_npc", 45)),
+            timeout=cfg.get("timeout_npc_teleporte", 15.0),
+            note="abre o dialogo do NPC de transporte",
+        ),
+        wait(1.5),
+        click_template(
+            cfg["template_destino"],
+            timeout=cfg.get("timeout_destino", 10.0),
+            note="escolhe Ghost Din Woods",
+        ),
+        wait(cfg.get("espera_teleporte", 6.0)),
     ]
 
 
