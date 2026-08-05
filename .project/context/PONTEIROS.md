@@ -121,7 +121,16 @@ só o primeiro link. Exposto em `MemoryReader.surrounding()`, que devolve
 `(nome, x, y, distância_em_metros)` já deduplicado — o buffer repete a
 mesma entrada a cada passada de renderização.
 
-**É daqui que sai a coordenada de NPC sem anotar à mão.**
+**É daqui que sai a coordenada de NPC sem anotar à mão:**
+
+```
+python tools/pegar_coordenada_npc.py skull --pid <cliente>
+```
+
+Com várias contas abertas o `--pid` é obrigatório na prática — sem ele
+vale o primeiro `client.exe`, que pode ser um que nem terminou de logar.
+E o painel só lista o **mapa atual**: para a Skull Herald é preciso um
+personagem que alcance o mapa da Bewitcher Cave.
 
 Outros três estáticos convergem para o mesmo buffer e servem de reserva
 caso este morra numa atualização:
