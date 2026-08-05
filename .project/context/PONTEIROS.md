@@ -100,37 +100,61 @@ traz é o *form* da própria posição:
 EvUiForm (13722200)...Scarp [392,889]...
 ```
 
-Ou seja, mapa e coordenada **do personagem**, não a lista de NPCs do
-painel Surrounding. Essa lista tem base própria, achada por pointer scan
-reverso (ver abaixo).
+Ou seja, mapa e coordenada **do personagem**.
 
 As strings da UI são **UTF-8**, não UTF-16 — um scan por `text="` em
 UTF-16LE devolve zero ocorrências.
 
-### SUR_LISTA — a lista de NPCs do painel Surrounding
+**A lista de NPCs do painel Surrounding continua não encontrada.** O que
+achamos por pointer scan e chegamos a rotular como Surrounding é outra
+coisa (ver a seção seguinte), e a confusão custou tempo.
 
-Base `0x0150C314`, cadeia `[0xA0, 0xA0]`. Entrega o **XML inteiro** do
-painel, um `UiRichText` onde cada linha sai como:
+### MISSOES — os NPCs-objetivo das missões ativas
+
+Base `0x0150C314`, cadeia `[0xA0, 0xA0]`. Entrega o XML de um
+`UiRichText` onde cada linha sai como:
 
 ```
 text="Courage Merchant [231,-517] (1269 m)" color="#ff00ff00" hlink="String:task:locate?px=231&py=-517..."
 ```
 
-Isso é mais do que o RamoraBOT tinha: o `FIRST_LINK_SUR` dele alcançava
-só o primeiro link. Exposto em `MemoryReader.surrounding()`, que devolve
-`(nome, x, y, distância_em_metros)` já deduplicado — o buffer repete a
-mesma entrada a cada passada de renderização.
+Exposto em `MemoryReader.objetivos_de_missao()`, que devolve
+`(nome, x, y, distância)` já deduplicado — o buffer repete a mesma
+entrada a cada passada de renderização.
 
-**É daqui que sai a coordenada de NPC sem anotar à mão:**
+**Isto não é o painel Surrounding**, apesar de ter sido batizado assim
+quando apareceu. É o rastreador de missões. O que denuncia:
+
+- o buffer vem **agrupado por mapa** (`Stone City`, `Green Scarp`,
+  `Sky Village`) e, dentro de cada um, por **nome de quest**
+  (`Drive Away the Apes`, `Strength of White Eagle (0/1)`);
+- cada linha carrega um `hlink="String:task:locate?..."`;
+- só lista NPC ligado a uma **missão ativa** do personagem.
+
+Duas consequências que importam na prática:
+
+1. **NPC qualquer nunca vai estar aqui.** Buscar `skull` devolve vazio
+   mesmo com o personagem no mapa certo, porque a Skull Herald não é
+   objetivo de missão. Para NPC arbitrário ainda não há fonte em
+   memória — continua sendo anotar à mão.
+2. **A distância é do último render.** Medido: o personagem andou de
+   `(392, 889)` para `(392, 1004)` e os metros não mudaram nem um
+   dígito. A coordenada do NPC não sofre com isso, que é fixa; a
+   distância e a composição da lista sim.
+
+Como usar:
 
 ```
-python tools/pegar_coordenada_npc.py skull --pid <cliente>
+python tools/pegar_coordenada_npc.py eagle --pid <cliente>
 ```
 
 Com várias contas abertas o `--pid` é obrigatório na prática — sem ele
 vale o primeiro `client.exe`, que pode ser um que nem terminou de logar.
-E o painel só lista o **mapa atual**: para a Skull Herald é preciso um
-personagem que alcance o mapa da Bewitcher Cave.
+
+Lição de método: a cadeia resolver e o conteúdo parecer certo não provam
+que o campo é o que você acha que é. O teste que desmascarou foi mudar o
+estado do jogo (andar) e reler — se nada muda, ou a leitura é cache, ou
+o campo não é o que se supunha. Aqui era as duas coisas.
 
 Outros três estáticos convergem para o mesmo buffer e servem de reserva
 caso este morra numa atualização:
@@ -141,6 +165,10 @@ caso este morra numa atualização:
 | `0x00F3FED4` | `[0xD8, 0xA0]` |
 | `0x015109F4` | `[0x88, 0xA0]` |
 | `0x01510A24` | `[0x4C, 0xA0]` |
+
+Verificado: fechar e reabrir o painel não muda o endereço do buffer nem
+o conteúdo — as quatro cadeias seguem convergindo em `0x30db9520` com as
+mesmas 10 entradas.
 
 Como foi achada: scan pelo literal `text="` filtrado por `[x,y]` com
 dígitos reais (o template `[%d,%d]` também casa e engana), depois busca
