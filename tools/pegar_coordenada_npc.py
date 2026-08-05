@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Coordenada de mundo dos NPCs-objetivo das missoes ativas.
+Coordenada de mundo dos NPCs do mapa atual, pelo painel Surrounding.
 
 Devolve a linha pronta pra colar no DEFAULT_CONFIG do BC, sem anotar a
 coordenada a mao.
 
-LIMITE, e ele e grande: a fonte e o rastreador de missoes, nao o painel
-Surrounding. So aparece NPC ligado a uma missao ATIVA do personagem --
-NPC qualquer, como a Skull Herald, nunca vai estar aqui. Ver
-.project/context/PONTEIROS.md.
+EXIGE que o painel Surrounding tenha sido ABERTO pelo menos uma vez no
+mapa em questao. Fechar o painel nao limpa o bloco, entao trocar de
+mapa sem reabrir devolve a lista do mapa ANTERIOR, com cara de valida.
 
-A distancia em metros e do ultimo render, nao do instante da leitura.
-A coordenada nao sofre com isso, que e fixa.
+Sem nada no painel, cai no rastreador de missoes, que so conhece NPC de
+missao ATIVA -- nunca traz NPC qualquer (uma Skull Herald, por
+exemplo). Ver .project/context/PONTEIROS.md.
 
 Com varias contas abertas, diga qual cliente com --pid: sem isso vale o
 primeiro client.exe encontrado, que pode ser um que nem terminou de
@@ -65,27 +65,28 @@ def outros_clientes(pid_usado):
 def imprimir(entradas, termo, pid=None):
     if not entradas:
         print(f"  Nenhum NPC{f' com {termo!r}' if termo else ''} na lista.")
-        print("  A fonte e o rastreador de MISSOES: so aparece NPC de")
-        print("  missao ativa deste personagem, nunca um NPC qualquer.")
+        print("  Abra o painel Surrounding no cliente uma vez neste mapa:")
+        print("  sem isso o bloco nao existe, e a reserva (rastreador de")
+        print("  missoes) so conhece NPC de missao ativa do personagem.")
         for outro, titulo in outros_clientes(pid).items():
             print(f"  Ha outro cliente aberto: --pid {outro}  ({titulo[:40]})")
         return
 
-    print(f"  {'nome':34s} {'coordenada':>16s}   dist")
-    print("  " + "-" * 60)
-    for nome, x, y, dist in entradas:
-        print(f"  {nome:34s} {f'({x}, {y})':>16s}   {dist} m")
+    print(f"  {'nome':34s} {'coordenada':>16s}")
+    print("  " + "-" * 52)
+    for nome, x, y in entradas:
+        print(f"  {nome:34s} {f'({x}, {y})':>16s}")
 
     print("\n  Pronto pra colar no DEFAULT_CONFIG:")
-    for nome, x, y, _ in entradas:
+    for nome, x, y in entradas:
         print(f'    # {nome}\n    "npc_..._pos": ({x}, {y}),')
 
 
 def autoteste():
     amostra = [
-        ("Skull Herald", 1395, -636, 12),
-        ("Courage Merchant", 231, -517, 1269),
-        ("Buddha Slave (right-click me)", 380, 1125, 214),
+        ("Skull Herald", 1395, -636),
+        ("Courage Merchant", 231, -517),
+        ("Buddha Slave (right-click me)", 380, 1125),
     ]
     assert filtrar(amostra, "skull") == [amostra[0]]
     assert filtrar(amostra, "SKULL") == [amostra[0]]        # sem case
@@ -104,6 +105,8 @@ def main():
     ap.add_argument("nome", nargs="?", default="", help="pedaco do nome do NPC")
     ap.add_argument("--pid", type=int, help="cliente alvo, com varias contas abertas")
     ap.add_argument("--autoteste", action="store_true", help="valida o filtro, sem jogo")
+    ap.add_argument("--salvar", action="store_true",
+                    help="grava o mapa atual em npcs.json (catalogo do bot)")
     args = ap.parse_args()
 
     if args.autoteste:
@@ -118,7 +121,26 @@ def main():
 
     mr = MemoryReader(pid)
     try:
-        imprimir(filtrar(mr.objetivos_de_missao(), args.nome), args.nome, pid)
+        # Painel primeiro: e o unico que conhece NPC que nao e de quest.
+        # A reserva so entra quando o painel esta fechado.
+        entradas = mr.npcs_ao_redor()
+        if not entradas:
+            entradas = [(nome, x, y) for nome, x, y, _ in mr.objetivos_de_missao()]
+
+        if args.salvar:
+            # Salva o mapa INTEIRO, nao o resultado filtrado: catalogo
+            # pela metade e pior que catalogo nenhum, porque parece
+            # completo.
+            from src.services.game.npcs import CATALOGO, salvar
+
+            mapa = mr.location
+            n = salvar(mapa, entradas)
+            if n:
+                print(f"  {n} NPCs de {mapa!r} gravados em {CATALOGO}")
+            else:
+                print(f"  Nada a gravar: lista vazia em {mapa!r}.")
+
+        imprimir(filtrar(entradas, args.nome), args.nome, pid)
     finally:
         mr.close()
 

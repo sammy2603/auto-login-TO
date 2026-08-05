@@ -17,6 +17,7 @@ passado em cada funcao. Ver DEFAULT_CONFIG em bc.py.
 
 from __future__ import annotations
 
+from src.services.game import npcs
 from src.services.bot.step_runner import (
     Step,
     attack_until_dead,
@@ -129,6 +130,37 @@ def vender(cfg) -> list[Step]:
 
 
 # =====================================================
+# Coordenada de NPC
+# =====================================================
+
+def pos_npc(cfg, chave: str):
+    """
+    Coordenada do NPC: catalogo primeiro, literal do config como
+    reserva.
+
+    'chave' e o prefixo usado no config ('npc_entrada', 'npc_saida'),
+    que casa com o trio <chave>_mapa / <chave>_nome / <chave>_pos.
+
+    O catalogo (npcs.json, capturado do painel Surrounding) e a fonte
+    porque e ele que escala: cada script novo que precise de um NPC --
+    vender em Stone City, por exemplo -- ganha a coordenada sem ninguem
+    anotar nada a mao.
+
+    O literal fica como reserva e nao como legado: mapa que ninguem
+    capturou ainda, ou NPC que o painel nao lista, continuam
+    funcionando. Sem isso, catalogo faltando viraria run quebrada.
+    """
+    mapa = cfg.get(f"{chave}_mapa")
+    nome = cfg.get(f"{chave}_nome")
+    if mapa and nome:
+        caminho = cfg.get("npcs_catalogo") or npcs.CATALOGO
+        achado = npcs.coordenada(mapa, nome, caminho)
+        if achado:
+            return achado
+    return cfg[f"{chave}_pos"]
+
+
+# =====================================================
 # Ida ate a cave
 # =====================================================
 
@@ -142,7 +174,7 @@ def ir_para_cave(cfg) -> list[Step]:
     a caminhada e por coordenada, cortando reto pelo minimapa -- e o
     que era pra ser tempo de farm deixa de ser tempo de caminhada.
     """
-    return andar_ate(cfg, cfg["npc_entrada_pos"])
+    return andar_ate(cfg, pos_npc(cfg, "npc_entrada"))
 
 
 def view_reset(cfg) -> list[Step]:
@@ -259,7 +291,7 @@ def entrar_na_cave(cfg) -> list[Step]:
     tentativa = [
         *falar_com_npc(
             cfg,
-            cfg["npc_entrada_pos"],
+            pos_npc(cfg, "npc_entrada"),
             cfg.get("npc_entrada_tela"),
             cfg["template_enter_bc"],
         ),
@@ -564,7 +596,7 @@ def sair_da_cave(cfg) -> list[Step]:
     return [
         *falar_com_npc(
             cfg,
-            cfg["npc_saida_pos"],
+            pos_npc(cfg, "npc_saida"),
             cfg.get("npc_saida_tela"),
             cfg["template_leave_bc"],
         ),
