@@ -349,13 +349,32 @@ class MemoryReader:
         r'text="([^"]+?)\s*\[(-?\d+),(-?\d+)\]\s*\((\d+) m\)"'
     )
 
+    @staticmethod
+    def parse_surrounding(texto: str) -> list[tuple[str, int, int, int]]:
+        """
+        Extrai (nome, x, y, distancia) do XML do painel.
+
+        Separado da leitura de memoria de proposito: e a unica parte
+        testavel sem o jogo aberto, e e onde mora o risco de regressao.
+
+        O buffer repete a mesma entrada a cada passada de renderizacao,
+        entao a saida vem deduplicada, preservando a ordem original.
+        """
+        vistos = set()
+        saida = []
+        for nome, x, y, dist in MemoryReader._SURROUNDING.findall(texto or ""):
+            item = (nome.strip(), int(x), int(y), int(dist))
+            if item not in vistos:
+                vistos.add(item)
+                saida.append(item)
+        return saida
+
     def surrounding(self, max_bytes: int = 16384) -> list[tuple[str, int, int, int]]:
         """
         Lista o painel Surrounding: (nome, x, y, distancia_em_metros).
 
         E daqui que sai a coordenada de NPC sem precisar anotar a mao.
-        O buffer traz a mesma entrada repetida a cada passada de
-        renderizacao, entao a saida vem deduplicada, na ordem original.
+        So lista o MAPA ATUAL -- nao ha como ver NPC de outro mapa.
         """
         addr = self._follow_chain(self.SUR_LISTA_BASE, [0xA0, 0xA0])
         if not addr:
@@ -370,15 +389,7 @@ class MemoryReader:
             return []
 
         texto = buf.raw[: lidos.value].split(b"\x00", 1)[0].decode("utf-8", "replace")
-
-        vistos = set()
-        saida = []
-        for nome, x, y, dist in self._SURROUNDING.findall(texto):
-            item = (nome.strip(), int(x), int(y), int(dist))
-            if item not in vistos:
-                vistos.add(item)
-                saida.append(item)
-        return saida
+        return self.parse_surrounding(texto)
 
     @property
     def team_size(self) -> int:
