@@ -112,7 +112,7 @@ CAMPOS = [
     # ---- char ----
     ("char_name",     "CHAR", [0xBC],   "str",   texto_sensato,           None),
     ("level",         "CHAR", [0x3C4],  "word",  faixa(1, 150),           None),
-    ("class_id",      "CHAR", [0x3C8],  "word",  faixa(1, 20),            None),
+    ("class_id",      "CHAR", [0xD4],   "byte",  faixa(0, 10),            None),
     ("hp",            "CHAR", [0x3B8],  "int",   faixa(0, 500_000),       None),
     ("max_hp_base",   "CHAR", [0xDC],   "int",   faixa(1, 500_000),       None),
     ("hp_buff",       "CHAR", [0xE0],   "int",   faixa(0, 500_000),       None),

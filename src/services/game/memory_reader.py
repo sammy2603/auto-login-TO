@@ -220,12 +220,19 @@ class MemoryReader:
             return _rpm_string(self._hProcess, str_ptr, 30)
         return name
 
-    CLASS_NAMES = {10: "Monk", 4: "Wizard", 2: "Assassin", 3: "Tamer", 5: "Fairy"}
+    # Tabela do ver.6400, conferida com uma personagem de cada classe. A
+    # antiga (10 Monk, 4 Wizard, 2 Assassin, 3 Tamer, 5 Fairy, em +0x3C8)
+    # morreu junto com o offset.
+    CLASS_NAMES = {0: "Wizard", 1: "Monk", 2: "Assassin", 3: "Fairy", 4: "Tamer"}
 
     @property
     def class_id(self) -> int:
-        """Retorna o ID da classe (WORD em +0x3C8)."""
-        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0x3C8), 2)
+        """Retorna o ID da classe (BYTE em +0xD4).
+
+        O byte seguinte (+0xD5) e o genero: 1 = feminino. A classe nao
+        muda com o genero -- Wizard male e female leem 0 nos dois.
+        """
+        return _rpm_int(self._hProcess, self._read_ptr(self.CHAR_BASE, 0xD4), 1)
 
     @property
     def profession(self) -> str:
