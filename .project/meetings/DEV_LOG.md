@@ -1,3 +1,76 @@
+## 2026-08-05 (2)
+
+Continuação: cliques de diálogo. Dois PRs — #15 mergeado, #16 aberto.
+
+### Concluído — teleporte por âncora de imagem (PR #15)
+
+`ir_para_ghost` eram 8 cliques gravados no minimapa. Viraram duas
+âncoras: o **nome flutuante** do Transport Fay e a **linha do destino**
+dentro do diálogo.
+
+O padrão que saiu daqui e serve para o resto do roteiro: **ancorar no
+que é estável e clicar deslocado no que não é.** O NPC anda (medido:
+(455,430) → (485,470)) e o sprite é animado — template do corpo não
+casou em 0.85, 0.75 nem 0.65. O nome é texto e casa em 0.72. Daí o
+parâmetro `deslocamento` no `click_template`: +45px abaixo do nome abre
+o diálogo, +30px não chega no corpo.
+
+Validado pelo StepRunner, não por chamada manual: diálogo fechado → o
+passo rodou → a linha do destino apareceu em (304, 590).
+
+### Em aberto — venda por slot (PR #16)
+
+Medido e sólido:
+
+- **duplo-clique-direito no slot vende direto**, sem mover o item para
+  a grade de baixo nem apertar `Sell`;
+- **a grade reordena a cada venda** — vendido um item, o seguinte desce
+  para o slot que esvaziou. Por isso o roteiro bate sempre no mesmo
+  slot, e `slot_inicial_venda` protege o começo da bag (poção de HP e
+  mana);
+- geometria: origem (452,292), passo 35x36, 6 colunas, conferida por
+  variância (com item ~5000, vazio entre 2 e 9);
+- item precioso abre caixa de confirmação, e `confirm_box` da memória
+  **funciona** (leu True com a caixa aberta);
+- duas primitivas novas: `pular_se_template` e `esperar_template`.
+
+**NÃO provado: a venda de ponta a ponta.** Na última rodada o
+`janela_sell` não apareceu em 10 s e os itens continuaram na bag.
+
+### Próxima sessão — como retomar
+
+Suspeita principal: o ponto `(490, 390)` de `pontos_do_npc` cai **sobre
+a própria caixa de diálogo** quando ela já está aberta, então a
+tentativa de abrir pode estar clicando dentro dela.
+
+Método, e isto é lição desta sessão: investigar com **captura entre
+passos**, um clique por vez, e não rodando o fluxo inteiro. Rodei o
+fluxo completo três vezes e aprendi pouco; cada rodada custa caro e
+mistura as causas.
+
+Estado de partida ideal: Tomyris em Stone City, na frente do Rich Man,
+**com o diálogo fechado**.
+
+Sequência a conferir, uma etapa por vez:
+
+1. duplo-clique-direito no NPC → o diálogo abre?
+2. `opcao_sell_item` casa e o clique abre a janela?
+3. `janela_sell` casa com a janela recém-aberta? (é onde falhou)
+4. duplo-clique no slot 1 → some o item / abre a caixa?
+5. `botao_ok_venda` casa e confirma?
+
+Templates já criados e conferidos isoladamente:
+`opcao_purchase_item`, `opcao_sell_item`, `janela_sell`, `botao_sell`,
+`botao_cancel`, `botao_ok_venda`, `caixa_item_precioso`,
+`destino_ghost_din_woods`, `label_transport_fay`.
+
+### Limite conhecido do alvo
+
+`0x0107D410` segue alvo de **combate**. Abrir diálogo com NPC não
+atualiza o ponteiro — conferido: com o Rich Man em diálogo, a entidade
+apontada era um mob antigo (`...onlight Cavy`, level 35). Para o BC
+serve, porque o que importa é boss e mob.
+
 ## 2026-08-05
 
 Sessão de caça a ponteiros e de montagem do preparo do BC. Quatro PRs
