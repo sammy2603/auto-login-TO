@@ -407,6 +407,50 @@ A base contém um ponteiro; todos os campos abaixo são `read(base) + offset`.
 | `0x18, 0x3F4, 0x0, 0xC, 0x1F4, 0x15C` `+0x54` | nome do time 3 | só `ramora` |
 | `0x18, 0xA1C, 0x0, 0xC, 0x1F4, 0x54` `+0x54` | nome do time 4 | só `ramora` |
 
+## ALVO — `0x0107D410`, a entidade selecionada
+
+Estático que aponta **direto para a entidade do alvo**. Entidade e
+personagem são a **mesma struct**: nome em `+0xBC`, HP em `+0x3B8`,
+level em `+0x3C4`, x/y em `+0x810`/`+0x814` — os offsets do CHAR.
+
+```
+0x0107D410 -> entidade -> +0xBC 'Transport Fay'  +0x3B8 100  +0x3C4 8  (178,-518)
+```
+
+Isto substitui as cadeias de UI do `TARGET_BASE`. Elas **não são
+portáveis entre clientes**: medido no mesmo build, com dois clients
+abertos, a cadeia `[0x18, 0xB1C, 0x0, 0xC, 0xD9C, 0x9AC]` resolve
+inteira num e morre no salto `+0xD9C` no outro —
+
+```
+DudePY   0x04C5A308 -> 0x1471E018 -> 0x100D01F8 -> 0x13604438 -> 0x136339A8 -> 0x13634BB0
+Tomyris  0x04BB5568 -> 0x39BD0A28 -> 0x1035E940 -> 0x3ADB8810 -> 0x343D72E8 -> 0x00000000
+```
+
+O que difere entre os dois é o **arranjo da UI** (painéis de bag
+abertos, barra de skills), não a versão do jogo. Cadeia que passa pelo
+gerenciador de janelas herda o layout da UI; esta não passa.
+
+**O booleano de alvo do `ramora` não serve.** `ENTIDADES +
+[0xD0, 0x2DC, 0x24, 0xC10]` lê `1` em cliente sem alvo nenhum. O objeto
+no fim dessa cadeia é o marcador de seleção do chão — as strings dentro
+dele são `eff_cursorground02` e `cursorground_r`. Ele nunca soube quem
+era o alvo.
+
+**Limite conhecido:** o ponteiro guarda o **último** alvo. Medido: com
+Esc, continua apontando para a mesma entidade. Ponteiro zero prova
+"nunca teve alvo"; ponteiro cheio não prova "tem alvo agora". Falta
+achar o campo de seleção atual.
+
+Como foi achada: procurar o nome do alvo (`Transport Fay`) na memória
+exigindo que `+0x810 / 20` batesse com a coordenada que o jogo mostrava
+— isso isola a entidade entre as várias cópias do nome. Depois, busca
+reversa pelo endereço dela: 15 donos, **um** deles estático.
+
+Isso também resolve o `search_id()` do RamoraBOT, que varria
+`0xCE00`–`0xEFFFFFF` de 4 em 4 bytes para obter X/Y do alvo: a
+coordenada está no próprio objeto, a uma leitura de distância.
+
 ## Bases exclusivas do `ramora`
 
 | Base | Cadeia | Campo |

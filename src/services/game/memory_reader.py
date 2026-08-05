@@ -95,6 +95,10 @@ class MemoryReader:
     SPLIT_BASE = 0x012CE340
     TEAM_SIZE_BASE = 0x0106D388
     ENTIDADES_BASE = 0x012C0628
+    # Aponta direto para a ENTIDADE do alvo. Substitui as cadeias de UI
+    # (TARGET_BASE), que resolviam num cliente e quebravam noutro
+    # conforme o arranjo dos paineis -- ver PONTEIROS.md.
+    ALVO_BASE = 0x0107D410
     MISSOES_BASE = 0x0150C314
     # Painel Surrounding de verdade -- lista TODOS os NPCs do mapa. Este
     # Painel Surrounding: NAO tem cadeia estatica confiavel. As tres
@@ -304,25 +308,43 @@ class MemoryReader:
     # Target
     # =====================================================
 
+    def _entidade_alvo(self) -> int:
+        """
+        Endereco da ENTIDADE do alvo, ou 0.
+
+        Entidade e personagem sao a MESMA struct: nome em +0xBC, HP em
+        +0x3B8, level em +0x3C4, x/y em +0x810/+0x814 -- exatamente os
+        offsets do CHAR. Foi assim que ela foi achada: procurando o nome
+        do alvo na memoria e exigindo que +0x810 dividido por 20 batesse
+        com a coordenada que o jogo mostrava.
+
+        ATENCAO -- guarda o ULTIMO alvo, nao o atual: depois do Esc o
+        ponteiro continua apontando para a mesma entidade. Ponteiro zero
+        prova "nunca teve alvo"; ponteiro cheio nao prova "tem alvo
+        agora".
+        """
+        return _rpm_int(self._hProcess, self.ALVO_BASE, 4)
+
     @property
     def target_selected(self) -> bool:
         """
-        Booleano real do cliente. Antes isto era inferido de
-        `target_hp > 0 and target_name`, o que mentia: ao tirar o alvo,
-        HP e nome ficam com o valor do alvo anterior indefinidamente.
+        Se ha alvo -- na medida do que da para saber hoje.
+
+        O booleano `ENTIDADES + [0xD0, 0x2DC, 0x24, 0xC10]`, herdado do
+        RamoraBOT, NAO serve: le 1 em cliente sem alvo nenhum. O objeto
+        no fim daquela cadeia e o marcador de selecao do chao
+        (eff_cursorground02), nao o alvo.
+
+        # ponytail: so distingue "nunca teve alvo" de "ja teve". Para
+        # separar "ainda tem" de "tirou com Esc" falta achar o campo de
+        # selecao atual.
         """
-        addr = self._follow_chain(self.ENTIDADES_BASE, [0xD0, 0x2DC, 0x24, 0xC10])
-        return _rpm_int(self._hProcess, addr, 1) == 1 if addr else False
+        return self._entidade_alvo() != 0
 
     @property
     def target_hp(self) -> int:
-        # Sem alvo o endereco guarda o HP do alvo anterior, entao a
-        # leitura precisa passar pelo booleano de selecao.
-        if not self.target_selected:
-            return 0
-        chain = [self.TARGET_BASE, 0x18, 0x59C, 0x0, 0xC, 0x1F4, 0x15C, 0x480]
-        addr = self._follow_chain(chain[0], chain[1:])
-        return _rpm_int(self._hProcess, addr, 2) if addr else 0
+        alvo = self._entidade_alvo()
+        return _rpm_int(self._hProcess, alvo + 0x3B8, 4) if alvo else 0
 
     @property
     def target_hp_pct(self) -> float:
@@ -337,20 +359,25 @@ class MemoryReader:
 
     @property
     def target_name(self) -> str:
-        # Mesma armadilha do target_hp: o nome sobrevive ao Esc.
-        if not self.target_selected:
-            return ""
-        chain = [self.TARGET_BASE, 0x18, 0xB1C, 0x0, 0xC, 0xD9C, 0x9AC]
-        addr = self._follow_chain(chain[0], chain[1:])
-        if addr == 0:
-            return ""
-        name = _rpm_string(self._hProcess, addr, 51)
-        if name and name.replace(" ", "").replace("'", "").isalnum():
-            return name
-        str_ptr = _rpm_int(self._hProcess, addr, 4)
-        if str_ptr:
-            return _rpm_string(self._hProcess, str_ptr, 51)
-        return name
+        alvo = self._entidade_alvo()
+        return _rpm_string(self._hProcess, alvo + 0xBC, 30) if alvo else ""
+
+    @property
+    def target_level(self) -> int:
+        alvo = self._entidade_alvo()
+        return _rpm_int(self._hProcess, alvo + 0x3C4, 2) if alvo else 0
+
+    @property
+    def target_x(self) -> int:
+        """Coordenada X do alvo -- o que o search_id() do RamoraBOT
+        tentava obter varrendo dezenas de milhoes de enderecos."""
+        alvo = self._entidade_alvo()
+        return int(_rpm_float(self._hProcess, alvo + 0x810) / 20.0) if alvo else 0
+
+    @property
+    def target_y(self) -> int:
+        alvo = self._entidade_alvo()
+        return int(_rpm_float(self._hProcess, alvo + 0x814) / 20.0) if alvo else 0
 
     @property
     def target_dead(self) -> bool:
