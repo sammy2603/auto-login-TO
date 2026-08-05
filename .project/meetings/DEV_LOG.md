@@ -1,3 +1,109 @@
+## 2026-08-05
+
+Sessão de caça a ponteiros e de montagem do preparo do BC. Quatro PRs
+mergeados: #10, #11, #12 e #13.
+
+### Concluído — classe do personagem (PR #10)
+
+`class_id` lia CHAR+`0x3C8` e estava morto no `ver.6400` (722 num Monk,
+0 num Wizard). O campo vivo é **CHAR+`0xD4`, um byte**, com o gênero no
+vizinho `+0xD5` (1 = feminino). A classe não muda com o gênero.
+
+Tabela conferida com um personagem de cada classe: `0` Wizard, `1` Monk,
+`2` Assassin, `3` Fairy, `4` Tamer.
+
+Método que resolveu: seis clientes abertos, um dump da struct por
+personagem, e um filtro de três condições — mesmo valor nos dois Wizard,
+diferente no Monk e no Assassin, estável ao reler. Com dois personagens
+sobravam 64 offsets; o que corta é o **par da mesma classe com gênero
+diferente**, que elimina tudo que é aparência.
+
+### Concluído — catálogo de NPCs (PR #11)
+
+A nota antiga dizia que o painel Surrounding só listava NPC de missão.
+Estava errada: ele lista **todos** os NPCs do mapa. O buffer é outro,
+diferente do rastreador de missões.
+
+Não há cadeia de ponteiros para ele. A busca reversa deu três estáticos
+que resolviam certo e **morreram ao fechar e reabrir o painel** — eram
+donos ocasionais daquela alocação. A fonte virou varredura pelo marcador
+`String:task:locate?px=`, ~0,6 s por leitura.
+
+Como varrer a cada run seria refazer trabalho para obter sempre a mesma
+resposta (NPC de mapa não anda), a leitura virou **captura**:
+`pegar_coordenada_npc.py --salvar` grava `npcs.json` e o bot lê arquivo.
+
+### Concluído — F12 (PR #12)
+
+Era `team_key` e o roteiro a segurava do preparo até a saída do team.
+Nome errado: F12 esconde os outros personagens. Renomeada para
+`esconder_jogadores_key`, e o `key_up` saiu — soltar traz os jogadores
+de volta.
+
+Medido no jogo: `key_down` por `PostMessage` esconde; continua escondido
+8 s depois sem release; outra tecla funciona com F12 segurado; `key_up`
+traz todos de volta. Segurar não prende tecla de verdade — é só nunca
+postar o `WM_KEYUP`, então nada vaza para outros clientes.
+
+### Concluído — preparo condicional (PR #13)
+
+Duas primitivas novas, lendo memória: `pular_se(condicao, n)` e
+`esperar_ate(condicao, timeout)`. Sem `char_info` o `pular_se` não pula;
+vencido o timeout o `esperar_ate` segue em vez de abortar.
+
+`location`, `mounted` e `sitting` passam a chegar no `CharInfo`.
+
+**Alvo pelo estático `0x0107D410`.** As cadeias de UI do `TARGET_BASE`
+não são portáveis entre clientes: no mesmo build, uma resolve inteira
+num client e morre no salto `+0xD9C` no outro, conforme o arranjo dos
+painéis. Com a conta afetada, `attack_until_dead` e `click_until_target`
+liam 0 e concluíam "alvo morto", em silêncio.
+
+Achado central: **entidade e personagem são a mesma struct** — nome em
+`+0xBC`, HP em `+0x3B8`, level em `+0x3C4`, x/y em `+0x810`/`+0x814`.
+Daí saíram `target_x`/`target_y`, que é o que o `search_id()` do
+RamoraBOT tentava obter varrendo dezenas de milhões de endereços.
+
+O booleano de alvo herdado do ramora foi abandonado: lê 1 em cliente sem
+alvo nenhum, porque o objeto no fim daquela cadeia é o marcador de
+seleção do chão (`eff_cursorground02`).
+
+**Não existe id de mapa utilizável.** O `mapid=1` dos hlinks é o mesmo
+em Stone City e em Vast Mountain, e o objeto do `location` só tem a
+sub-área. Por isso o catálogo segue indexado por sub-área e a comparação
+da cidade virou lista (`areas_da_cidade`).
+
+Status:
+🟢 `313 passed`, `autoteste ok`
+
+### Próxima etapa
+
+1. **Cliques de diálogo** — abrir o Transport Fay (ele se move: andou de
+   (455,430) para (485,470) entre duas capturas; template de sprite
+   animado não casou em 0.85/0.75/0.65). Com `target_name` funcionando
+   de novo, `click_until_target` é a saída. Depois o bloco do Rich Man:
+   vender e comprar 1 Return Charm. O `comprar_pot` atual compra poções
+   em 16 rodadas e o `ir_para_ghost` é sequência gravada de outro
+   trajeto — os dois vão errar agora que a chegada é por coordenada.
+   Já pronto: template `destino_ghost_din_woods.png`, conferido ao vivo
+   em (304, 590).
+2. **Seleção atual do alvo** — `0x0107D410` guarda o ÚLTIMO alvo:
+   depois do Esc continua apontando. Ponteiro zero prova "nunca teve
+   alvo"; cheio não prova "tem alvo agora".
+3. **Calibrações nunca feitas** — `treasure_box_pos` e
+   `corpo_do_boss_pos` no `bc.py` seguem como palpites centrados na
+   tela.
+4. **`npc_saida_mapa`** vazio — capturar dentro da cave preenche.
+
+### Contexto para carregar
+
+```
+.project/context/PONTEIROS.md          (catálogo de memória, com as medições)
+src/services/bot/scripts/bc_steps.py   (roteiro como dados)
+src/services/bot/scripts/bc.py         (DEFAULT_CONFIG e máquina de fases)
+src/services/game/npcs.py + npcs.json  (catálogo de NPCs)
+```
+
 ## 2026-08-03
 
 ### Corrigido — scripts rodavam com o switch desligado
