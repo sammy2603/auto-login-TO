@@ -204,6 +204,27 @@ as cadeias passaram a apontar para lixo binário. Eram donos ocasionais
 daquela alocação, não o caminho do objeto de UI. O marcador não tem
 esse problema: acha o bloco onde ele estiver.
 
+**`location` é a SUB-ÁREA, não o mapa.** `White Bear Village` e
+`Ghost Din Woods` são lugares diferentes dentro de um mesmo mapa,
+`Vast Mountain` — e o painel lista os NPCs do **mapa inteiro**, igual
+nos dois. Consequências que ainda **não** estão corrigidas no código:
+
+- o `npcs.json` é gravado com `mr.location` como chave, ou seja, com
+  nome de sub-área. Capturar da outra sub-área grava uma segunda
+  entrada com conteúdo idêntico, e a busca falha quando o personagem
+  está numa sub-área diferente da que foi capturada;
+- `bc_steps.garantir_cidade` compara `location` com `"Stone City"`.
+  Se essa cidade tiver sub-áreas, estar no mapa certo em outro canto
+  lê "não estou na cidade" e gasta um Return Charm à toa.
+
+Isso também explica a Skull Herald aparecer em `(1395,-636)` na
+captura feita de White Bear Village enquanto um personagem parado em
+Ghost Din Woods lê `(1395,-635)`: é **o mesmo NPC**, não duas cópias.
+
+O identificador certo já vem nos dados — cada linha traz `mapid=1` no
+hlink. Falta achar o mapid do personagem na memória para casar os
+dois; com ele, a chave do catálogo passa a ser o mapa de verdade.
+
 **Armadilha medida:** fechar o painel NÃO limpa o bloco — com ele
 fechado, as mesmas 33 entradas continuam sendo achadas. A regra real é
 "o painel precisa ter sido aberto **pelo menos uma vez neste mapa**".
