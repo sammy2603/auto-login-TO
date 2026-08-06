@@ -510,11 +510,27 @@ def ir_para_cave(cfg) -> list[Step]:
     diferente.
     """
     cliques = cfg.get("cave_final_clicks") or []
+    waypoints = list(cfg.get("cave_waypoints") or [])
 
-    passos = [
-        *walk_route(cfg, cfg.get("cave_waypoints") or []),
-        *walk_by_world_map(cfg, cfg.get("cave_map_clicks") or []),
-    ]
+    if cliques and waypoints:
+        # O ULTIMO waypoint e a origem do clique fixo, e por isso nao
+        # pode usar a tolerancia folgada dos outros: o clique e um
+        # deslocamento relativo, entao cada unidade de erro na origem
+        # vira uma unidade de erro no destino. Com os 10 dos waypoints,
+        # o personagem podia partir de qualquer ponto num raio de 10 --
+        # e era essa a inconsistencia de onde ele parava.
+        #
+        # 3 e o piso: abaixo disso o clique de correcao cai na zona
+        # morta do minimapa (~2,5 unidades) e nao move ninguem.
+        passos = [
+            *walk_route(cfg, waypoints[:-1]),
+            *andar_ate(cfg, waypoints[-1],
+                       cfg.get("click_origin_tolerance", 3)),
+        ]
+    else:
+        passos = list(walk_route(cfg, waypoints))
+
+    passos += walk_by_world_map(cfg, cfg.get("cave_map_clicks") or [])
 
     if cliques:
         # Cliques fixos no lugar da conta. Espera parar entre um e

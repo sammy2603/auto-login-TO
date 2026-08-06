@@ -276,6 +276,10 @@ DEFAULT_CONFIG = {
     # 'python tools/gravar_rota.py --pid N --centro 914 114 --raio 72'
     # e clicar no minimapa ate o NPC. Enquanto estiver vazio, o roteiro
     # cai no walk_to de sempre.
+    # Tolerancia do waypoint que serve de ORIGEM do clique fixo. Aperta
+    # de proposito contra os 10 dos demais: erro na origem vira erro
+    # igual no destino, porque o clique e relativo.
+    "click_origin_tolerance": 3,
     "cave_final_clicks": [
         # Gravado em 2026-08-06 partindo de (1391,-625): chega em
         # (1395,-636), o pe do Skull Herald. Um clique so.
@@ -408,20 +412,33 @@ DEFAULT_CONFIG = {
     # catalogo npcs.json guarda como (1395, -636) -- parar em cima dela
     # deixou o personagem fora do angulo de clique nas tres corridas de
     # 2026-08-06.
-    "npc_entrada_parada": (1395, -636),
+    # (1393,-635): onde o clique fixo do minimapa efetivamente entrega o
+    # personagem, medido na corrida de 2026-08-06. Nao e um alvo a
+    # perseguir -- e o registro de onde ele para, para o arrive_exactly
+    # reconhecer que ja chegou em vez de tentar corrigir uma posicao que
+    # ja e boa.
+    "npc_entrada_parada": (1393, -635),
     # Depois de chegar, antes de clicar: o personagem ainda esta
     # assentando a animacao de parada quando o passo seguinte comeca, e
     # clique disparado nesse instante sai antes do NPC estar no lugar
     # final da tela.
     "espera_pos_chegada": 0.5,
-    # LISTA e nao ponto unico: a caminhada para dentro de uma
+    # MEDIDO na captura de 2026-08-06, com o personagem em (1393,-635) e
+    # camera 380/0/40: o corpo do Skull Herald ocupa x 560..630,
+    # y 372..467, e o nome verde flutua em ~(597,363). Os pontos abaixo
+    # ficam todos dentro da silhueta.
+    #
+    # O valor anterior era (479,410): o y estava quase certo e o x
+    # errava por 115 px. Era isso que fazia os cliques acertarem o PET,
+    # que costuma parar aproximadamente ali.
+    #
+    # LISTA e nao ponto unico porque a caminhada para dentro de uma
     # tolerancia, nao num pixel, e cada unidade de mundo de sobra
-    # desloca o NPC na tela. O primeiro e o ponto medido; os outros o
-    # cercam. Roteiro tenta um, confere se o dialogo abriu, e so entao
-    # tenta o proximo -- clique direito nao move o personagem, entao
-    # tentativa que erra custa so o tempo da espera.
-    "npc_entrada_tela": [(479, 410), (479, 396), (466, 410),
-                         (492, 410), (479, 424)],
+    # desloca o NPC na tela. Tenta um, confere se o dialogo abriu, so
+    # entao tenta o proximo -- clique direito nao move o personagem,
+    # entao tentativa que erra custa so a espera.
+    "npc_entrada_tela": [(594, 412), (594, 390), (594, 435),
+                         (578, 412), (610, 412)],
     "template_enter_bc": "enter_bc",
 
     # --- Saida da cave (NPC "Skull Herald") ---
