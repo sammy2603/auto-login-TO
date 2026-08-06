@@ -304,9 +304,21 @@ def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
     pontos = cfg["pontos_do_npc"]
     passos: list[Step] = []
     for n, (x, y) in enumerate(pontos):
-        restantes = (len(pontos) - n - 1) * 3
+        # Quantos passos faltam ate o fim do bloco: cada tentativa que
+        # sobra custa 3 passos (clique, espera, pulo), MENOS a ultima,
+        # que nao leva pulo -- nao ha o que pular depois dela.
+        #
+        # A conta errada aqui ((k)*3) pulava um passo A MAIS e engolia o
+        # primeiro passo de quem chamou: na venda, era justamente o
+        # clique em 'Sell Item'. Sintoma: o dialogo abria, a janela de
+        # venda nunca aparecia, e nada acusava erro.
+        faltam = len(pontos) - n - 1
+        restantes = 3 * faltam - 1 if faltam else 0
         passos += [
-            double_right(x, y, note=f"tenta abrir o dialogo em ({x},{y})"),
+            # Clique direito SIMPLES. O duplo veio dos macros antigos e
+            # nunca foi medido: conferido no jogo, o simples abre o
+            # dialogo igual.
+            right(x, y, note=f"tenta abrir o dialogo em ({x},{y})"),
             wait(cfg.get("espera_dialogo", 1.5)),
         ]
         if restantes:
@@ -326,24 +338,29 @@ def vender(cfg) -> list[Step]:
 
     Duas coisas medidas no jogo desenham este passo:
 
-    1. **Duplo-clique-direito no slot vende direto.** Nao precisa mover
-       o item para a grade de baixo e apertar 'Sell'.
-    2. **A grade se reordena a cada venda.** Vendido o item de um slot,
-       o seguinte desce para a posicao dele -- conferido por variancia:
-       o slot 1 continuou ocupado e o 2 esvaziou. Por isso o roteiro
-       bate SEMPRE NO MESMO SLOT, em vez de andar pela grade.
+    1. **O clique no item MOVE para a cesta**, nao vende. Quem
+       efetiva e o botao 'Sell'. Custou caro descobrir: sem o clique
+       final, o passo de fechar (Cancel) DESFAZIA tudo e devolvia os
+       itens para a bag -- e a leitura ingenua era "nao vendeu".
+       Provado pelo ouro lido da memoria: 6788596 antes, 6788597 depois.
+    2. **A grade se reordena a cada movimentacao.** Movido o item de um
+       slot, o seguinte desce para a posicao dele -- conferido por
+       variancia: o slot 1 continuou ocupado e o 2 esvaziou. Por isso o
+       roteiro bate SEMPRE NO MESMO SLOT, em vez de andar pela grade.
 
     Dai o 'slot_inicial_venda' proteger o inicio da bag: itens antes
     dele nunca sao tocados, que e como o usuario guarda pocao de HP e
     mana.
 
-    Item "precioso" abre uma caixa de confirmacao. O clique no Ok e
-    obrigatorio=False de proposito: item comum nao abre caixa nenhuma,
-    e ai o passo desiste em silencio em vez de acusar falha.
+    Item "precioso" abre uma caixa de confirmacao AO MOVER. O clique no
+    Ok e obrigatorio=False de proposito: item comum nao abre caixa
+    nenhuma, e ai o passo desiste em silencio em vez de acusar falha.
     """
     slot = slot_de_venda(cfg, cfg["slot_inicial_venda"])
     vender_um = [
-        double_right(*slot, note="vende o item do primeiro slot liberado"),
+        # Clique esquerdo SIMPLES: conferido no jogo, abre a caixa de
+        # confirmacao do mesmo jeito que o duplo-direito herdado.
+        left(*slot, note="move para a cesta o primeiro slot liberado"),
         wait(cfg.get("espera_venda", 0.8)),
         click_template(
             cfg["template_ok_venda"],
@@ -361,7 +378,18 @@ def vender(cfg) -> list[Step]:
         esperar_template(cfg["template_janela_venda"],
                          timeout=cfg.get("timeout_janela_venda", 10.0),
                          note="espera a janela de venda abrir"),
+        # A moldura aparece ANTES da grade preencher. Sem esta folga o
+        # duplo-clique cai em slot ainda vazio e nada e vendido -- que e
+        # por que funcionava na mao (segundos depois) e falhava no
+        # runner (0,15s depois).
+        wait(cfg.get("espera_grade", 1.5), note="deixa a grade preencher"),
         *repeat(cfg.get("max_itens_vendidos", 20), vender_um),
+        # EFETIVA a venda. Sem este clique a cesta fica cheia e o passo
+        # seguinte, que fecha a janela, desfaz tudo.
+        click_template(cfg["template_confirmar_venda"],
+                       timeout=cfg.get("timeout_confirmar_venda", 5.0),
+                       note="efetiva a venda"),
+        wait(cfg.get("espera_pos_venda", 1.5)),
         click_template(cfg["template_fechar_venda"], obrigatorio=False,
                        note="fecha a janela de venda"),
         wait(0.5),
