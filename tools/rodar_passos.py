@@ -49,11 +49,17 @@ def montar(nomes, cfg):
 
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 3 or sys.argv[1].startswith("--"):
         print(__doc__)
         sys.exit(1)
 
-    titulo, nomes = sys.argv[1], sys.argv[2:]
+    # --pausa: espera Enter ANTES de cada passo. Serve pra descobrir, no
+    # jogo, qual waypoint e o ultimo que a caminhada fecha de forma
+    # confiavel -- dali em diante compensa trocar conta por clique fixo.
+    argv = [a for a in sys.argv[1:] if a != "--pausa"]
+    pausar = "--pausa" in sys.argv
+
+    titulo, nomes = argv[0], argv[1:]
     cfg = DEFAULT_CONFIG
 
     # Sem isto os avisos do runner nao aparecem em lugar nenhum -- e sao
@@ -95,6 +101,12 @@ def main():
                 print(f"[{runner.progress}] {passo.kind}{nota} "
                       f"| char={(char.x, char.y)}", flush=True)
                 ultimo = runner.index
+
+                if pausar:
+                    try:
+                        input("       Enter para executar este passo... ")
+                    except EOFError:
+                        pausar = False
 
             runner.tick(StepContext(
                 hwnd=hwnd, input_service=entrada,

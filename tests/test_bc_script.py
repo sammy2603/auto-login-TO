@@ -518,8 +518,10 @@ def test_sem_rota_gravada_a_ida_pra_cave_e_so_minimapa():
     Enquanto os cliques de mapa não forem gravados, o passo some inteiro
     em vez de virar clique no vazio.
     """
-    passos = bc_steps.ir_para_cave(
-        {**DEFAULT_CONFIG, "cave_map_clicks": [], "cave_waypoints": []})
+    passos = bc_steps.ir_para_cave({
+        **DEFAULT_CONFIG, "cave_map_clicks": [], "cave_waypoints": [],
+        "cave_final_clicks": [],
+    })
 
     assert [p.kind for p in passos] == ["walk_to"]
 
@@ -1115,21 +1117,42 @@ def test_ida_pra_cave_percorre_os_waypoints_e_fecha_no_npc():
     Um walk_to único pro NPC tenta cortar reto e para na parede -- a rota
     real contorna pelo leste (x chega a 1415) antes de descer. Os
     waypoints trazem o desvio embutido, porque foram CAMINHADOS e não
-    calculados. O último passo é o único com tolerância apertada: é a
-    posição exata dele que faz o NPC cair sempre no mesmo pixel da tela.
+    calculados.
+
+    O fecho é CLIQUE FIXO no minimapa, e não mais conta: o minimapa é
+    centrado no personagem, então um pixel fixo é um deslocamento
+    relativo fixo, e partindo sempre do mesmo waypoint chega sempre no
+    mesmo lugar. Dispensa escala, centro e tolerância -- as três coisas
+    que erraram justamente neste trecho.
     """
     passos = bc_steps.ir_para_cave(DEFAULT_CONFIG)
+    waypoints = DEFAULT_CONFIG["cave_waypoints"]
+    cliques = DEFAULT_CONFIG["cave_final_clicks"]
+
+    caminhadas = [p for p in passos if p.kind == "walk_to"]
+    assert [p.args[:2] for p in caminhadas] == list(waypoints)
+    assert caminhadas[0].args[6] == DEFAULT_CONFIG["waypoint_tolerance"]
+
+    # Cada clique espera o trecho terminar: clicar por cima de uma
+    # caminhada em curso a cancela, e o pixel seguinte só é previsível
+    # se o anterior chegou ao fim.
+    assert [p.args for p in passos if p.kind == "right"] == [
+        tuple(c) for c in cliques]
+    assert len([p for p in passos if p.kind == "wait_stopped"]) == len(cliques)
+
+    # O último waypoint é a ORIGEM do clique gravado. Sem ele o passo
+    # anterior entrega o personagem alguns pontos adiante e a diferença
+    # se transfere inteira para o destino.
+    assert waypoints[-1] == (1391, -625)
+
+
+def test_sem_clique_gravado_a_ida_pra_cave_volta_pro_walk_to():
+    """Fallback: enquanto os cliques não existirem, vale a conta."""
+    cfg = {**DEFAULT_CONFIG, "cave_final_clicks": []}
+    passos = bc_steps.ir_para_cave(cfg)
 
     assert all(p.kind == "walk_to" for p in passos)
-    assert len(passos) == len(DEFAULT_CONFIG["cave_waypoints"]) + 1
-
-    destinos = [p.args[:2] for p in passos]
-    assert destinos[:-1] == DEFAULT_CONFIG["cave_waypoints"]
-    assert destinos[-1] == DEFAULT_CONFIG["npc_entrada_parada"]
-
-    # índice 6 é a tolerância (ver a tupla montada em walk_to)
-    assert passos[0].args[6] == DEFAULT_CONFIG["waypoint_tolerance"]
-    assert passos[-1].args[6] == DEFAULT_CONFIG["tolerancia_posicao"]
+    assert passos[-1].args[:2] == cfg["npc_entrada_parada"]
 
 
 def test_entrada_insiste_o_bastante_pra_instancia_cheia():

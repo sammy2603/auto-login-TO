@@ -253,8 +253,35 @@ DEFAULT_CONFIG = {
         (1407, -544), (1403, -555), (1398, -566), (1393, -575),
         (1388, -585),
         (1385, -591), (1387, -600), (1389, -609), (1391, -619),
-        (1393, -628),
+        # Origem do clique fixo, e por isso um waypoint explicito: o
+        # pixel gravado foi medido a partir DAQUI. Deixar a entrega ao
+        # acaso (o passo anterior para em ~(1388,-620)) transferiria a
+        # diferenca inteira para o destino, unidade por unidade.
+        (1391, -625),
     ],
+    # A rota calculada TERMINA em (1391,-619) -- na pratica o
+    # personagem para em (1388,-620), e foi esse o ponto escolhido no
+    # jogo como entrega: consistente entre corridas e longe de parede.
+    #
+    # Daqui ate o NPC sao CLIQUES FIXOS no minimapa, e nao mais conta.
+    # O minimapa e centrado no personagem, entao um pixel fixo e um
+    # deslocamento relativo fixo: partindo sempre do mesmo lugar, chega
+    # sempre no mesmo lugar. Isso dispensa escala, centro e tolerancia
+    # -- as tres coisas que erraram nesta parte do trajeto.
+    #
+    # O preco: depende do ponto de partida ser repetivel. Variacao na
+    # entrega vira variacao igual no destino, unidade por unidade.
+    #
+    # VAZIO ate serem gravados: com o personagem em (1388,-620), rodar
+    # 'python tools/gravar_rota.py --pid N --centro 914 114 --raio 72'
+    # e clicar no minimapa ate o NPC. Enquanto estiver vazio, o roteiro
+    # cai no walk_to de sempre.
+    "cave_final_clicks": [
+        # Gravado em 2026-08-06 partindo de (1391,-625): chega em
+        # (1395,-636), o pe do Skull Herald. Um clique so.
+        (929, 145),
+    ],
+    "espera_clique_final": 0.5,
     "waypoint_tolerance": 10,
     "waypoint_timeout": 45.0,
 
@@ -264,11 +291,30 @@ DEFAULT_CONFIG = {
     # Medido neste client -- clique direito no minimapa e comparacao da
     # posicao lida da memoria antes e depois.
     "minimapa_centro": (915, 112),
-    "minimapa_raio": 55,
-    # Unidades de mundo por pixel. Aproximada de proposito: a caminhada
-    # e um laco que rele a posicao, entao erro custa iteracao a mais,
-    # nao destino errado.
-    "minimapa_escala": 1.0,
+    # 72 px, MEDIDO na captura por deteccao de circulo (HoughCircles em
+    # parada_atual.png deu centro (914,114) e raio 72; o centro
+    # confirmou o config, o raio nao). Estava em 55, chutado, o que
+    # truncava clique que podia ir mais longe.
+    #
+    # Com a escala medida, 72 px sao ~27 unidades de alcance por clique.
+    "minimapa_raio": 72,
+    # Unidades de mundo por pixel. MEDIDA em 2026-08-06 com o minimapa
+    # aproximado: cinco cliques gravados com tools/gravar_rota.py e
+    # ajuste por minimos quadrados sobre os offsets >= 10 px (offset
+    # menor cai na zona morta e contamina a conta). Deu 0,495.
+    #
+    # Estava em 1.0, chutado, e era o erro por tras de tudo: o walk_to
+    # pedia METADE do deslocamento necessario a cada clique. O laco
+    # compensava reclicando, ate o resto cair abaixo da zona morta -- e
+    # ai travava, a ~4 unidades do alvo. Era esse o sintoma perseguido
+    # a sessao inteira.
+    #
+    # Refeita com o centro medido (914,114): o eixo Y da 0,375 / 0,350 /
+    # 0,375 / 0,370 nas quatro amostras -- consistente. O eixo X da 0,80
+    # / 0,50 / 0,28 / 0,00, que NAO e dispersao de medicao: aquele
+    # trecho e um corredor norte-sul e o personagem nao consegue se
+    # deslocar em x ali. As amostras de X mediram parede, nao escala.
+    "minimapa_escala": 0.37,
 
     # --- Entrada da cave (NPC "Skull Herald", do lado de fora) ---
     # Coordenada do MUNDO (a mesma que o jogo mostra) e ponto na TELA
@@ -362,7 +408,7 @@ DEFAULT_CONFIG = {
     # catalogo npcs.json guarda como (1395, -636) -- parar em cima dela
     # deixou o personagem fora do angulo de clique nas tres corridas de
     # 2026-08-06.
-    "npc_entrada_parada": (1393, -636),
+    "npc_entrada_parada": (1395, -636),
     # Depois de chegar, antes de clicar: o personagem ainda esta
     # assentando a animacao de parada quando o passo seguinte comeca, e
     # clique disparado nesse instante sai antes do NPC estar no lugar
@@ -421,8 +467,15 @@ DEFAULT_CONFIG = {
     # Quem absorve as unidades que sobram e a lista de pontos de clique
     # no NPC -- e ela deu conta: na mesma corrida, o dialogo abriu no
     # segundo ponto com o personagem em (1396,-633).
-    "tolerancia_chegada": 5,
+    # 3: logo acima da zona morta medida (~5 px = 2,5 unidades). Abaixo
+    # dela o clique cai em cima do proprio personagem e o jogo ignora --
+    # era o que fazia o passo gastar o timeout sem sair do lugar.
+    "tolerancia_chegada": 3,
     "timeout_chegada": 60.0,
+    # Prazo do passo final, curto de proposito: ele nao tem obstaculo
+    # pra contornar, so os ultimos metros. Se nao fechou em 20 s, nao
+    # vai fechar -- insistir e o que fazia a run perder minutos.
+    "timeout_chegada_final": 20.0,
     # Conferencia de chegada: nao corrige, so registra onde parou.
     "timeout_conferencia": 10.0,
     "timeout_npc_saida": 20.0,

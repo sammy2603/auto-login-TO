@@ -509,11 +509,29 @@ def ir_para_cave(cfg) -> list[Step]:
     o mesmo sem depender de pixel de tela, que quebra com resolucao
     diferente.
     """
-    return [
+    cliques = cfg.get("cave_final_clicks") or []
+
+    passos = [
         *walk_route(cfg, cfg.get("cave_waypoints") or []),
         *walk_by_world_map(cfg, cfg.get("cave_map_clicks") or []),
-        *andar_ate(cfg, pos_npc(cfg, "npc_entrada")),
     ]
+
+    if cliques:
+        # Cliques fixos no lugar da conta. Espera parar entre um e
+        # outro: clicar por cima de uma caminhada em curso a cancela, e
+        # aqui cada clique depende do anterior ter terminado -- e o
+        # ponto de partida que torna o pixel seguinte previsivel.
+        for x, y in cliques:
+            passos += [
+                right(x, y, note=f"clique fixo no minimapa ({x},{y})"),
+                wait(cfg.get("espera_clique_final", 0.5)),
+                esperar_parado(timeout=cfg.get("timeout_trecho_final", 30.0),
+                               note="espera o trecho terminar"),
+            ]
+    else:
+        passos += andar_ate(cfg, pos_npc(cfg, "npc_entrada"))
+
+    return passos
 
 
 def fixar_camera(cfg) -> list[Step]:
@@ -587,7 +605,8 @@ def walk_by_world_map(cfg, pontos) -> list[Step]:
     return passos
 
 
-def andar_ate(cfg, destino, tolerancia=None) -> list[Step]:
+def andar_ate(cfg, destino, tolerancia=None, varredura_apos=None,
+              timeout=None) -> list[Step]:
     """
     Caminhada por coordenada do MUNDO, cortando reto pelo minimapa.
 
@@ -607,7 +626,10 @@ def andar_ate(cfg, destino, tolerancia=None) -> list[Step]:
             escala=cfg["minimapa_escala"],
             tolerancia=(tolerancia if tolerancia is not None
                         else cfg.get("tolerancia_posicao", 5)),
-            timeout=cfg.get("timeout_chegada", 60.0),
+            varredura_apos=(varredura_apos if varredura_apos is not None
+                            else cfg.get("varredura_apos", 3)),
+            timeout=(timeout if timeout is not None
+                     else cfg.get("timeout_chegada", 60.0)),
             note=f"anda ate {destino}",
         ),
     ]
@@ -632,10 +654,18 @@ def arrive_exactly(cfg, destino) -> list[Step]:
     segunda passada chegou, o aviso no log diz onde o personagem parou,
     que e a informacao que faltava pra entender a falha.
     """
-    tolerancia = cfg.get("tolerancia_chegada", 2)
+    tolerancia = cfg.get("tolerancia_chegada", 5)
+    # Varredura DESLIGADA e prazo curto neste passo. A varredura serve
+    # pra contornar obstaculo no meio da rota; no ponto de chegada ela
+    # so espalha o personagem -- medido em 2026-08-06: dois timeouts de
+    # 60 s girando em circulo antes de parar, por acaso, num lugar de
+    # onde o clique funcionou. Perto do destino, nao conseguir fechar
+    # nao e estar preso: e o clique de minimapa chegando no limite.
+    sem_varredura = 10 ** 6
+    prazo = cfg.get("timeout_chegada_final", 20.0)
     return [
-        *andar_ate(cfg, destino, tolerancia),
-        *andar_ate(cfg, destino, tolerancia),
+        *andar_ate(cfg, destino, tolerancia, sem_varredura, prazo),
+        *andar_ate(cfg, destino, tolerancia, sem_varredura, prazo),
         wait_position(
             *destino,
             tolerancia=tolerancia,
