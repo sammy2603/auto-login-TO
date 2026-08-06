@@ -16,6 +16,7 @@ from src.services.bot.step_runner import (
     StepRunner,
     attack_until_dead,
     call,
+    camera,
     double_right,
     key,
     key_down,
@@ -29,6 +30,7 @@ from src.services.bot.step_runner import (
     skip_if_color,
     pular_se,
     esperar_ate,
+    esperar_parado,
     walk_to,
     use_all_items,
     wait_position,
@@ -491,7 +493,8 @@ def test_parede_no_caminho_faz_o_clique_desviar(entrada):
     """
     char = FakeChar(1000, -500)
     runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0)])
+                                 escala=1.0, tolerancia=2, intervalo=0.0,
+                                 paradas=1)])
     ctx = contexto_char(entrada, char)
 
     runner.tick(ctx)   # primeiro clique, reto
@@ -904,3 +907,156 @@ def test_click_template_sem_deslocamento_clica_no_centro():
         pass
 
     assert entrada.acoes == [("left", 485, 429)]
+
+
+# =====================================================
+# Parada do personagem: o gatilho da caminhada
+# =====================================================
+
+class FakeMemoria:
+    """Escritor de camera de mentira, pra nao tocar em processo nenhum."""
+
+    def __init__(self, ok=True):
+        self.ok = ok
+        self.escritas = []
+
+    def escrever_camera(self, zoom, rotacao, angulo):
+        self.escritas.append((zoom, rotacao, angulo))
+        return self.ok
+
+
+def test_nao_reclica_enquanto_o_personagem_esta_andando(entrada):
+    """
+    O defeito que isto tranca: reclicar no meio da caminhada CANCELA o
+    trajeto em curso e manda o personagem recomeçar de onde estiver.
+    Com re-clique por relógio, o resultado era o vaivém em volta do
+    destino. O gatilho tem que ser a coordenada parar de mudar.
+    """
+    char = FakeChar(0, 0)
+    runner = StepRunner([walk_to(500, 0, centro=(915, 112), raio=55,
+                                 escala=1.0, tolerancia=2, intervalo=0.0,
+                                 paradas=2)])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)                 # primeiro clique
+    for passo in range(1, 4):        # andando: posição muda a cada tick
+        char.x = passo * 10
+        runner.tick(ctx)
+
+    assert len(entrada.acoes) == 1, "reclicou com o personagem em movimento"
+
+    # Parou: duas leituras iguais liberam o próximo clique.
+    runner.tick(ctx)
+    runner.tick(ctx)
+
+    assert len(entrada.acoes) == 2
+
+
+def test_esperar_parado_termina_quando_a_posicao_repete(entrada):
+    char = FakeChar(10, 10)
+    runner = StepRunner([esperar_parado(paradas=2, timeout=5.0)])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)          # primeira leitura
+    char.x = 20               # ainda andando
+    runner.tick(ctx)
+    assert not runner.finished
+
+    runner.tick(ctx)          # parou (1)
+    runner.tick(ctx)          # parou (2)
+
+    assert runner.finished
+
+
+def test_esperar_parado_segue_no_timeout(entrada):
+    """Caminhada que demora mais que o esperado não pode travar o ciclo."""
+    char = FakeChar(0, 0)
+    runner = StepRunner([esperar_parado(paradas=99, timeout=0.05)])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)
+    time.sleep(0.06)
+    runner.tick(ctx)
+
+    assert runner.finished
+
+
+def test_camera_escreve_os_tres_valores(entrada):
+    memoria = FakeMemoria()
+    ctx = StepContext(hwnd=1, input_service=entrada, memory=memoria)
+    runner = StepRunner([camera(zoom=380.0, rotacao=0.0, angulo=40.0)])
+
+    rodar_ate_terminar(runner, ctx)
+
+    assert memoria.escritas == [(380.0, 0.0, 40.0)]
+
+
+def test_camera_que_falha_nao_derruba_o_roteiro(entrada):
+    """
+    Câmera errada erra cliques; parar o ciclo aqui não conserta nada e
+    ainda esconde o resto do roteiro.
+    """
+    ctx = StepContext(hwnd=1, input_service=entrada, memory=FakeMemoria(ok=False))
+    runner = StepRunner([camera(), left(1, 2)])
+
+    rodar_ate_terminar(runner, ctx)
+
+    assert runner.finished
+    assert entrada.acoes == [("left", 1, 2)]
+
+
+def test_camera_sem_acesso_a_memoria_nao_trava(entrada):
+    runner = StepRunner([camera()])
+
+    rodar_ate_terminar(runner, StepContext(hwnd=1, input_service=entrada))
+
+    assert runner.finished
+
+
+def test_preso_em_canto_escala_para_varredura_circular(entrada):
+    """
+    O desvio angular tira de parede ATRAVESSADA: aponta pro lado e
+    contorna. De canto ele não tira -- toda direção que ainda aponta pro
+    alvo esbarra, e abrir o ângulo aos poucos só testa o mesmo
+    semicírculo. A varredura dá a volta inteira, incluindo o sentido
+    oposto ao destino.
+    """
+    char = FakeChar(1000, -500)
+    runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
+                                 escala=1.0, tolerancia=2, intervalo=0.0,
+                                 paradas=1, varredura_apos=2)])
+    ctx = contexto_char(entrada, char)
+
+    for _ in range(3):
+        runner.tick(ctx)   # personagem nunca sai do lugar
+
+    # 1 clique reto + 1 desviado + a volta de 8
+    assert len(entrada.acoes) == 10
+
+    volta = [(x, y) for _, x, y in entrada.acoes[2:]]
+    assert len(set(volta)) == 8, "a volta tem que cobrir oito direções"
+
+    # Inclui o sentido OPOSTO ao alvo: o alvo está ao norte (y do mundo
+    # maior = acima no minimapa), então tem que haver clique abaixo do
+    # centro -- é o que tira do canto.
+    assert any(y > 112 for _, y in volta)
+
+
+def test_varredura_cresce_o_raio_a_cada_volta_presa(entrada):
+    """Perto do centro o clique anda pouco, e pouco pode não bastar."""
+    char = FakeChar(1000, -500)
+    runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
+                                 escala=1.0, tolerancia=2, intervalo=0.0,
+                                 paradas=1, varredura_apos=1)])
+    ctx = contexto_char(entrada, char)
+
+    runner.tick(ctx)   # clique reto
+    runner.tick(ctx)   # primeira volta
+    primeira = entrada.acoes[1:9]
+    runner.tick(ctx)   # segunda volta
+    segunda = entrada.acoes[9:17]
+
+    def raio(acoes):
+        return max(abs(x - 915) for _, x, _ in acoes)
+
+    assert raio(segunda) > raio(primeira)

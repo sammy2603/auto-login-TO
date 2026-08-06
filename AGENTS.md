@@ -70,6 +70,19 @@ re-exports `Settings` as module-level constants, kept so the scripts in
 directly.**
 
 ## Working conventions
+- **Identifiers in English, prose in Portuguese.** Anything the
+  interpreter reads — modules, classes, functions, variables, config
+  keys, step kinds, test names — is written in English. Anything a
+  person reads — comments, docstrings, log messages, `.project/` docs —
+  stays in Portuguese, because that is where the game-specific context
+  lives and it is worth nothing translated.
+- **Rename as you touch.** New code is English from the start, and any
+  Portuguese identifier in a block being edited gets renamed in the same
+  change — the same files come up again and again here, so paying a few
+  renames per visit is cheaper than one big-bang migration. Rename every
+  call site in the same commit (`grep` the old name to zero) and keep
+  the rename separate from behaviour changes inside the diff, so a
+  broken test points at one or the other, never both.
 - Keep changes compatible with Windows and Python 3.10+.
 - Never hardcode credentials or secrets. Credentials come from `.env`
   (`TALISMAN_USER` / `TALISMAN_PASS`); saved accounts live in

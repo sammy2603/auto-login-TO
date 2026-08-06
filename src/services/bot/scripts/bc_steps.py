@@ -21,8 +21,10 @@ from src.services.game import npcs
 from src.services.bot.step_runner import (
     Step,
     attack_until_dead,
+    camera,
     click_template,
     double_right,
+    esperar_parado,
     key,
     key_down,
     pular_se,
@@ -35,6 +37,7 @@ from src.services.bot.step_runner import (
     right,
     use_all_items,
     wait,
+    wait_position,
     walk_to,
 )
 
@@ -78,10 +81,10 @@ def ajustes_iniciais(cfg) -> list[Step]:
         key_down(cfg["esconder_jogadores_key"],
                  note="segura escondendo os outros jogadores"),
         *repeat(3, [left(997, 97, note="zoom out do minimapa")]),
-        # O macro clicava em (864, 55), que e o botao de reset de
-        # camera. Por template em vez de coordenada: e o mesmo botao, e
-        # view_reset ja trata timeout e avisa sem parar o roteiro.
-        *view_reset(cfg),
+        # O macro clicava em (864, 55), o botao de reset de camera do
+        # jogo. Escrever os tres floats na memoria cobre mais: o botao
+        # nao devolve o zoom, e o zoom e o que muda entre clients aqui.
+        *fixar_camera(cfg),
         wait(0.5),
     ]
 
@@ -287,7 +290,7 @@ def slot_de_venda(cfg, indice: int) -> tuple[int, int]:
     return ox + (i % colunas) * px, oy + (i // colunas) * py
 
 
-def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
+def abrir_dialogo_npc(cfg, prova: str, pontos=None) -> list[Step]:
     """
     Duplo-clique-direito no NPC, tentando alguns pontos ate o dialogo
     abrir.
@@ -300,8 +303,12 @@ def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
     ponto, olha se o elemento 'prova' apareceu, e so tenta o proximo se
     nao apareceu. Isso tambem cobre o caso de outro jogador passar na
     frente na hora errada.
+
+    Clique direito NAO move o personagem neste jogo -- so o esquerdo
+    move. Entao tentativa que erra o NPC nao custa deslocamento; custa
+    so o tempo da espera.
     """
-    pontos = cfg["pontos_do_npc"]
+    pontos = pontos or cfg["pontos_do_npc"]
     passos: list[Step] = []
     for n, (x, y) in enumerate(pontos):
         # Quantos passos faltam ate o fim do bloco: cada tentativa que
@@ -326,6 +333,42 @@ def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
                 pular_se_template(prova, restantes, note="dialogo ja abriu")
             )
     return passos
+
+
+def comprar_return_charm(cfg) -> list[Step]:
+    """
+    Compra um Return Charm no NPC de venda.
+
+    O charm e o que devolve o personagem para a cidade no ciclo
+    seguinte, entao comprar antes de sair e o que evita a run comecar
+    sem saida.
+
+    Mesma anatomia da venda, e pelas mesmas medicoes: clique direito
+    SIMPLES abre o dialogo, a janela demora a preencher a grade, e o
+    clique no item so MOVE para o carrinho -- quem efetiva e o botao
+    'Buy'. Sem ele, fechar a janela desfaz tudo.
+
+    O item entra por TEMPLATE do icone, e nao por posicao na grade: o
+    estoque do NPC tem duas paginas e nada garante a ordem entre
+    versoes. O icone casa em 0.9, entao a margem e folgada.
+    """
+    return [
+        *abrir_dialogo_npc(cfg, cfg["template_opcao_comprar"]),
+        click_template(cfg["template_opcao_comprar"], note="abre a loja"),
+        esperar_template(cfg["template_janela_compra"],
+                         timeout=cfg.get("timeout_janela_compra", 10.0),
+                         note="espera a loja abrir"),
+        wait(cfg.get("espera_grade", 1.5), note="deixa a grade preencher"),
+        click_template(cfg["template_item_charm"],
+                       note="poe o Return Charm no carrinho"),
+        wait(0.6),
+        click_template(cfg["template_confirmar_compra"],
+                       timeout=cfg.get("timeout_confirmar_compra", 5.0),
+                       note="efetiva a compra"),
+        wait(cfg.get("espera_pos_venda", 1.5)),
+        key("ESC", note="fecha a loja"),
+        wait(0.5),
+    ]
 
 
 def vender(cfg) -> list[Step]:
@@ -417,6 +460,15 @@ def pos_npc(cfg, chave: str):
     capturou ainda, ou NPC que o painel nao lista, continuam
     funcionando. Sem isso, catalogo faltando viraria run quebrada.
     """
+    # POSICAO DE PARADA vence tudo. O catalogo guarda a coordenada DO
+    # NPC, lida do painel Surrounding; o que a caminhada precisa e onde o
+    # PERSONAGEM tem que ficar para clicar nele -- e os dois nao
+    # coincidem. Quando existe um ponto de parada medido no jogo, ele e
+    # a resposta, e nem catalogo nem estimativa entram na conversa.
+    parada = cfg.get(f"{chave}_parada")
+    if parada:
+        return parada
+
     mapa = cfg.get(f"{chave}_mapa")
     nome = cfg.get(f"{chave}_nome")
     if mapa and nome:
@@ -438,24 +490,64 @@ def ir_para_cave(cfg) -> list[Step]:
     O macro antigo fazia isso abrindo o painel Surroundings e clicando
     no nome do NPC, o que aciona o PATHFINDING do jogo: o personagem
     percorre as passagens reais do mapa e leva o tempo que levar. Aqui
-    a caminhada e por coordenada, cortando reto pelo minimapa -- e o
-    que era pra ser tempo de farm deixa de ser tempo de caminhada.
+    a caminhada e por coordenada -- e o que era pra ser tempo de farm
+    deixa de ser tempo de caminhada.
+
+    Sao dois trechos, e nao um:
+
+    1. O GROSSO por WAYPOINTS ('cave_waypoints'), a rota que o bot de
+       referencia percorre -- capturada da memoria, em coordenada de
+       mundo. Um walk_to direto pro NPC nao serve: ele tenta cortar
+       reto, e ha obstaculo no meio (a rota contorna pelo leste antes de
+       descer). Breadcrumb a breadcrumb o desvio ja vem embutido.
+    2. Os ultimos metros pelo minimapa, com tolerancia apertada: quem
+       fecha o ponto exato e o walk_to final, e e a posicao exata que faz
+       o NPC cair sempre no mesmo pixel da tela.
+
+    'cave_map_clicks' continua atendido como alternativa (cliques no
+    mapa-mundi), mas hoje fica vazio: a rota em coordenada de mundo faz
+    o mesmo sem depender de pixel de tela, que quebra com resolucao
+    diferente.
     """
-    return andar_ate(cfg, pos_npc(cfg, "npc_entrada"))
+    cliques = cfg.get("cave_final_clicks") or []
+
+    passos = [
+        *walk_route(cfg, cfg.get("cave_waypoints") or []),
+        *walk_by_world_map(cfg, cfg.get("cave_map_clicks") or []),
+    ]
+
+    if cliques:
+        # Cliques fixos no lugar da conta. Espera parar entre um e
+        # outro: clicar por cima de uma caminhada em curso a cancela, e
+        # aqui cada clique depende do anterior ter terminado -- e o
+        # ponto de partida que torna o pixel seguinte previsivel.
+        for x, y in cliques:
+            passos += [
+                right(x, y, note=f"clique fixo no minimapa ({x},{y})"),
+                wait(cfg.get("espera_clique_final", 0.5)),
+                esperar_parado(timeout=cfg.get("timeout_trecho_final", 30.0),
+                               note="espera o trecho terminar"),
+            ]
+    else:
+        passos += andar_ate(cfg, pos_npc(cfg, "npc_entrada"))
+
+    return passos
 
 
-def view_reset(cfg) -> list[Step]:
+def fixar_camera(cfg) -> list[Step]:
     """
-    Clica no botao de reset de camera do jogo.
+    Fixa a camera escrevendo zoom, rotacao e angulo na memoria.
 
-    Existe pra proteger os cliques de CHAO: a entrada da cave e a volta
-    pelo NPC sao coordenadas de tela, e coordenada de tela so vale se a
-    camera estiver no angulo de sempre. Basta o jogador (ou um clique
-    perdido) girar a camera pra elas caírem no lugar errado.
+    Existe pra proteger os cliques de CHAO e de NPC: eles sao
+    coordenadas de TELA, e onde o NPC aparece na tela depende dos tres
+    valores. Basta o jogador (ou um clique perdido) girar a camera ou
+    rolar o zoom pra eles cairem ao lado do alvo.
 
-    Por template e nao por coordenada fixa porque o proprio botao e um
-    elemento de UI que a gente quer achar mesmo se a barra mudar de
-    lugar.
+    Substituiu o clique no botao de view reset do jogo, que era o que o
+    macro fazia. O botao devolve o angulo padrao mas NAO devolve o
+    zoom -- e os clients usados aqui tem o limite de zoom liberado, ou
+    seja, "resetado" nao quer dizer a mesma coisa em dois clients.
+    Escrever os tres valores torna o ponto de tela reproduzivel.
 
     Falhar aqui nao para o roteiro -- seguir com a camera torta ainda
     tem chance de dar certo, parar ali nao tem --, mas AVISA. Sem o
@@ -463,16 +555,58 @@ def view_reset(cfg) -> list[Step]:
     alvo sem explicacao.
     """
     return [
-        click_template(
-            cfg["template_view_reset"],
-            timeout=cfg.get("timeout_view_reset", 5.0),
-            note="reseta a camera",
+        camera(
+            zoom=cfg.get("camera_zoom", 380.0),
+            rotacao=cfg.get("camera_rotacao", 0.0),
+            angulo=cfg.get("camera_angulo", 40.0),
+            note="fixa a camera",
         ),
-        wait(cfg.get("espera_view_reset", 0.5)),
+        wait(cfg.get("espera_camera", 0.5)),
     ]
 
 
-def andar_ate(cfg, destino) -> list[Step]:
+def walk_by_world_map(cfg, pontos) -> list[Step]:
+    """
+    Deslocamento longo pelo MAPA-MUNDI (tecla M), e nao pelo minimapa.
+
+    O minimapa so alcanca o que esta perto: alvo fora do raio vira
+    clique na borda, e o resto da caminhada acaba entregue ao
+    pathfinding do jogo, que anda por estrada. O mapa-mundi cobre a area
+    inteira, entao dois ou tres cliques certos cortam o trajeto reto --
+    que e a razao de existir deste passo.
+
+    'pontos' sao pixels DA JANELA DO MAPA ABERTO, gravados com
+    tools/gravar_rota.py --mapa. Nao da pra calcular: a projecao do
+    mapa nao tem a escala do minimapa e muda de mapa para mapa.
+
+    Entre um clique e o outro espera o personagem PARAR, e nao um tempo
+    fixo: cada trecho leva o que levar, e clicar por cima de uma
+    caminhada em curso a cancela.
+    """
+    if not pontos:
+        return []
+
+    tecla = cfg.get("map_key", "M")
+    passos: list[Step] = [
+        key(tecla, note="abre o mapa-mundi"),
+        wait(cfg.get("map_open_delay", 1.0)),
+    ]
+    for x, y in pontos:
+        passos += [
+            right(x, y, note=f"clique no mapa ({x},{y})"),
+            wait(0.5, note="deixa a caminhada comecar"),
+            esperar_parado(timeout=cfg.get("map_leg_timeout", 90.0),
+                           note="espera chegar no ponto"),
+        ]
+    passos += [
+        key(tecla, note="fecha o mapa-mundi"),
+        wait(0.5),
+    ]
+    return passos
+
+
+def andar_ate(cfg, destino, tolerancia=None, varredura_apos=None,
+              timeout=None) -> list[Step]:
     """
     Caminhada por coordenada do MUNDO, cortando reto pelo minimapa.
 
@@ -490,10 +624,88 @@ def andar_ate(cfg, destino) -> list[Step]:
             centro=cfg["minimapa_centro"],
             raio=cfg["minimapa_raio"],
             escala=cfg["minimapa_escala"],
-            tolerancia=cfg.get("tolerancia_posicao", 8),
-            timeout=cfg.get("timeout_chegada", 60.0),
+            tolerancia=(tolerancia if tolerancia is not None
+                        else cfg.get("tolerancia_posicao", 5)),
+            varredura_apos=(varredura_apos if varredura_apos is not None
+                            else cfg.get("varredura_apos", 3)),
+            timeout=(timeout if timeout is not None
+                     else cfg.get("timeout_chegada", 60.0)),
             note=f"anda ate {destino}",
         ),
+    ]
+
+
+def arrive_exactly(cfg, destino) -> list[Step]:
+    """
+    Caminhada ate o destino, SEGUNDA passada, e conferencia.
+
+    Motivo: o walk_to desiste no timeout e devolve o controle -- e
+    proposital, travar o ciclo numa caminhada e pior. So que o passo
+    seguinte aqui e clique em NPC, coordenada de TELA: seguir com o
+    personagem parado longe garante clique no vazio. Medido no jogo:
+    foi exatamente assim que a entrada falhou.
+
+    A segunda passada nao e desperdicio. Se a primeira chegou, ela sai
+    de graca -- walk_to comeca conferindo a distancia e termina no
+    primeiro tick. Se a primeira estourou o tempo, a segunda recomeca
+    de muito mais perto, com prazo cheio.
+
+    O wait_position no fim nao corrige nada, so REGISTRA: se nem a
+    segunda passada chegou, o aviso no log diz onde o personagem parou,
+    que e a informacao que faltava pra entender a falha.
+    """
+    tolerancia = cfg.get("tolerancia_chegada", 5)
+    # Varredura DESLIGADA e prazo curto neste passo. A varredura serve
+    # pra contornar obstaculo no meio da rota; no ponto de chegada ela
+    # so espalha o personagem -- medido em 2026-08-06: dois timeouts de
+    # 60 s girando em circulo antes de parar, por acaso, num lugar de
+    # onde o clique funcionou. Perto do destino, nao conseguir fechar
+    # nao e estar preso: e o clique de minimapa chegando no limite.
+    sem_varredura = 10 ** 6
+    prazo = cfg.get("timeout_chegada_final", 20.0)
+    return [
+        *andar_ate(cfg, destino, tolerancia, sem_varredura, prazo),
+        *andar_ate(cfg, destino, tolerancia, sem_varredura, prazo),
+        wait_position(
+            *destino,
+            tolerancia=tolerancia,
+            timeout=cfg.get("timeout_conferencia", 10.0),
+            note=f"confere que esta em {destino} antes de clicar",
+        ),
+        wait(cfg.get("espera_pos_chegada", 0.5),
+             note="deixa a parada assentar antes de clicar"),
+    ]
+
+
+def walk_route(cfg, waypoints) -> list[Step]:
+    """
+    Percorre uma lista de coordenadas do MUNDO, uma de cada vez.
+
+    Existe porque um walk_to unico para um destino distante tenta cortar
+    reto e para na primeira parede: o destravamento tira o personagem do
+    canto, mas ele volta a apontar para o mesmo obstaculo e o ciclo se
+    repete. Waypoint elimina o problema na origem -- o desvio ja esta na
+    rota, que foi CAMINHADA e nao calculada.
+
+    Tolerancia folgada aqui (waypoint_tolerance): ponto intermediario e
+    breadcrumb, nao destino. Insistir na coordenada exata de cada um
+    custa iteracao e nao compra nada -- quem precisa de precisao e o
+    passo final, o do NPC.
+    """
+    if not waypoints:
+        return []
+
+    return [
+        walk_to(
+            x, y,
+            centro=cfg["minimapa_centro"],
+            raio=cfg["minimapa_raio"],
+            escala=cfg["minimapa_escala"],
+            tolerancia=cfg.get("waypoint_tolerance", 10),
+            timeout=cfg.get("waypoint_timeout", 45.0),
+            note=f"waypoint ({x}, {y})",
+        )
+        for x, y in waypoints
     ]
 
 
@@ -508,37 +720,46 @@ def falar_com_npc(cfg, destino, ponto_na_tela, template_opcao) -> list[Step]:
     animacao nem iluminacao por cima, que e onde template matching e
     forte.
 
-    Com o personagem no pe do NPC e a camera resetada, o NPC cai sempre
-    no mesmo ponto da tela -- por isso 'ponto_na_tela' e coordenada fixa
-    e nao busca por imagem, que no corpo do NPC oscila com a animacao
-    idle (medido: 0.14 a 0.93 no mesmo lugar).
+    Com o personagem no pe do NPC e a camera fixada, o NPC cai perto do
+    mesmo ponto da tela -- por isso a ancora e coordenada e nao busca
+    por imagem, que no corpo do NPC oscila com a animacao idle (medido:
+    0.14 a 0.93 no mesmo lugar).
 
-    Sem 'ponto_na_tela' calibrado, cai no plano B: procura o proprio NPC
-    por template.
+    "Perto" e nao "no mesmo": a caminhada termina dentro de uma
+    tolerancia, nao num pixel, e cada unidade de mundo de sobra desloca
+    o NPC na tela. Por isso 'ponto_na_tela' pode ser uma LISTA: tenta um
+    ponto, olha se o dialogo abriu, e so entao tenta o proximo. A prova
+    e o proprio dialogo, do mesmo jeito que no NPC de venda -- clique
+    direito nao move o personagem neste jogo, entao tentativa que erra
+    custa tempo e mais nada.
+
+    Sem ponto calibrado, cai no plano B: procura o proprio NPC por
+    template.
     """
-    passos = list(andar_ate(cfg, destino))
-    passos += view_reset(cfg)
+    passos = list(arrive_exactly(cfg, destino))
+    passos += fixar_camera(cfg)
 
     # Direito SIMPLES: e o que abre a interacao com NPC. Duplo direito
     # (que e o de mover/interagir com o cenario) seleciona o NPC e nao
     # abre dialogo nenhum -- foi o que travou o primeiro teste.
     if ponto_na_tela:
-        passos.append(
-            right(*ponto_na_tela, note="abre o dialogo do NPC")
-        )
+        pontos = (list(ponto_na_tela)
+                  if isinstance(ponto_na_tela[0], (list, tuple))
+                  else [tuple(ponto_na_tela)])
+        passos += abrir_dialogo_npc(cfg, template_opcao, pontos)
     else:
-        passos.append(
+        passos += [
             click_template(cfg["template_npc_saida"], botao="right",
                            timeout=cfg.get("timeout_npc_saida", 20.0),
-                           note="acha e fala com o NPC")
-        )
+                           note="acha e fala com o NPC"),
+            wait(1.5, note="abre o dialogo"),
+        ]
 
-    passos += [
-        wait(1.5, note="abre o dialogo"),
+    passos.append(
         click_template(template_opcao,
                        timeout=cfg.get("timeout_npc_saida", 20.0),
-                       note="escolhe a opcao"),
-    ]
+                       note="escolhe a opcao")
+    )
 
     return passos
 
@@ -569,7 +790,7 @@ def entrar_na_cave(cfg) -> list[Step]:
         tentativa,
         *PIXEL_DENTRO_DA_CAVE,
         cfg.get("cor_dentro_da_cave", COR_DENTRO_DA_CAVE),
-        vezes=cfg["tentativas_de_entrada"],
+        vezes=cfg["cave_entry_attempts"],
     )
 
 

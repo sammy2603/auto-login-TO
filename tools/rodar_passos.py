@@ -25,6 +25,7 @@ from types import SimpleNamespace
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import config
+from src.infrastructure.logging.service import LoggingService
 from src.infrastructure.input.service import InputService
 from src.infrastructure.vision.service import VisionService
 from src.infrastructure.window.service import WindowService
@@ -48,12 +49,24 @@ def montar(nomes, cfg):
 
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 3 or sys.argv[1].startswith("--"):
         print(__doc__)
         sys.exit(1)
 
-    titulo, nomes = sys.argv[1], sys.argv[2:]
+    # --pausa: espera Enter ANTES de cada passo. Serve pra descobrir, no
+    # jogo, qual waypoint e o ultimo que a caminhada fecha de forma
+    # confiavel -- dali em diante compensa trocar conta por clique fixo.
+    argv = [a for a in sys.argv[1:] if a != "--pausa"]
+    pausar = "--pausa" in sys.argv
+
+    titulo, nomes = argv[0], argv[1:]
     cfg = DEFAULT_CONFIG
+
+    # Sem isto os avisos do runner nao aparecem em lugar nenhum -- e sao
+    # eles que dizem POR QUE um passo falhou ("nao chegou em (x,y),
+    # parou em (a,b)", "preso, varrendo em circulo"). Diagnosticar sem
+    # eles e adivinhar; foi o que aconteceu por varias rodadas.
+    LoggingService.setup(to_file=False, to_console=True, force=True)
 
     ws = WindowService()
     hwnd = ws.connect(title_substring=titulo, timeout=10)
@@ -89,9 +102,19 @@ def main():
                       f"| char={(char.x, char.y)}", flush=True)
                 ultimo = runner.index
 
+                if pausar:
+                    try:
+                        input("       Enter para executar este passo... ")
+                    except EOFError:
+                        pausar = False
+
             runner.tick(StepContext(
                 hwnd=hwnd, input_service=entrada,
                 vision_service=visao, char_info=char, target_info=alvo,
+                # O passo de camera ESCREVE na memoria. Sem isto aqui ele
+                # avisa e pula, e o trecho roda com a camera do jeito que
+                # estiver -- justamente o que invalida clique de tela.
+                memory=reader,
             ))
 
             time.sleep(0.2)

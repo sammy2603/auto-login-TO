@@ -47,6 +47,21 @@ def _rpm_float(hProcess: int, address: int) -> float:
     return ctypes.c_float.from_buffer_copy(buf.raw[:4]).value
 
 
+def _wpm_float(hProcess: int, address: int, valor: float) -> bool:
+    """Escreve 4 bytes como float. Devolve False se a escrita falhou."""
+    buf = ctypes.c_float(valor)
+    escritos = ctypes.c_size_t()
+    return bool(
+        kernel32.WriteProcessMemory(
+            wintypes.HANDLE(hProcess),
+            wintypes.LPVOID(address),
+            ctypes.byref(buf),
+            4,
+            ctypes.byref(escritos),
+        )
+    )
+
+
 def _rpm_string(hProcess: int, address: int, max_len: int = 64) -> str:
     """Le uma string terminada em null."""
     buf = ctypes.create_string_buffer(max_len)
@@ -100,6 +115,22 @@ class MemoryReader:
     # conforme o arranjo dos paineis -- ver PONTEIROS.md.
     ALVO_BASE = 0x0107D410
     MISSOES_BASE = 0x0150C314
+    # Camera: tres floats no mesmo objeto (ver PONTEIROS.md). E a UNICA
+    # escrita que este leitor faz, e e local: o servidor nao valida
+    # angulo de camera. Escrever aqui substitui o botao de view reset,
+    # que so devolve o angulo padrao e nao mexe no zoom -- e o zoom e
+    # justamente o que muda de client para client neste servidor, onde
+    # os clients tem o limite de zoom liberado.
+    CAMERA_BASE = 0x01170054
+    CAMERA_ROTACAO = 0x5C
+    CAMERA_ANGULO = 0x60
+    CAMERA_ZOOM = 0x64
+    # Zoom ALVO da interpolacao. Confirmado com tools/camera_probe.py em
+    # 2026-08-06: rolando o zoom, +0x64 vai ate 818.89 e +0x68 ate
+    # 824.00 -- o atual perseguindo o alvo. Escrever so o atual nao
+    # segura; o alvo puxa de volta assim que o cliente atualiza a
+    # camera. Os dois juntos e o que fixa.
+    CAMERA_ZOOM_TARGET = 0x68
     # Painel Surrounding de verdade -- lista TODOS os NPCs do mapa. Este
     # Painel Surrounding: NAO tem cadeia estatica confiavel. As tres
     # que o pointer scan reverso deu (0x004AB3B8, 0x0090F17C,
@@ -113,13 +144,20 @@ class MemoryReader:
         self._open()
 
     def _open(self):
-        """Abre o processo com acesso de leitura.
+        """Abre o processo com acesso de leitura e escrita.
 
         QUERY_INFORMATION alem de VM_READ porque npcs_ao_redor() precisa
         de VirtualQueryEx para saber quais regioes existem.
+
+        VM_WRITE/VM_OPERATION existem por causa de escrever_camera(), a
+        unica escrita daqui. Nao vale para posicao: coordenada e
+        validada no servidor, camera nao.
         """
         self._hProcess = kernel32.OpenProcess(
-            win32con.PROCESS_VM_READ | win32con.PROCESS_QUERY_INFORMATION,
+            win32con.PROCESS_VM_READ
+            | win32con.PROCESS_QUERY_INFORMATION
+            | win32con.PROCESS_VM_WRITE
+            | win32con.PROCESS_VM_OPERATION,
             False,
             self._pid,
         )
@@ -585,3 +623,46 @@ class MemoryReader:
     @property
     def loot_window(self) -> bool:
         return _rpm_int(self._hProcess, 0x0105B9B8, 4) == 1
+
+    # =====================================================
+    # Camera
+    # =====================================================
+
+    @property
+    def camera(self) -> tuple[float, float, float]:
+        """(zoom, rotacao, angulo) -- 0.0 nos tres se a base nao resolver."""
+        base = _rpm_int(self._hProcess, self.CAMERA_BASE, 4)
+        if base == 0:
+            return (0.0, 0.0, 0.0)
+        return (
+            _rpm_float(self._hProcess, base + self.CAMERA_ZOOM),
+            _rpm_float(self._hProcess, base + self.CAMERA_ROTACAO),
+            _rpm_float(self._hProcess, base + self.CAMERA_ANGULO),
+        )
+
+    def escrever_camera(self, zoom: float, rotacao: float,
+                        angulo: float) -> bool:
+        """
+        Fixa a camera escrevendo os tres floats.
+
+        Existe porque clique de CHAO e clique em NPC sao coordenadas de
+        TELA: onde o NPC aparece depende de zoom, rotacao e angulo. O
+        botao de view reset do jogo devolve o angulo padrao mas NAO
+        devolve o zoom, e os clients usados aqui tem o limite de zoom
+        liberado -- ou seja, dois clients no "mesmo" reset mostram o NPC
+        em pixels diferentes. Escrever os tres torna o ponto de tela
+        reproduzivel.
+
+        Devolve False se a base nao resolveu ou se alguma escrita
+        falhou; quem chama decide se isso e fatal (aqui nao e -- o
+        roteiro segue e falha visivelmente adiante).
+        """
+        base = _rpm_int(self._hProcess, self.CAMERA_BASE, 4)
+        if base == 0:
+            return False
+        return all([
+            _wpm_float(self._hProcess, base + self.CAMERA_ZOOM, zoom),
+            _wpm_float(self._hProcess, base + self.CAMERA_ZOOM_TARGET, zoom),
+            _wpm_float(self._hProcess, base + self.CAMERA_ROTACAO, rotacao),
+            _wpm_float(self._hProcess, base + self.CAMERA_ANGULO, angulo),
+        ])
