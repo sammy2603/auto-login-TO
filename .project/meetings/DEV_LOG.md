@@ -1,3 +1,65 @@
+## 2026-08-05 (3)
+
+Fluxo inicial do BC completo e validado no jogo; movimentacao em aberto.
+
+### Concluido — as duas etapas que faltavam
+
+Venda e compra provadas pelo StepRunner, com o ouro lido da memoria:
+
+| Etapa | Prova |
+|---|---|
+| vender | 6788585 -> 6788586 |
+| comprar Return Charm | 6788586 -> 6787586 (preco 1000) |
+| regen com sentar | hp 71% -> 100% em 25s, sentou e montou sozinho |
+| teleporte | Stone City -> Ghost Din Woods (1372,-418) |
+
+Tres defeitos somados faziam a venda falhar em silencio, e estao no PR
+#18: o pular_se_template pulava um passo a mais (engolindo o clique em
+'Sell Item'), o clique no item so MOVE para a cesta -- quem efetiva e o
+botao 'Sell' --, e a janela abre antes de a grade preencher.
+
+Heranca de macro derrubada por medicao: clique direito SIMPLES abre
+dialogo de NPC, clique esquerdo SIMPLES move o item. Os duplos vieram
+copiados dos macros antigos, sem medicao.
+
+### Em aberto — movimentacao
+
+O walk_to nao serve para chegar em NPC: leva o personagem para PERTO,
+e "perto" nao basta para o clique direito acertar o dialogo. Fora isso
+usa o pathfinding do jogo, que contorna obstaculo e custa tempo de
+farm.
+
+A calibracao do minimapa foi tentada e ABANDONADA: medir escala andando
+nao funciona dentro da cidade, porque o pathfinding falseia o
+deslocamento. Quatro cliques de 40px deram escalas de 0.00, 0.53, 0.05
+e 0.75. So a medida limpa concorda com ~0.5 unidade por pixel, contra
+1.0 no config -- ou seja, o valor atual esta errado por mais do dobro.
+
+Decisao: **clique no CHAO para os trechos curtos** (mais preciso, sem
+pathfinding) e minimapa so para distancia grande. Os trechos de Stone
+City sao curtos: do Transport Fay ao Rich Man sao ~35 unidades.
+
+Ferramenta nova para isso: tools/gravar_rota.py, que grava os cliques
+FISICOS do usuario (o bot so enxerga os cliques que ele mesmo manda) e
+imprime pixel + coordenada de mundo de cada um.
+
+### Bloqueio da proxima sessao — zoom da camera
+
+Clique de chao depende de ZOOM e ROTACAO. O view_reset devolve rotacao
+e angulo, mas NAO o zoom -- entao o ponto gravado erra
+proporcionalmente se o zoom mudar entre runs.
+
+A cadeia da CAMERA (0x01170054) e PORTAVEL entre clientes, ao contrario
+da do alvo: le rot/angulo/zoom nos dois. Medido: DudePY zoom=500.0,
+Tomyris zoom=468.0.
+
+Os clientes em uso tem modificacao que LIBERA o zoom, entao nao existe
+saturacao para usar como estado deterministico. Mas isso nao bloqueia:
+como o zoom e legivel, da para fechar o laco -- rolar a roda, ler, parar
+no alvo. Falta so escolher o valor padrao e adicionar scroll
+(WM_MOUSEWHEEL por PostMessage) ao InputService, confirmando que o jogo
+responde -- mesma duvida que tivemos com o F12.
+
 ## 2026-08-05 (2)
 
 Continuação: cliques de diálogo. Dois PRs — #15 mergeado, #16 aberto.
