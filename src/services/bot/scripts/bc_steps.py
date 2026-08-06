@@ -300,6 +300,10 @@ def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
     ponto, olha se o elemento 'prova' apareceu, e so tenta o proximo se
     nao apareceu. Isso tambem cobre o caso de outro jogador passar na
     frente na hora errada.
+
+    Clique direito NAO move o personagem neste jogo -- so o esquerdo
+    move. Entao tentativa que erra o NPC nao custa deslocamento; custa
+    so o tempo da espera.
     """
     pontos = cfg["pontos_do_npc"]
     passos: list[Step] = []
@@ -326,6 +330,42 @@ def abrir_dialogo_npc(cfg, prova: str) -> list[Step]:
                 pular_se_template(prova, restantes, note="dialogo ja abriu")
             )
     return passos
+
+
+def comprar_return_charm(cfg) -> list[Step]:
+    """
+    Compra um Return Charm no NPC de venda.
+
+    O charm e o que devolve o personagem para a cidade no ciclo
+    seguinte, entao comprar antes de sair e o que evita a run comecar
+    sem saida.
+
+    Mesma anatomia da venda, e pelas mesmas medicoes: clique direito
+    SIMPLES abre o dialogo, a janela demora a preencher a grade, e o
+    clique no item so MOVE para o carrinho -- quem efetiva e o botao
+    'Buy'. Sem ele, fechar a janela desfaz tudo.
+
+    O item entra por TEMPLATE do icone, e nao por posicao na grade: o
+    estoque do NPC tem duas paginas e nada garante a ordem entre
+    versoes. O icone casa em 0.9, entao a margem e folgada.
+    """
+    return [
+        *abrir_dialogo_npc(cfg, cfg["template_opcao_comprar"]),
+        click_template(cfg["template_opcao_comprar"], note="abre a loja"),
+        esperar_template(cfg["template_janela_compra"],
+                         timeout=cfg.get("timeout_janela_compra", 10.0),
+                         note="espera a loja abrir"),
+        wait(cfg.get("espera_grade", 1.5), note="deixa a grade preencher"),
+        click_template(cfg["template_item_charm"],
+                       note="poe o Return Charm no carrinho"),
+        wait(0.6),
+        click_template(cfg["template_confirmar_compra"],
+                       timeout=cfg.get("timeout_confirmar_compra", 5.0),
+                       note="efetiva a compra"),
+        wait(cfg.get("espera_pos_venda", 1.5)),
+        key("ESC", note="fecha a loja"),
+        wait(0.5),
+    ]
 
 
 def vender(cfg) -> list[Step]:

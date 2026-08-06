@@ -151,7 +151,10 @@ DEFAULT_CONFIG = {
     # =========================================================
     # Etapas opcionais
     # =========================================================
-    "comprar_pot": True,
+    # Desligado: comprar_pot ainda e o macro antigo, com 16 rodadas de
+    # cliques gravados em posicoes fixas, de outro NPC e outro
+    # trajeto. Ligar hoje so produz cliques no vazio.
+    "comprar_pot": False,
     "vender": True,
     "usar_courage": True,
     "repetir_ciclo": False,
@@ -237,6 +240,13 @@ DEFAULT_CONFIG = {
     "espera_dialogo": 1.5,
     "template_opcao_vender": "opcao_sell_item",
     "template_opcao_comprar": "opcao_purchase_item",
+    "template_janela_compra": "janela_buy",
+    "timeout_janela_compra": 10.0,
+    # O item entra por template do icone: o estoque do NPC tem duas
+    # paginas e nada garante a ordem. O icone casa em 0.9.
+    "template_item_charm": "item_return_charm",
+    "template_confirmar_compra": "botao_buy",
+    "timeout_confirmar_compra": 5.0,
     "template_janela_venda": "janela_sell",
     "timeout_janela_venda": 10.0,
     "espera_grade": 1.5,
@@ -540,6 +550,9 @@ class BCScript:
         passos += bc_steps.convidar_team(cfg)
         passos += bc_steps.montar_se_preciso(cfg)
         passos += bc_steps.ir_ate_npc(cfg, "npc_venda")
+
+        if cfg.get("comprar_return_charm"):
+            passos += bc_steps.comprar_return_charm(cfg)
 
         if cfg.get("comprar_pot"):
             passos += bc_steps.comprar_pot(cfg)
