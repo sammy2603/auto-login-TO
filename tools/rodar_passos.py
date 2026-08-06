@@ -25,6 +25,7 @@ from types import SimpleNamespace
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import config
+from src.infrastructure.logging.service import LoggingService
 from src.infrastructure.input.service import InputService
 from src.infrastructure.vision.service import VisionService
 from src.infrastructure.window.service import WindowService
@@ -54,6 +55,12 @@ def main():
 
     titulo, nomes = sys.argv[1], sys.argv[2:]
     cfg = DEFAULT_CONFIG
+
+    # Sem isto os avisos do runner nao aparecem em lugar nenhum -- e sao
+    # eles que dizem POR QUE um passo falhou ("nao chegou em (x,y),
+    # parou em (a,b)", "preso, varrendo em circulo"). Diagnosticar sem
+    # eles e adivinhar; foi o que aconteceu por varias rodadas.
+    LoggingService.setup(to_file=False, to_console=True, force=True)
 
     ws = WindowService()
     hwnd = ws.connect(title_substring=titulo, timeout=10)
@@ -92,6 +99,10 @@ def main():
             runner.tick(StepContext(
                 hwnd=hwnd, input_service=entrada,
                 vision_service=visao, char_info=char, target_info=alvo,
+                # O passo de camera ESCREVE na memoria. Sem isto aqui ele
+                # avisa e pula, e o trecho roda com a camera do jeito que
+                # estiver -- justamente o que invalida clique de tela.
+                memory=reader,
             ))
 
             time.sleep(0.2)

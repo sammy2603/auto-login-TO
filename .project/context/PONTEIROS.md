@@ -526,7 +526,11 @@ re.search(r'text="([^"]+)\s*\[(-?\d+),(-?\d+)\]"', info)
 5. **Escritas são outro nível de risco.** `write_position()` (teleporte
    por escrita de float em `+0x810`/`+0x814`) e `write_camera()` existem
    no RamoraBOT. A câmera é local e inofensiva; a posição é validada no
-   servidor.
+   servidor. Daí só a câmera ter sido portada:
+   `MemoryReader.escrever_camera()` escreve os três floats da base
+   `0x01170054` e é a única escrita do app. Serve aos cliques de tela —
+   o botão de view reset do jogo devolve o ângulo mas não o zoom, e os
+   clients usados aqui têm o limite de zoom liberado.
 
 6. **`"Offline Account"` como sentinela de erro.** O RamoraBOT devolve
    essa string quando a leitura falha, misturando erro com dado. Ao

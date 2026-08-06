@@ -21,6 +21,14 @@ o personagem parou depois dele.
 
 Grava so clique DENTRO da area do minimapa: clique no mundo e movimento
 comum e nao faz parte da rota.
+
+Para o MAPA-MUNDI (tecla M), que e como se cortam os trajetos longos
+sem passar por estrada:
+
+    python tools/gravar_rota.py --pid 39392 --mapa
+
+Ai nao ha area a filtrar -- a janela do mapa ocupa boa parte da tela --
+e a saida ja vem com o nome 'cave_map_clicks'.
 """
 
 from __future__ import annotations
@@ -61,10 +69,16 @@ def esperar_parar(mr, limite: float = 20.0):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Grava rota de minimapa")
+    ap = argparse.ArgumentParser(
+        description="Grava rota de minimapa ou de mapa-mundi")
     ap.add_argument("--pid", type=int, required=True)
     ap.add_argument("--centro", type=int, nargs=2, default=(915, 112))
     ap.add_argument("--raio", type=int, default=60)
+    ap.add_argument(
+        "--mapa", action="store_true",
+        help="grava cliques no MAPA-MUNDI aberto (tecla M) em vez do "
+             "minimapa: aceita clique em qualquer ponto da janela",
+    )
     args = ap.parse_args()
 
     hwnd = WindowService().find_by_pid(args.pid)
@@ -73,8 +87,9 @@ def main():
         return 1
 
     mr = MemoryReader(args.pid)
+    onde = "MAPA-MUNDI aberto (tecla M)" if args.mapa else "minimapa"
     print(f"Gravando em {mr.location}. Clique com o botao DIREITO no "
-          f"minimapa; Ctrl+C para terminar.\n")
+          f"{onde}; Ctrl+C para terminar.\n")
 
     rota = []
     pressionado = False
@@ -83,9 +98,14 @@ def main():
             agora = win32api.GetAsyncKeyState(VK_RBUTTON) < 0
             if agora and not pressionado:
                 x, y = win32gui.ScreenToClient(hwnd, win32gui.GetCursorPos())
-                if dentro_do_minimapa(x, y, args.centro, args.raio):
+                # No mapa-mundi nao ha area a filtrar: a janela ocupa
+                # boa parte da tela e o clique util pode cair em
+                # qualquer canto dela.
+                if args.mapa or dentro_do_minimapa(x, y, args.centro, args.raio):
                     antes = (mr.x, mr.y)
-                    destino = esperar_parar(mr)
+                    # Trecho de mapa-mundi atravessa o mapa inteiro e
+                    # passa dos 20s do minimapa com folga.
+                    destino = esperar_parar(mr, 90.0 if args.mapa else 20.0)
                     rota.append((x, y, destino))
                     print(f"  {len(rota):2}. clique ({x}, {y})  "
                           f"{antes} -> {destino}")
@@ -97,11 +117,11 @@ def main():
         mr.close()
 
     if not rota:
-        print("\nNenhum clique no minimapa foi gravado.")
+        print(f"\nNenhum clique no {onde} foi gravado.")
         return 0
 
     print("\nPronto pra colar no DEFAULT_CONFIG:\n")
-    print('    "rota_...": [')
+    print('    "cave_map_clicks": [' if args.mapa else '    "rota_...": [')
     for x, y, destino in rota:
         print(f"        ({x}, {y}),   # chega em {destino}")
     print("    ],")

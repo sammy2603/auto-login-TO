@@ -53,6 +53,8 @@ USE_ALL_ITEMS = "use_all_items"  # acha um item por imagem e usa, ate acabar
 ATTACK_UNTIL_DEAD = "attack_until_dead"   # ataca ate o alvo morrer
 CLICK_UNTIL_TARGET = "click_until_target"  # clica ate selecionar certo alvo
 WALK_TO = "walk_to"              # anda ate uma coordenada do mundo, pelo minimapa
+WAIT_STOPPED = "wait_stopped"    # espera o personagem parar de andar
+CAMERA = "camera"                # fixa zoom/rotacao/angulo escrevendo na memoria
 CALL = "call"                    # delega a um callable do script
 
 
@@ -233,7 +235,8 @@ def attack_until_dead(skills, timeout: float = 300.0,
 
 
 def walk_to(x: int, y: int, centro=(915, 112), raio: int = 55,
-            escala: float = 1.0, tolerancia: int = 8, intervalo: float = 2.0,
+            escala: float = 1.0, tolerancia: int = 2, intervalo: float = 0.5,
+            paradas: int = 2, varredura_apos: int = 3,
             timeout: float = 120.0, note: str = "") -> Step:
     """
     Anda ate uma coordenada DO MUNDO clicando no minimapa.
@@ -247,23 +250,73 @@ def walk_to(x: int, y: int, centro=(915, 112), raio: int = 55,
 
     O eixo y e INVERTIDO: subir no minimapa aumenta o y do mundo.
 
-    E um laco fechado, nao um clique: a cada intervalo rele a posicao e
-    reclica. Por isso a escala nao precisa ser exata -- erro so custa
-    iteracao a mais, nao destino errado.
+    E um laco fechado, mas o gatilho e a PARADA do personagem, nao o
+    relogio: reclicar no meio da caminhada cancela o trajeto em curso e
+    manda o char recomecar de onde estiver -- e o que produzia aquele
+    vaivem em volta do destino. Por isso o proximo clique so sai depois
+    de 'paradas' leituras seguidas na mesma coordenada. 'intervalo' fica
+    so como piso entre dois cliques.
 
     Alvo fora do raio do minimapa vira clique na BORDA naquela direcao:
     anda o quanto der e a proxima iteracao continua.
 
-    Quando o personagem para de progredir (parede no meio do caminho --
-    acontece, foi medido), o clique seguinte sai desviado alguns graus
-    pro lado, alternando, ate destravar.
+    Quando um clique nao tira o personagem do lugar (parede no meio do
+    caminho -- acontece, foi medido), o clique seguinte sai desviado
+    alguns graus pro lado, alternando, ate destravar. Depois de
+    'varredura_apos' cliques presos escala pra uma volta completa de
+    cliques em torno do centro: desvio angular tira de parede
+    atravessada, mas nao tira de canto -- de canto so se sai andando
+    para tras.
+
+    A tolerancia default e 2 e nao 8 porque o destino desta caminhada
+    costuma ser o pe de um NPC: o clique nele depois e coordenada de
+    TELA, e 8 unidades de mundo de erro ja movem o NPC na tela o
+    bastante pro clique passar ao lado.
     """
     return Step(
         WALK_TO,
-        (x, y, centro[0], centro[1], raio, escala, tolerancia, intervalo),
+        (x, y, centro[0], centro[1], raio, escala, tolerancia, intervalo,
+         paradas, varredura_apos),
         timeout=timeout,
         note=note,
     )
+
+
+def esperar_parado(paradas: int = 3, timeout: float = 30.0,
+                   note: str = "") -> Step:
+    """
+    Segura o roteiro ate o personagem parar de andar.
+
+    Um clique de deslocamento longo (mapa-mundi, painel de lugares) nao
+    tem duracao previsivel: depende do trajeto. Dormir um tempo fixo
+    depois dele ou corta a caminhada no meio ou desperdica segundos em
+    toda volta. Aqui a prova de que chegou e a coordenada da memoria
+    parar de mudar por 'paradas' leituras seguidas.
+
+    No timeout SEGUE em vez de abortar: parar o ciclo porque uma
+    caminhada demorou mais que o esperado custa mais que tentar o passo
+    seguinte.
+    """
+    return Step(WAIT_STOPPED, (paradas,), timeout=timeout, note=note)
+
+
+def camera(zoom: float = 380.0, rotacao: float = 0.0, angulo: float = 40.0,
+           note: str = "") -> Step:
+    """
+    Fixa a camera escrevendo os tres floats na memoria do cliente.
+
+    Substitui o botao de view reset onde o que importa e o ponto de
+    TELA: o botao devolve o angulo padrao mas nao mexe no zoom, e os
+    clients usados aqui tem o limite de zoom liberado -- dois clients
+    "resetados" mostram o mesmo NPC em pixels diferentes. Com os tres
+    valores escritos, coordenada de tela volta a ser reproduzivel entre
+    clients e entre sessoes.
+
+    Os defaults (380 / 0 / 40) sao os do bot de referencia. Sem
+    'memory' no contexto o passo avisa e segue -- camera errada erra
+    cliques, mas parar o ciclo aqui nao conserta nada.
+    """
+    return Step(CAMERA, (zoom, rotacao, angulo), note=note)
 
 
 def click_until_target(x: int, y: int, nome: str, timeout: float = 20.0,
@@ -393,6 +446,10 @@ class StepContext:
     vision_service: Any = None
     char_info: Any = None
     target_info: Any = None
+    # Leitor/escritor de memoria daquele cliente. Opcional: so o passo
+    # de camera precisa dele -- posicao e vida chegam prontas em
+    # char_info, montadas uma vez por tick pelo motor.
+    memory: Any = None
 
 
 # =====================================================
@@ -417,6 +474,11 @@ class StepRunner:
         self._usados: int = 0
         self._ultima_posicao: tuple | None = None
         self._sem_progresso: int = 0
+        # Leituras seguidas na mesma coordenada -- e o que diz "parou de
+        # andar". Distinto de _sem_progresso, que conta CLIQUES que nao
+        # tiraram o personagem do lugar.
+        self._paradas: int = 0
+        self._pos_do_clique: tuple | None = None
 
     # -------------------------------------------------
     # Estado
@@ -446,6 +508,8 @@ class StepRunner:
         self._usados = 0
         self._ultima_posicao = None
         self._sem_progresso = 0
+        self._paradas = 0
+        self._pos_do_clique = None
 
     # -------------------------------------------------
     # Execucao
@@ -492,6 +556,8 @@ class StepRunner:
         self._last_action = 0.0
         self._ultima_posicao = None
         self._sem_progresso = 0
+        self._paradas = 0
+        self._pos_do_clique = None
 
     def _timed_out(self, step: Step) -> bool:
         if not step.timeout or self._step_started is None:
@@ -602,6 +668,12 @@ class StepRunner:
 
         if kind == WALK_TO:
             return self._do_walk_to(step, ctx)
+
+        if kind == WAIT_STOPPED:
+            return self._do_wait_stopped(step, ctx)
+
+        if kind == CAMERA:
+            return self._do_camera(step, ctx)
 
         if kind == CALL:
             return bool(step.args[0](ctx))
@@ -731,7 +803,8 @@ class StepRunner:
         return False
 
     def _do_walk_to(self, step: Step, ctx: StepContext) -> bool:
-        alvo_x, alvo_y, cx, cy, raio, escala, tolerancia, intervalo = step.args
+        (alvo_x, alvo_y, cx, cy, raio, escala, tolerancia, intervalo,
+         paradas, varredura_apos) = step.args
 
         if ctx.char_info is None:
             logger.warning("walk_to sem leitura de posicao; pulando")
@@ -745,18 +818,45 @@ class StepRunner:
         if math.hypot(dx, dy) <= tolerancia:
             return True
 
+        # O timeout e conferido ANTES dos returns de espera: senao um
+        # personagem preso em movimento (empurrado, preso em mob) nunca
+        # chegaria ao ponto de reclicar e o passo ficaria eterno.
+        if self._timed_out(step):
+            logger.warning(
+                "Nao chegou em (%s, %s) em %ss (parou em %s); seguindo",
+                alvo_x, alvo_y, step.timeout, atual,
+            )
+            return True
+
         agora = time.time()
 
-        if agora - self._last_action < intervalo:
-            return False
-
-        # Andou desde o ultimo clique? Se nao, tem parede no caminho --
-        # repetir o mesmo clique daria no mesmo.
+        # Parou de andar? So entao vale reclicar. Reclicar com o
+        # personagem em movimento cancela o trajeto em curso.
         if atual == self._ultima_posicao:
+            self._paradas += 1
+        else:
+            self._paradas = 0
+            self._ultima_posicao = atual
+
+        primeiro_clique = self._last_action == 0.0
+
+        if not primeiro_clique:
+            if self._paradas < paradas:
+                return False
+            if agora - self._last_action < intervalo:
+                return False
+
+        # O clique anterior tirou o personagem do lugar? Se nao, tem
+        # parede no caminho -- repetir o mesmo clique daria no mesmo.
+        if self._pos_do_clique is not None and atual == self._pos_do_clique:
             self._sem_progresso += 1
         else:
             self._sem_progresso = 0
-            self._ultima_posicao = atual
+
+        # Preso demais pro desvio angular resolver: sacode.
+        if self._sem_progresso >= varredura_apos:
+            self._varrer_em_circulo(ctx, cx, cy, raio, atual, agora)
+            return False
 
         # Mundo -> pixel. O y inverte: subir no minimapa aumenta o y.
         px = dx / escala
@@ -777,15 +877,102 @@ class StepRunner:
 
         ctx.input_service.right_click(ctx.hwnd, int(cx + px), int(cy + py))
         self._last_action = agora
+        self._pos_do_clique = atual
+        # Depois de clicar o personagem TEM que andar: zerar aqui e o
+        # que impede o proximo tick de contar como "parado" a mesma
+        # leitura que autorizou este clique.
+        self._paradas = 0
+
+        return False
+
+    def _varrer_em_circulo(self, ctx: StepContext, cx: int, cy: int,
+                           raio: int, atual: tuple, agora: float):
+        """
+        Ultimo recurso do destravamento: uma volta de cliques em torno do
+        centro do minimapa.
+
+        O desvio angular resolve parede ATRAVESSADA no caminho -- ele
+        aponta para o lado e contorna. O que ele nao resolve e canto:
+        preso entre duas paredes, toda direcao que ainda aponta para o
+        alvo esbarra, e abrir o angulo aos poucos so testa o mesmo
+        semicirculo. Aqui a volta e completa, incluindo o sentido
+        oposto ao destino -- sair andando PARA TRAS costuma ser o unico
+        jeito de sair do canto.
+
+        O raio cresce a cada volta presa: perto do centro o clique anda
+        pouco, e pouco pode nao ser o bastante pra escapar. Limitado ao
+        raio do minimapa, senao o clique cai fora dele e vira clique no
+        cenario.
+
+        Oito cliques em rajada, sem esperar entre eles: cada um cancela
+        o anterior, e o que vale e o ultimo -- a rajada existe pra que
+        as direcoes bloqueadas sejam descartadas de graca e a livre
+        prevaleca. Quem confere o resultado e o tick seguinte, que le a
+        posicao de novo.
+        """
+        voltas = self._sem_progresso - 1
+        r = min(raio, 10 + 2 * voltas)
+
+        diagonal = int(r * 0.7)
+        pontos = [
+            (r, 0), (diagonal, -diagonal), (0, -r), (-diagonal, -diagonal),
+            (-r, 0), (-diagonal, diagonal), (0, r), (diagonal, diagonal),
+        ]
+
+        logger.info(
+            "Preso em %s apos %s cliques sem sair do lugar; "
+            "varrendo em circulo (raio %s)",
+            atual, self._sem_progresso, r,
+        )
+
+        for dx, dy in pontos:
+            ctx.input_service.right_click(ctx.hwnd, int(cx + dx), int(cy + dy))
+
+        self._last_action = agora
+        self._pos_do_clique = atual
+        self._paradas = 0
+
+    def _do_wait_stopped(self, step: Step, ctx: StepContext) -> bool:
+        (paradas,) = step.args
+
+        if ctx.char_info is None:
+            logger.warning("esperar_parado sem leitura de posicao; pulando")
+            return True
+
+        atual = (getattr(ctx.char_info, "x", 0), getattr(ctx.char_info, "y", 0))
+
+        if atual == self._ultima_posicao:
+            self._paradas += 1
+        else:
+            self._paradas = 0
+            self._ultima_posicao = atual
+
+        if self._paradas >= paradas:
+            return True
 
         if self._timed_out(step):
             logger.warning(
-                "Nao chegou em (%s, %s) em %ss (parou em %s); seguindo",
-                alvo_x, alvo_y, step.timeout, atual,
+                "Personagem ainda andando depois de %ss (em %s); seguindo",
+                step.timeout, atual,
             )
             return True
 
         return False
+
+    def _do_camera(self, step: Step, ctx: StepContext) -> bool:
+        zoom, rotacao, angulo = step.args
+
+        if ctx.memory is None:
+            logger.warning("camera sem acesso a memoria; pulando")
+            return True
+
+        if not ctx.memory.escrever_camera(zoom, rotacao, angulo):
+            logger.warning(
+                "Nao foi possivel escrever a camera (zoom=%s rot=%s ang=%s)",
+                zoom, rotacao, angulo,
+            )
+
+        return True
 
     def _do_click_until_target(self, step: Step, ctx: StepContext) -> bool:
         x, y, nome, intervalo, botao = step.args

@@ -407,13 +407,27 @@ def test_anda_ate_a_coordenada_antes_de_falar_com_o_npc():
     câmera e só então clicar no NPC. Clicar antes de chegar erra sempre.
     """
     for passos, destino in (
-        (bc_steps.entrar_na_cave(DEFAULT_CONFIG), DEFAULT_CONFIG["npc_entrada_pos"]),
+        (bc_steps.entrar_na_cave(DEFAULT_CONFIG), DEFAULT_CONFIG["npc_entrada_parada"]),
         (bc_steps.sair_da_cave(DEFAULT_CONFIG), DEFAULT_CONFIG["npc_saida_pos"]),
     ):
-        assert passos[0].kind == "walk_to"
+        # Duas passadas de caminhada e a conferencia: walk_to desiste no
+        # timeout, e seguir para um clique de TELA com o personagem
+        # parado longe garante clique no vazio (aconteceu). A segunda
+        # passada sai de graca quando a primeira chegou.
+        assert [p.kind for p in passos[:5]] == [
+            "walk_to", "walk_to", "wait_position", "wait", "camera"]
         assert passos[0].args[:2] == destino
-        assert passos[1].kind == "click_template"
-        assert passos[1].args[0] == "view_reset"
+        assert passos[1].args[:2] == destino
+        assert passos[2].args[:2] == destino
+        # A parada precisa assentar antes do clique: disparado no
+        # instante da chegada, o clique sai antes do NPC estar no lugar
+        # final da tela.
+        assert passos[3].args == (DEFAULT_CONFIG["espera_pos_chegada"],)
+        assert passos[4].args == (
+            DEFAULT_CONFIG["camera_zoom"],
+            DEFAULT_CONFIG["camera_rotacao"],
+            DEFAULT_CONFIG["camera_angulo"],
+        )
 
 
 def test_entrada_abre_o_dialogo_no_ponto_calibrado():
@@ -427,7 +441,24 @@ def test_entrada_abre_o_dialogo_no_ponto_calibrado():
 
     # Direito SIMPLES: duplo direito seleciona o NPC sem abrir dialogo.
     dialogo = [p for p in passos if p.kind == "right"]
-    assert dialogo[0].args == DEFAULT_CONFIG["npc_entrada_tela"]
+    pontos = DEFAULT_CONFIG["npc_entrada_tela"]
+    assert dialogo[0].args == tuple(pontos[0]), "o ponto medido vem primeiro"
+
+    # Cada ponto que sobra e uma tentativa, e entre elas ha um pulo que
+    # descarta as restantes assim que o dialogo abrir. Sem isso o
+    # roteiro clicaria nos cinco pontos mesmo tendo acertado no
+    # primeiro -- e o clique extra cai no dialogo ja aberto.
+    esperados = [tuple(ponto) for ponto in pontos]
+    tentativas = [tuple(p.args) for p in passos
+                  if p.kind == "right" and tuple(p.args) in set(esperados)]
+
+    # A tentativa INTEIRA se repete (cave_entry_attempts), entao os
+    # pontos aparecem uma vez por rodada -- basta conferir a primeira.
+    assert tentativas[:len(esperados)] == esperados
+
+    pulos = [p for p in passos if p.kind == "skip_if_template"
+             and p.args[0] == DEFAULT_CONFIG["template_enter_bc"]]
+    assert len(pulos) == (len(pontos) - 1) * DEFAULT_CONFIG["cave_entry_attempts"]
 
     opcoes = [p for p in passos if p.kind == "click_template"
               and p.args[0] == "enter_bc"]
@@ -449,15 +480,48 @@ def test_saida_com_ponto_calibrado_clica_direto():
     assert any(p.kind == "right" and p.args == (500, 400) for p in passos)
 
 
-def test_view_reset_avisa_quando_nao_acha_o_botao():
+def test_camera_escreve_os_tres_valores_e_nao_so_o_angulo():
     """
-    Câmera torta ainda tem chance de dar certo, então o passo não para o
-    ciclo -- mas tem que AVISAR. Silencioso, a falha só aparece lá na
-    frente, num clique que erra o alvo sem explicação (aconteceu).
+    O botão de view reset do jogo, que era o que o macro clicava,
+    devolve o ângulo padrão mas NÃO devolve o zoom -- e os clients
+    usados aqui têm o limite de zoom liberado. Com o zoom livre, dois
+    clients "resetados" mostram o mesmo NPC em pixels diferentes, e todo
+    clique de tela sai deslocado. Por isso os três valores são escritos.
     """
-    obrigatorio = bc_steps.view_reset(DEFAULT_CONFIG)[0].args[4]
+    passo = bc_steps.fixar_camera(DEFAULT_CONFIG)[0]
 
-    assert obrigatorio is True
+    assert passo.kind == "camera"
+    assert len(passo.args) == 3
+
+
+def test_rota_do_mapa_espera_parar_entre_um_clique_e_outro():
+    """
+    Cada trecho do mapa-múndi leva o tempo que levar. Clicar por cima de
+    uma caminhada em curso a CANCELA -- então entre dois cliques o que
+    segura o roteiro é a coordenada parar de mudar, não um sleep.
+    """
+    passos = bc_steps.walk_by_world_map(
+        {**DEFAULT_CONFIG, "cave_map_clicks": [(100, 200), (300, 400)]},
+        [(100, 200), (300, 400)],
+    )
+
+    tipos = [p.kind for p in passos]
+
+    # abre o mapa, dois cliques com espera, fecha o mapa
+    assert tipos[0] == "key" and tipos[-2] == "key"
+    assert tipos.count("wait_stopped") == 2
+    assert [p.args for p in passos if p.kind == "right"] == [(100, 200), (300, 400)]
+
+
+def test_sem_rota_gravada_a_ida_pra_cave_e_so_minimapa():
+    """
+    Enquanto os cliques de mapa não forem gravados, o passo some inteiro
+    em vez de virar clique no vazio.
+    """
+    passos = bc_steps.ir_para_cave(
+        {**DEFAULT_CONFIG, "cave_map_clicks": [], "cave_waypoints": []})
+
+    assert [p.kind for p in passos] == ["walk_to"]
 
 
 def test_leave_team_desligado_nao_faz_nada():
@@ -793,12 +857,31 @@ def test_config_do_bc_resolve_a_entrada_pelo_catalogo(tmp_path):
     com o catalogo passariam despercebidos, porque o literal cobre.
     """
     cfg = dict(DEFAULT_CONFIG)
+    # Sem ponto de parada medido: e o caso em que o catalogo responde.
+    cfg.pop("npc_entrada_parada")
     cfg["npcs_catalogo"] = catalogo_temp(
         tmp_path,
         {cfg["npc_entrada_mapa"]: {cfg["npc_entrada_nome"]: [[1395, -636]]}},
     )
 
     assert bc_steps.pos_npc(cfg, "npc_entrada") == (1395, -636)
+
+
+def test_ponto_de_parada_medido_vence_o_catalogo(tmp_path):
+    """
+    O catalogo guarda a coordenada DO NPC, lida do painel Surrounding.
+    A caminhada precisa de outra coisa: onde o PERSONAGEM para para
+    clicar nele. Andar para cima da coordenada do NPC deixou o
+    personagem um passo fora e o clique de tela passou ao lado -- foi
+    assim que a entrada na cave falhou no jogo.
+    """
+    cfg = dict(DEFAULT_CONFIG)
+    cfg["npcs_catalogo"] = catalogo_temp(
+        tmp_path,
+        {cfg["npc_entrada_mapa"]: {cfg["npc_entrada_nome"]: [[1395, -636]]}},
+    )
+
+    assert bc_steps.pos_npc(cfg, "npc_entrada") == cfg["npc_entrada_parada"]
 
 
 # =====================================================
@@ -1025,3 +1108,42 @@ def test_venda_efetiva_antes_de_fechar_a_janela():
 
     assert efetiva < fecha, "efetivar tem que vir antes de fechar"
     assert passos[efetiva].args[4] is True, "efetivar a venda é obrigatório"
+
+
+def test_ida_pra_cave_percorre_os_waypoints_e_fecha_no_npc():
+    """
+    Um walk_to único pro NPC tenta cortar reto e para na parede -- a rota
+    real contorna pelo leste (x chega a 1415) antes de descer. Os
+    waypoints trazem o desvio embutido, porque foram CAMINHADOS e não
+    calculados. O último passo é o único com tolerância apertada: é a
+    posição exata dele que faz o NPC cair sempre no mesmo pixel da tela.
+    """
+    passos = bc_steps.ir_para_cave(DEFAULT_CONFIG)
+
+    assert all(p.kind == "walk_to" for p in passos)
+    assert len(passos) == len(DEFAULT_CONFIG["cave_waypoints"]) + 1
+
+    destinos = [p.args[:2] for p in passos]
+    assert destinos[:-1] == DEFAULT_CONFIG["cave_waypoints"]
+    assert destinos[-1] == DEFAULT_CONFIG["npc_entrada_parada"]
+
+    # índice 6 é a tolerância (ver a tupla montada em walk_to)
+    assert passos[0].args[6] == DEFAULT_CONFIG["waypoint_tolerance"]
+    assert passos[-1].args[6] == DEFAULT_CONFIG["tolerancia_posicao"]
+
+
+def test_entrada_insiste_o_bastante_pra_instancia_cheia():
+    """
+    Medido no bot de referência: com a instância lotada ele repetiu o
+    diálogo por 62 s sem entrar. Com 3 tentativas o roteiro desistia em
+    segundos e seguia como se estivesse dentro -- o resto da run
+    acontecia do lado de fora da cave.
+    """
+    passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
+
+    # Cada tentativa que sobra é seguida de um skip que descarta as
+    # restantes assim que o pixel confirmar que entrou.
+    skips = [p for p in passos if p.kind == "skip_if_color"]
+
+    assert DEFAULT_CONFIG["cave_entry_attempts"] >= 20
+    assert len(skips) == DEFAULT_CONFIG["cave_entry_attempts"] - 1
