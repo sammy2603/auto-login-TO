@@ -946,7 +946,7 @@ def test_venda_bate_sempre_no_mesmo_slot():
     alvo = bc_steps.slot_de_venda(cfg, 5)
 
     cliques = [p.args for p in bc_steps.vender(cfg)
-               if p.kind == "double_right" and p.note.startswith("vende")]
+               if p.kind == "left" and p.note.startswith("move")]
 
     assert cliques == [alvo] * 4
 
@@ -956,7 +956,7 @@ def test_slot_inicial_protege_o_comeco_da_bag():
     cfg = {**DEFAULT_CONFIG, "slot_inicial_venda": 3}
 
     cliques = {p.args for p in bc_steps.vender(cfg)
-               if p.kind == "double_right" and p.note.startswith("vende")}
+               if p.kind == "left" and p.note.startswith("move")}
 
     assert cliques == {bc_steps.slot_de_venda(cfg, 3)}
     assert bc_steps.slot_de_venda(cfg, 1) not in cliques
@@ -987,5 +987,41 @@ def test_abrir_dialogo_desiste_quando_o_dialogo_ja_apareceu():
 
     # um pulo por tentativa, menos a última (não há o que pular depois)
     assert len(pulos) == 2
-    assert pulos[0].args[1] == 6   # duas tentativas restantes x 3 passos
-    assert pulos[1].args[1] == 3
+    # O pulo tem que parar EXATAMENTE no fim do bloco. A versão anterior
+    # pulava um a mais e engolia o primeiro passo de quem chamou -- na
+    # venda, o clique em 'Sell Item'.
+    assert pulos[0].args[1] == len(passos) - passos.index(pulos[0]) - 1
+    assert pulos[1].args[1] == len(passos) - passos.index(pulos[1]) - 1
+
+
+def test_pulo_do_dialogo_nao_engole_o_passo_seguinte():
+    """
+    Regressão: o bloco de abrir o diálogo é concatenado com o que vem
+    depois. Pular um passo a mais come o primeiro passo de quem chamou,
+    e o sintoma aparece longe da causa -- o diálogo abria e a janela de
+    venda nunca aparecia, sem erro nenhum.
+    """
+    cfg = {**DEFAULT_CONFIG, "pontos_do_npc": [(1, 2), (3, 4)]}
+    abertura = bc_steps.abrir_dialogo_npc(cfg, "opcao_sell_item")
+    sentinela = bc_steps.wait(9.99, note="passo de quem chamou")
+    roteiro = abertura + [sentinela]
+
+    for pulo in (p for p in abertura if p.kind == "skip_if_template"):
+        destino = roteiro.index(pulo) + pulo.args[1] + 1
+        assert roteiro[destino] is sentinela
+
+
+def test_venda_efetiva_antes_de_fechar_a_janela():
+    """
+    Regressão cara: o duplo-clique só MOVE o item para a cesta. Sem o
+    clique no botão que efetiva, o passo de fechar desfaz tudo e devolve
+    os itens para a bag -- e o sintoma era "não vendeu", sem erro nenhum.
+    """
+    passos = bc_steps.vender(DEFAULT_CONFIG)
+    kinds = [(p.kind, p.args[0] if p.args else None) for p in passos]
+
+    efetiva = kinds.index(("click_template", DEFAULT_CONFIG["template_confirmar_venda"]))
+    fecha = kinds.index(("click_template", DEFAULT_CONFIG["template_fechar_venda"]))
+
+    assert efetiva < fecha, "efetivar tem que vir antes de fechar"
+    assert passos[efetiva].args[4] is True, "efetivar a venda é obrigatório"

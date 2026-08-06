@@ -230,13 +230,21 @@ DEFAULT_CONFIG = {
     # Ancoras da venda. O NPC nao entra por template: o nome flutuante
     # dele so aparece em certas condicoes, entao o roteiro tenta alguns
     # pontos e usa o PROPRIO DIALOGO como prova de que acertou.
-    "pontos_do_npc": [(490, 390), (470, 400), (510, 395), (490, 420)],
+    # Medido um a um no Rich Man: estes tres abrem o dialogo. O ponto
+    # (490,390), que estava primeiro, NAO abre -- passa ao lado do
+    # sprite.
+    "pontos_do_npc": [(480, 385), (470, 400), (510, 395), (490, 420)],
     "espera_dialogo": 1.5,
     "template_opcao_vender": "opcao_sell_item",
     "template_opcao_comprar": "opcao_purchase_item",
     "template_janela_venda": "janela_sell",
     "timeout_janela_venda": 10.0,
+    "espera_grade": 1.5,
     "template_ok_venda": "botao_ok_venda",
+    # O duplo-clique so MOVE o item para a cesta; este botao efetiva.
+    "template_confirmar_venda": "botao_sell",
+    "timeout_confirmar_venda": 5.0,
+    "espera_pos_venda": 1.5,
     "template_fechar_venda": "botao_cancel",
     "npc_venda_mapa": "Stone City",
     "npc_venda_nome": "Rich Man",
