@@ -12,6 +12,8 @@ configuradas.
 
 import json
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.services.bot.scripts import bc_steps
@@ -1165,8 +1167,28 @@ def test_entrada_insiste_o_bastante_pra_instancia_cheia():
     passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
 
     # Cada tentativa que sobra é seguida de um skip que descarta as
-    # restantes assim que o pixel confirmar que entrou.
-    skips = [p for p in passos if p.kind == "skip_if_color"]
+    # restantes assim que a MEMÓRIA confirmar que entrou.
+    skips = [p for p in passos if p.kind == "skip_if"]
 
     assert DEFAULT_CONFIG["cave_entry_attempts"] >= 20
     assert len(skips) == DEFAULT_CONFIG["cave_entry_attempts"] - 1
+
+
+def test_entrada_confirma_por_memoria_e_nao_por_pixel():
+    """
+    O macro antigo olhava o pixel (945,148) esperando verde puro.
+    Medido em 2026-08-06 com o personagem comprovadamente DENTRO da
+    cave, aquele pixel lia 0x2E3D1E: a checagem dizia "não entrou"
+    estando dentro, e o roteiro refazia a caminhada e o clique no NPC
+    de dentro da cave, até 20 vezes.
+    """
+    passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
+
+    assert not [p for p in passos if p.kind == "skip_if_color"]
+
+    condicao = [p for p in passos if p.kind == "skip_if"][0].args[0]
+    dentro = SimpleNamespace(location="Bewitcher Cave")
+    fora = SimpleNamespace(location="Ghost Din Woods")
+
+    assert condicao(dentro) is True
+    assert condicao(fora) is False

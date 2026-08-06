@@ -171,6 +171,9 @@ DEFAULT_CONFIG = {
     # seguia como se tivesse entrado -- e o resto da run acontecia do
     # lado de fora da cave.
     "cave_entry_attempts": 20,
+    # Como o roteiro sabe que entrou. Por memoria: dentro da cave o
+    # campo 'location' le 'Bewitcher Cave'.
+    "areas_da_cave": ["Bewitcher Cave"],
     "intervalo_caminhada": 2.0,
     "intervalo_skill": 1.0,
     "timeout_boss": 300.0,

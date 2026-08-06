@@ -33,6 +33,7 @@ from src.services.bot.step_runner import (
     esperar_ate,
     left,
     repeat,
+    retry_until,
     retry_until_color,
     right,
     use_all_items,
@@ -802,10 +803,20 @@ def entrar_na_cave(cfg) -> list[Step]:
         wait(10.0, note="carrega a cave"),
     ]
 
-    return retry_until_color(
+    # Confirmacao por MEMORIA, nao por pixel. O macro antigo olhava o
+    # pixel (945,148) esperando verde puro; medido em 2026-08-06 com o
+    # personagem comprovadamente DENTRO da cave, aquele pixel lia
+    # 0x2E3D1E. A checagem dava "nao entrou" estando dentro, e o
+    # roteiro refazia a tentativa inteira -- caminhada e clique no
+    # NPC -- de dentro da cave, ate 20 vezes.
+    #
+    # 'location' responde a mesma pergunta sem depender de iluminacao,
+    # de foco da janela nem de o elemento estar desenhado no quadro:
+    # dentro da cave ele le 'Bewitcher Cave'.
+    areas = cfg.get("areas_da_cave", ["Bewitcher Cave"])
+    return retry_until(
         tentativa,
-        *PIXEL_DENTRO_DA_CAVE,
-        cfg.get("cor_dentro_da_cave", COR_DENTRO_DA_CAVE),
+        lambda ci: ci.location in areas,
         vezes=cfg["cave_entry_attempts"],
     )
 

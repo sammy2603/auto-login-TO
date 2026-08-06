@@ -90,6 +90,10 @@ def main():
                 x=reader.x, y=reader.y,
                 hp_pct=reader.hp_pct, resource_pct=reader.mana_pct,
                 in_battle=reader.in_battle,
+                # A confirmacao de entrada na cave le daqui.
+                location=reader.location,
+                mounted=reader.is_mounted,
+                pet_alive=reader.pet_alive,
             )
             alvo = SimpleNamespace(
                 name=reader.target_name, hp_pct=reader.target_hp_pct,

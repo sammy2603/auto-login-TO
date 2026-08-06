@@ -145,6 +145,27 @@ def retry_until_color(tentativa: list[Step], x: int, y: int, color,
     return saida
 
 
+def retry_until(tentativa: list[Step], condicao: Callable,
+                vezes: int = 3) -> list[Step]:
+    """
+    Repete um bloco ate a MEMORIA dizer que deu certo, no maximo
+    'vezes'.
+
+    Irmao do retry_until_color, e preferivel a ele sempre que houver um
+    campo legivel que responda a pergunta. Cor de pixel depende de
+    iluminacao, de janela em foco e de o elemento estar desenhado
+    naquele quadro; um booleano ou um nome de area, nao.
+    """
+    saida: list[Step] = []
+    for n in range(vezes):
+        restantes = (vezes - n - 1) * (len(tentativa) + 1)
+        saida.extend(tentativa)
+        if restantes > 0:
+            saida.append(pular_se(condicao, restantes,
+                                  note="condicao ja satisfeita"))
+    return saida
+
+
 def click_template(template: str, region=None, timeout: float = 20.0,
                    threshold: float = 0.85, botao: str = "left",
                    obrigatorio: bool = True, deslocamento=(0, 0),
