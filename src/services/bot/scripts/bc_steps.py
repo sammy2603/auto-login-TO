@@ -33,7 +33,7 @@ from src.services.bot.step_runner import (
     esperar_ate,
     left,
     repeat,
-    retry_until_color,
+    retry_until,
     right,
     use_all_items,
     wait,
@@ -80,12 +80,52 @@ def ajustes_iniciais(cfg) -> list[Step]:
     return [
         key_down(cfg["esconder_jogadores_key"],
                  note="segura escondendo os outros jogadores"),
-        *repeat(3, [left(997, 97, note="zoom out do minimapa")]),
+        *normalizar_zoom_minimapa(cfg),
         # O macro clicava em (864, 55), o botao de reset de camera do
         # jogo. Escrever os tres floats na memoria cobre mais: o botao
         # nao devolve o zoom, e o zoom e o que muda entre clients aqui.
         *fixar_camera(cfg),
         wait(0.5),
+    ]
+
+
+def normalizar_zoom_minimapa(cfg) -> list[Step]:
+    """
+    Leva o zoom do minimapa sempre ao MESMO nivel, seja qual for o que
+    estiver valendo.
+
+    Isto sustenta 'cave_click_route' inteira: um pixel do minimapa e um
+    deslocamento relativo, e quanto mundo cabe em cada pixel e
+    justamente o zoom. Rota gravada num nivel e executada em outro anda
+    a distancia errada em cada clique -- o erro nao aparece no primeiro,
+    aparece acumulado no fim.
+
+    O metodo e saturar e voltar: clicar o bastante para BATER no extremo
+    (dali em diante o clique nao faz nada) e entao voltar um numero fixo
+    de cliques. Nao depende de saber onde o zoom estava, que e a
+    informacao que nao se tem.
+
+    Medido no jogo: do minimo ao maximo sao 4 cliques, ou seja 5 niveis.
+    Por isso a saturacao usa 4 e nao 3 -- com 3, quem comecasse no
+    extremo oposto pararia um nivel antes e a volta cairia no nivel
+    errado. Clique a mais no extremo e inofensivo; clique a menos nao e.
+
+    Os dois botoes se chamam aqui 'satura' e 'volta', e nao 'zoom in' e
+    'zoom out', porque para este passo tanto faz qual e qual -- so
+    precisam ser OPOSTOS. Os nomes anteriores nao eram so feios: o
+    pixel rotulado 'zoom out' era na verdade o botao de zoom in, e o
+    passo dava os seis cliques todos pro mesmo lado.
+    """
+    satura = cfg.get("minimapa_zoom_satura_pos")
+    volta = cfg.get("minimapa_zoom_volta_pos")
+    if not satura or not volta:
+        return []
+
+    return [
+        *repeat(cfg.get("minimapa_zoom_satura_clicks", 4),
+                [left(*satura, note="satura o zoom do minimapa num extremo")]),
+        *repeat(cfg.get("minimapa_zoom_volta_clicks", 2),
+                [left(*volta, note="volta pro nivel de zoom da rota")]),
     ]
 
 
@@ -485,53 +525,30 @@ def pos_npc(cfg, chave: str):
 
 def ir_para_cave(cfg) -> list[Step]:
     """
-    Vai ate o Skull Herald da entrada.
+    Vai ate o Skull Herald da entrada pelo MAPA ABERTO (tecla M).
 
-    O macro antigo fazia isso abrindo o painel Surroundings e clicando
-    no nome do NPC, o que aciona o PATHFINDING do jogo: o personagem
-    percorre as passagens reais do mapa e leva o tempo que levar. Aqui
-    a caminhada e por coordenada -- e o que era pra ser tempo de farm
-    deixa de ser tempo de caminhada.
+    Pixel do mapa aberto e destino ABSOLUTO: nao depende de onde o
+    personagem esta, nem do zoom do minimapa, nem da velocidade dele --
+    e erro de um clique nao se soma ao seguinte. E o que o bot de
+    referencia faz neste trecho.
 
-    Sao dois trechos, e nao um:
+    Tres abordagens caíram antes desta, e vale saber por que, porque
+    todas pareciam razoaveis:
 
-    1. O GROSSO por WAYPOINTS ('cave_waypoints'), a rota que o bot de
-       referencia percorre -- capturada da memoria, em coordenada de
-       mundo. Um walk_to direto pro NPC nao serve: ele tenta cortar
-       reto, e ha obstaculo no meio (a rota contorna pelo leste antes de
-       descer). Breadcrumb a breadcrumb o desvio ja vem embutido.
-    2. Os ultimos metros pelo minimapa, com tolerancia apertada: quem
-       fecha o ponto exato e o walk_to final, e e a posicao exata que faz
-       o NPC cair sempre no mesmo pixel da tela.
+    1. Waypoints de coordenada de mundo: parava num ponto diferente a
+       cada corrida, e a variacao ia inteira pro clique final.
+    2. Cliques no minimapa: pixel de minimapa e deslocamento RELATIVO,
+       entao dependia do zoom (calibrado depois) e do ponto de partida
+       de cada clique -- erro de um entrava no seguinte.
+    3. Os mesmos cliques reproduzindo o tempo gravado: exigia velocidade
+       identica entre gravar e rodar. Montaria, buff ou lag desalinhavam
+       a rota toda.
 
-    'cave_map_clicks' continua atendido como alternativa (cliques no
-    mapa-mundi), mas hoje fica vazio: a rota em coordenada de mundo faz
-    o mesmo sem depender de pixel de tela, que quebra com resolucao
-    diferente.
+    'cave_map_clicks' e gravado com tools/gravar_rota.py --mapa. O
+    tempo que vem junto de cada ponto e ignorado: com destino absoluto,
+    esperar chegar e sempre correto.
     """
-    cliques = cfg.get("cave_final_clicks") or []
-
-    passos = [
-        *walk_route(cfg, cfg.get("cave_waypoints") or []),
-        *walk_by_world_map(cfg, cfg.get("cave_map_clicks") or []),
-    ]
-
-    if cliques:
-        # Cliques fixos no lugar da conta. Espera parar entre um e
-        # outro: clicar por cima de uma caminhada em curso a cancela, e
-        # aqui cada clique depende do anterior ter terminado -- e o
-        # ponto de partida que torna o pixel seguinte previsivel.
-        for x, y in cliques:
-            passos += [
-                right(x, y, note=f"clique fixo no minimapa ({x},{y})"),
-                wait(cfg.get("espera_clique_final", 0.5)),
-                esperar_parado(timeout=cfg.get("timeout_trecho_final", 30.0),
-                               note="espera o trecho terminar"),
-            ]
-    else:
-        passos += andar_ate(cfg, pos_npc(cfg, "npc_entrada"))
-
-    return passos
+    return walk_by_world_map(cfg, cfg.get("cave_map_clicks") or [])
 
 
 def fixar_camera(cfg) -> list[Step]:
@@ -591,7 +608,10 @@ def walk_by_world_map(cfg, pontos) -> list[Step]:
         key(tecla, note="abre o mapa-mundi"),
         wait(cfg.get("map_open_delay", 1.0)),
     ]
-    for x, y in pontos:
+    for x, y, *_ in pontos:
+        # O tempo que o gravador anota junto e ignorado aqui: no mapa
+        # aberto o pixel e destino absoluto, entao esperar chegar e
+        # sempre correto -- e nao ha o que reproduzir de timing.
         passos += [
             right(x, y, note=f"clique no mapa ({x},{y})"),
             wait(0.5, note="deixa a caminhada comecar"),
@@ -677,38 +697,6 @@ def arrive_exactly(cfg, destino) -> list[Step]:
     ]
 
 
-def walk_route(cfg, waypoints) -> list[Step]:
-    """
-    Percorre uma lista de coordenadas do MUNDO, uma de cada vez.
-
-    Existe porque um walk_to unico para um destino distante tenta cortar
-    reto e para na primeira parede: o destravamento tira o personagem do
-    canto, mas ele volta a apontar para o mesmo obstaculo e o ciclo se
-    repete. Waypoint elimina o problema na origem -- o desvio ja esta na
-    rota, que foi CAMINHADA e nao calculada.
-
-    Tolerancia folgada aqui (waypoint_tolerance): ponto intermediario e
-    breadcrumb, nao destino. Insistir na coordenada exata de cada um
-    custa iteracao e nao compra nada -- quem precisa de precisao e o
-    passo final, o do NPC.
-    """
-    if not waypoints:
-        return []
-
-    return [
-        walk_to(
-            x, y,
-            centro=cfg["minimapa_centro"],
-            raio=cfg["minimapa_raio"],
-            escala=cfg["minimapa_escala"],
-            tolerancia=cfg.get("waypoint_tolerance", 10),
-            timeout=cfg.get("waypoint_timeout", 45.0),
-            note=f"waypoint ({x}, {y})",
-        )
-        for x, y in waypoints
-    ]
-
-
 def falar_com_npc(cfg, destino, ponto_na_tela, template_opcao) -> list[Step]:
     """
     Vai ate um NPC e escolhe uma opcao do dialogo dele.
@@ -736,8 +724,24 @@ def falar_com_npc(cfg, destino, ponto_na_tela, template_opcao) -> list[Step]:
     Sem ponto calibrado, cai no plano B: procura o proprio NPC por
     template.
     """
-    passos = list(arrive_exactly(cfg, destino))
-    passos += fixar_camera(cfg)
+    return [
+        *arrive_exactly(cfg, destino),
+        *fixar_camera(cfg),
+        *dialogo_do_npc(cfg, ponto_na_tela, template_opcao),
+    ]
+
+
+def dialogo_do_npc(cfg, ponto_na_tela, template_opcao) -> list[Step]:
+    """
+    So a conversa: abre o dialogo e escolhe a opcao, sem sair do lugar.
+
+    Separado de falar_com_npc porque a entrada na cave precisa REPETIR
+    esta parte sem repetir a caminhada. Com instancia cheia a tentativa
+    falha estando o personagem no lugar certo -- refazer caminhada e
+    camera a cada tentativa era o grosso do tempo perdido entre uma e
+    outra.
+    """
+    passos: list[Step] = []
 
     # Direito SIMPLES: e o que abre a interacao com NPC. Duplo direito
     # (que e o de mover/interagir com o cenario) seleciona o NPC e nao
@@ -772,26 +776,44 @@ def entrar_na_cave(cfg) -> list[Step]:
     repetia num 'while_not' ate o pixel (945,148) ficar verde. Aqui a
     retentativa tem LIMITE -- o original podia ficar preso pra sempre.
 
-    A tentativa INTEIRA se repete (caminhada, camera, dialogo): quando
-    a entrada falha, em geral e porque o personagem nem chegou onde
-    deveria -- refazer so o clique final daria no mesmo.
+    A caminhada e a camera acontecem UMA vez, fora do laco; so a
+    conversa se repete. A versao anterior repetia a tentativa inteira,
+    e havia motivo: naquela epoca a entrada falhava porque o personagem
+    nao chegava no lugar certo. Com a ida pela rota do MAPA ABERTO isso
+    deixou de ser a falha comum -- o que sobra e instancia cheia, e ai o
+    personagem esta no lugar certo e refazer a caminhada so gasta os
+    segundos que separam uma tentativa da seguinte.
+
+    Confirmacao por MEMORIA, nao por pixel. O macro antigo olhava o
+    pixel (945,148) esperando verde puro; medido em 2026-08-06 com o
+    personagem comprovadamente DENTRO da cave, aquele pixel lia
+    0x2E3D1E. A checagem dava "nao entrou" estando dentro, e o roteiro
+    refazia a tentativa inteira de dentro da cave.
+
+    'location' responde a mesma pergunta sem depender de iluminacao, de
+    foco da janela nem de o elemento estar desenhado no quadro: dentro
+    da cave ele le 'Bewitcher Cave'.
     """
+    areas = cfg.get("areas_da_cave", ["Bewitcher Cave"])
+    entrou = lambda ci: ci.location in areas   # noqa: E731
+
     tentativa = [
-        *falar_com_npc(
-            cfg,
-            pos_npc(cfg, "npc_entrada"),
-            cfg.get("npc_entrada_tela"),
-            cfg["template_enter_bc"],
-        ),
-        wait(10.0, note="carrega a cave"),
+        *dialogo_do_npc(cfg, cfg.get("npc_entrada_tela"),
+                        cfg["template_enter_bc"]),
+        # Espera a MUDANCA DE AREA, nao um tempo fixo. O wait(10.0) que
+        # estava aqui cobrava os 10 s inteiros em toda tentativa, mesmo
+        # nas que nao entravam -- era o grosso do tempo perdido com
+        # instancia cheia. Entrou: segue na hora. Nao entrou: gasta o
+        # timeout e tenta de novo.
+        esperar_ate(entrou, timeout=cfg.get("timeout_carrega_cave", 8.0),
+                    note="espera a cave carregar"),
     ]
 
-    return retry_until_color(
-        tentativa,
-        *PIXEL_DENTRO_DA_CAVE,
-        cfg.get("cor_dentro_da_cave", COR_DENTRO_DA_CAVE),
-        vezes=cfg["cave_entry_attempts"],
-    )
+    return [
+        *arrive_exactly(cfg, pos_npc(cfg, "npc_entrada")),
+        *fixar_camera(cfg),
+        *retry_until(tentativa, entrou, vezes=cfg["cave_entry_attempts"]),
+    ]
 
 
 def sair_do_team(cfg) -> list[Step]:

@@ -12,6 +12,8 @@ configuradas.
 
 import json
 
+from types import SimpleNamespace
+
 import pytest
 
 from src.services.bot.scripts import bc_steps
@@ -513,19 +515,6 @@ def test_rota_do_mapa_espera_parar_entre_um_clique_e_outro():
     assert [p.args for p in passos if p.kind == "right"] == [(100, 200), (300, 400)]
 
 
-def test_sem_rota_gravada_a_ida_pra_cave_e_so_minimapa():
-    """
-    Enquanto os cliques de mapa não forem gravados, o passo some inteiro
-    em vez de virar clique no vazio.
-    """
-    passos = bc_steps.ir_para_cave({
-        **DEFAULT_CONFIG, "cave_map_clicks": [], "cave_waypoints": [],
-        "cave_final_clicks": [],
-    })
-
-    assert [p.kind for p in passos] == ["walk_to"]
-
-
 def test_leave_team_desligado_nao_faz_nada():
     """
     Quem sai do team é o runner, dentro da cave. Com a opção desligada
@@ -993,8 +982,8 @@ def test_preparo_segue_a_ordem_do_fluxo():
         pos = lambda alvo: next(i for i, n in enumerate(notas) if alvo in n)
         return pos(a) < pos(b)
 
-    assert antes("escondendo os outros jogadores", "zoom out do minimapa")
-    assert antes("zoom out do minimapa", "volta pra Stone City")
+    assert antes("escondendo os outros jogadores", "satura o zoom do minimapa")
+    assert antes("satura o zoom do minimapa", "volta pra Stone City")
     assert antes("volta pra Stone City", f'anda ate {DEFAULT_CONFIG["npc_venda_pos"]}')
     assert antes(f'anda ate {DEFAULT_CONFIG["npc_venda_pos"]}',
                  f'anda ate {DEFAULT_CONFIG["npc_teleporte_pos"]}')
@@ -1112,47 +1101,58 @@ def test_venda_efetiva_antes_de_fechar_a_janela():
     assert passos[efetiva].args[4] is True, "efetivar a venda é obrigatório"
 
 
-def test_ida_pra_cave_percorre_os_waypoints_e_fecha_no_npc():
+def test_zoom_do_minimapa_satura_e_volta_pro_nivel_da_rota():
     """
-    Um walk_to único pro NPC tenta cortar reto e para na parede -- a rota
-    real contorna pelo leste (x chega a 1415) antes de descer. Os
-    waypoints trazem o desvio embutido, porque foram CAMINHADOS e não
-    calculados.
+    Clique de minimapa é deslocamento relativo, e quanto mundo cabe em
+    cada pixel é o zoom. Saturar num extremo e voltar N cliques dá o
+    mesmo nível partindo de qualquer um -- e saber onde o zoom estava é
+    justamente o que não se tem.
 
-    O fecho é CLIQUE FIXO no minimapa, e não mais conta: o minimapa é
-    centrado no personagem, então um pixel fixo é um deslocamento
-    relativo fixo, e partindo sempre do mesmo waypoint chega sempre no
-    mesmo lugar. Dispensa escala, centro e tolerância -- as três coisas
-    que erraram justamente neste trecho.
+    Saturação com 4 e não 3: do mínimo ao máximo são 4 cliques, então
+    com 3 quem começasse no extremo oposto pararia um nível antes.
     """
-    passos = bc_steps.ir_para_cave(DEFAULT_CONFIG)
-    waypoints = DEFAULT_CONFIG["cave_waypoints"]
-    cliques = DEFAULT_CONFIG["cave_final_clicks"]
+    cfg = {**DEFAULT_CONFIG, "minimapa_zoom_volta_pos": (998, 120)}
+    cliques = [p.args for p in bc_steps.normalizar_zoom_minimapa(cfg)
+               if p.kind == "left"]
 
-    caminhadas = [p for p in passos if p.kind == "walk_to"]
-    assert [p.args[:2] for p in caminhadas] == list(waypoints)
-    assert caminhadas[0].args[6] == DEFAULT_CONFIG["waypoint_tolerance"]
-
-    # Cada clique espera o trecho terminar: clicar por cima de uma
-    # caminhada em curso a cancela, e o pixel seguinte só é previsível
-    # se o anterior chegou ao fim.
-    assert [p.args for p in passos if p.kind == "right"] == [
-        tuple(c) for c in cliques]
-    assert len([p for p in passos if p.kind == "wait_stopped"]) == len(cliques)
-
-    # O último waypoint é a ORIGEM do clique gravado. Sem ele o passo
-    # anterior entrega o personagem alguns pontos adiante e a diferença
-    # se transfere inteira para o destino.
-    assert waypoints[-1] == (1391, -625)
+    assert cliques == [cfg["minimapa_zoom_satura_pos"]] * 4 + [(998, 120)] * 2
 
 
-def test_sem_clique_gravado_a_ida_pra_cave_volta_pro_walk_to():
-    """Fallback: enquanto os cliques não existirem, vale a conta."""
-    cfg = {**DEFAULT_CONFIG, "cave_final_clicks": []}
-    passos = bc_steps.ir_para_cave(cfg)
+def test_sem_o_botao_oposto_o_zoom_nao_e_mexido():
+    """
+    Saturar sem poder voltar deixaria o minimapa no extremo -- pior que
+    não mexer, porque a rota foi gravada no meio.
+    """
+    assert bc_steps.normalizar_zoom_minimapa(
+        {**DEFAULT_CONFIG, "minimapa_zoom_volta_pos": None}) == []
 
-    assert all(p.kind == "walk_to" for p in passos)
-    assert passos[-1].args[:2] == cfg["npc_entrada_parada"]
+
+def test_sem_rota_gravada_a_ida_pra_cave_nao_gera_passo():
+    """Rota vazia não vira clique no vazio: o passo some inteiro."""
+    assert bc_steps.ir_para_cave({**DEFAULT_CONFIG, "cave_map_clicks": []}) == []
+
+
+def test_ida_pra_cave_e_pelo_mapa_aberto():
+    """
+    Pixel do mapa aberto é destino ABSOLUTO; pixel do minimapa é
+    deslocamento relativo ao personagem. O absoluto não depende de onde
+    se está nem do zoom, e erro de um clique não se soma ao seguinte --
+    foi essa dependência em cadeia que fez as três tentativas anteriores
+    (waypoints de mundo, cliques de minimapa, cliques com tempo gravado)
+    chegarem fora do lugar.
+
+    A rota gravada traz o tempo de cada trecho junto, mas aqui ele é
+    ignorado: com destino absoluto, esperar chegar é sempre correto.
+    """
+    passos = bc_steps.ir_para_cave({
+        **DEFAULT_CONFIG,
+        "cave_map_clicks": [(806, 351, 3.16), (814, 375, 3.77)],
+    })
+
+    assert [p.args for p in passos if p.kind == "right"] == [(806, 351), (814, 375)]
+    assert [p.args for p in passos if p.kind == "key"] == [
+        (DEFAULT_CONFIG["map_key"],)] * 2      # abre e fecha o mapa
+    assert [p.kind for p in passos].count("wait_stopped") == 2
 
 
 def test_entrada_insiste_o_bastante_pra_instancia_cheia():
@@ -1165,8 +1165,51 @@ def test_entrada_insiste_o_bastante_pra_instancia_cheia():
     passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
 
     # Cada tentativa que sobra é seguida de um skip que descarta as
-    # restantes assim que o pixel confirmar que entrou.
-    skips = [p for p in passos if p.kind == "skip_if_color"]
+    # restantes assim que a MEMÓRIA confirmar que entrou.
+    skips = [p for p in passos if p.kind == "skip_if"]
 
     assert DEFAULT_CONFIG["cave_entry_attempts"] >= 20
     assert len(skips) == DEFAULT_CONFIG["cave_entry_attempts"] - 1
+
+
+def test_entrada_repete_so_a_conversa_e_nao_a_caminhada():
+    """
+    Com instância cheia o personagem já está no lugar certo: refazer
+    caminhada e câmera a cada tentativa era o grosso do tempo entre uma
+    e outra. A caminhada acontece uma vez; só o diálogo se repete.
+
+    E a espera pela cave é teto, não tempo fixo: o wait de 10 s que
+    havia aqui era cobrado inteiro em toda tentativa que não entrava.
+    """
+    passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
+    tentativas = DEFAULT_CONFIG["cave_entry_attempts"]
+
+    # walk_to só do arrive_exactly (duas passadas), não uma por tentativa.
+    assert len([p for p in passos if p.kind == "walk_to"]) == 2
+    assert len([p for p in passos if p.kind == "camera"]) == 1
+
+    # Uma espera de área por tentativa, e nenhum wait fixo de 10 s.
+    esperas = [p for p in passos if p.kind == "wait_until"]
+    assert len(esperas) == tentativas
+    assert esperas[0].timeout == DEFAULT_CONFIG["timeout_carrega_cave"]
+    assert 10.0 not in [p.args[0] for p in passos if p.kind == "wait"]
+
+
+def test_entrada_confirma_por_memoria_e_nao_por_pixel():
+    """
+    O macro antigo olhava o pixel (945,148) esperando verde puro.
+    Medido em 2026-08-06 com o personagem comprovadamente DENTRO da
+    cave, aquele pixel lia 0x2E3D1E: a checagem dizia "não entrou"
+    estando dentro, e o roteiro refazia a caminhada e o clique no NPC
+    de dentro da cave, até 20 vezes.
+    """
+    passos = bc_steps.entrar_na_cave(DEFAULT_CONFIG)
+
+    assert not [p for p in passos if p.kind == "skip_if_color"]
+
+    condicao = [p for p in passos if p.kind == "skip_if"][0].args[0]
+    dentro = SimpleNamespace(location="Bewitcher Cave")
+    fora = SimpleNamespace(location="Ghost Din Woods")
+
+    assert condicao(dentro) is True
+    assert condicao(fora) is False

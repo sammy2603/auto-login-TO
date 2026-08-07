@@ -12,7 +12,12 @@ problema inteiro.
 
 Como usar:
 
-    python tools/gravar_rota.py --pid 39392
+    python tools/gravar_rota.py --janela Tomyris
+
+O nome e um PEDACO do titulo da janela (mesma busca que o resto do
+projeto usa), e nao o PID: o PID muda toda vez que o cliente reabre, e
+ter que caca-lo antes de cada gravacao so atrapalha. O PID sai do
+proprio hwnd, que e o que o MemoryReader precisa.
 
 Deixe rodando, clique com o BOTAO DIREITO no minimapa fazendo o
 trajeto, e pare com Ctrl+C. Sai uma lista pronta pra colar no
@@ -25,7 +30,7 @@ comum e nao faz parte da rota.
 Para o MAPA-MUNDI (tecla M), que e como se cortam os trajetos longos
 sem passar por estrada:
 
-    python tools/gravar_rota.py --pid 39392 --mapa
+    python tools/gravar_rota.py --janela Tomyris --mapa
 
 Ai nao ha area a filtrar -- a janela do mapa ocupa boa parte da tela --
 e a saida ja vem com o nome 'cave_map_clicks'.
@@ -42,6 +47,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import win32api
 import win32gui
+import win32process
 
 from src.infrastructure.window.service import WindowService
 from src.services.game.memory_reader import MemoryReader
@@ -55,23 +61,22 @@ def dentro_do_minimapa(x: int, y: int, centro, raio: int) -> bool:
     return (dx * dx + dy * dy) <= raio * raio
 
 
-def esperar_parar(mr, limite: float = 20.0):
-    """Devolve a posicao quando o personagem para de andar."""
-    anterior = (mr.x, mr.y)
-    fim = time.time() + limite
-    while time.time() < fim:
-        time.sleep(1.0)
-        atual = (mr.x, mr.y)
-        if atual == anterior:
-            return atual
-        anterior = atual
-    return anterior
+# Removida a antiga esperar_parar: ela BLOQUEAVA o laco por ate 20 s
+# esperando o personagem chegar, e nesse intervalo GetAsyncKeyState nao
+# era lido -- todo clique dado durante a caminhada sumia sem deixar
+# rastro. Quem clica encadeado (que e como se joga) perdia a maioria.
+#
+# Hoje o laco nunca bloqueia: o destino de um clique e simplesmente a
+# posicao lida no instante do clique SEGUINTE, que e exatamente o ponto
+# de partida dele. Sem espera, sem clique perdido, e a origem gravada
+# passa a ser a origem real.
 
 
 def main():
     ap = argparse.ArgumentParser(
         description="Grava rota de minimapa ou de mapa-mundi")
-    ap.add_argument("--pid", type=int, required=True)
+    ap.add_argument("--janela", required=True,
+                    help="pedaco do titulo da janela do cliente")
     ap.add_argument("--centro", type=int, nargs=2, default=(915, 112))
     ap.add_argument("--raio", type=int, default=60)
     ap.add_argument(
@@ -81,18 +86,24 @@ def main():
     )
     args = ap.parse_args()
 
-    hwnd = WindowService().find_by_pid(args.pid)
+    hwnd = WindowService().find(args.janela)
     if not hwnd:
-        print(f"Janela do PID {args.pid} nao encontrada")
+        print(f"Nenhuma janela com '{args.janela}' no titulo")
         return 1
 
-    mr = MemoryReader(args.pid)
+    # O MemoryReader abre o processo pelo PID, entao ele ainda e
+    # necessario -- so nao precisa vir digitado: o hwnd ja o carrega.
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    print(f"Janela '{win32gui.GetWindowText(hwnd)}' (PID {pid})")
+
+    mr = MemoryReader(pid)
     onde = "MAPA-MUNDI aberto (tecla M)" if args.mapa else "minimapa"
     print(f"Gravando em {mr.location}. Clique com o botao DIREITO no "
           f"{onde}; Ctrl+C para terminar.\n")
 
     rota = []
     pressionado = False
+    descartados = 0
     try:
         while True:
             agora = win32api.GetAsyncKeyState(VK_RBUTTON) < 0
@@ -102,28 +113,47 @@ def main():
                 # boa parte da tela e o clique util pode cair em
                 # qualquer canto dela.
                 if args.mapa or dentro_do_minimapa(x, y, args.centro, args.raio):
-                    antes = (mr.x, mr.y)
-                    # Trecho de mapa-mundi atravessa o mapa inteiro e
-                    # passa dos 20s do minimapa com folga.
-                    destino = esperar_parar(mr, 90.0 if args.mapa else 20.0)
-                    rota.append((x, y, destino))
-                    print(f"  {len(rota):2}. clique ({x}, {y})  "
-                          f"{antes} -> {destino}")
+                    origem = (mr.x, mr.y)
+                    instante = time.time()
+                    # O clique anterior so agora sabe onde terminou: e
+                    # aqui que o personagem estava quando o proximo
+                    # partiu. E tambem quanto tempo o trecho levou --
+                    # que e o que o roteiro tem que reproduzir.
+                    if rota:
+                        rota[-1]["destino"] = origem
+                        rota[-1]["dt"] = round(instante - rota[-1]["t"], 2)
+                    rota.append({"x": x, "y": y, "origem": origem,
+                                 "t": instante, "destino": None, "dt": None})
+                    print(f"  {len(rota):2}. clique ({x}, {y})  de {origem}")
+                else:
+                    # Descarte silencioso escondia centro/raio errados:
+                    # a rota saia curta e ninguem sabia por que.
+                    descartados += 1
+                    print(f"  -- clique ({x}, {y}) FORA do minimapa "
+                          f"(centro {tuple(args.centro)}, raio {args.raio})")
             pressionado = agora
             time.sleep(0.02)
     except KeyboardInterrupt:
         pass
-    finally:
-        mr.close()
+
+    if rota:
+        # O ultimo clique fecha com a posicao de agora: o Ctrl+C vem
+        # depois de o personagem ter chegado.
+        rota[-1]["destino"] = (mr.x, mr.y)
+        rota[-1]["dt"] = round(time.time() - rota[-1]["t"], 2)
+    mr.close()
 
     if not rota:
-        print(f"\nNenhum clique no {onde} foi gravado.")
+        print(f"\nNenhum clique no {onde} foi gravado"
+              f" ({descartados} descartados por cairem fora).")
         return 0
 
-    print("\nPronto pra colar no DEFAULT_CONFIG:\n")
-    print('    "cave_map_clicks": [' if args.mapa else '    "rota_...": [')
-    for x, y, destino in rota:
-        print(f"        ({x}, {y}),   # chega em {destino}")
+    print(f"\n{len(rota)} cliques gravados, {descartados} descartados.")
+    print("Pronto pra colar no DEFAULT_CONFIG:\n")
+    print('    "cave_map_clicks": [' if args.mapa else '    "cave_click_route": [')
+    for c in rota:
+        print(f"        ({c['x']}, {c['y']}, {c['dt']}),"
+              f"   # {c['origem']} -> {c['destino']}")
     print("    ],")
     return 0
 

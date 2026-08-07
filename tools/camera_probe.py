@@ -18,7 +18,10 @@ modificacao pode ter mexido no arranjo).
 
 Uso:
 
-    python tools/camera_probe.py --pid 840
+    python tools/camera_probe.py --janela Tomyris
+
+O nome e um PEDACO do titulo da janela, e nao o PID: o PID muda toda
+vez que o cliente reabre. O PID sai do proprio hwnd.
 
 Deixe rodando os 15 s e, durante esse tempo, GIRE a camera e ROLE o
 zoom no jogo. No fim ele diz quais campos variaram e quanto.
@@ -33,6 +36,10 @@ import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
+import win32gui
+import win32process
+
+from src.infrastructure.window.service import WindowService
 from src.services.game.memory_reader import MemoryReader, _rpm_float, _rpm_int
 
 # Base nossa (PONTEIROS.md) e a do RamoraBOT. Os offsets sao os mesmos
@@ -51,11 +58,22 @@ OFFSETS = (0x54, 0x58, 0x5C, 0x60, 0x64, 0x68, 0x6C, 0x70)
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Descobre qual estrutura de camera o cliente usa")
-    parser.add_argument("--pid", type=int, required=True)
+    parser.add_argument("--janela", required=True,
+                        help="pedaco do titulo da janela do cliente")
     parser.add_argument("--seconds", type=float, default=15.0)
     args = parser.parse_args()
 
-    reader = MemoryReader(args.pid)
+    hwnd = WindowService().find(args.janela)
+    if not hwnd:
+        print(f"Nenhuma janela com '{args.janela}' no titulo")
+        return 1
+
+    # A sonda le a MEMORIA do processo, entao o PID continua sendo o que
+    # vale -- so nao precisa vir digitado: o hwnd ja o carrega.
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    print(f"Janela '{win32gui.GetWindowText(hwnd)}' (PID {pid})")
+
+    reader = MemoryReader(pid)
 
     resolved = {}
     for rotulo, base_addr in CANDIDATE_BASES.items():
