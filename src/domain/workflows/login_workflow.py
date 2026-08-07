@@ -54,7 +54,7 @@ class LoginWorkflow(BaseWorkflow):
         olhando.
         """
 
-        tentativa = 1
+        attempt = 1
 
         while True:
 
@@ -71,13 +71,13 @@ class LoginWorkflow(BaseWorkflow):
                 return
 
             self.log(
-                f"Tela de servidores não apareceu (tentativa {tentativa}). "
+                f"Tela de servidores não apareceu (tentativa {attempt}). "
                 "Fechando diálogos e preenchendo de novo..."
             )
 
             self.dismiss_dialogs()
 
-            tentativa += 1
+            attempt += 1
 
     def server_screen_appeared(self) -> bool:
         """

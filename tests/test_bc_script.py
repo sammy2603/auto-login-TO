@@ -909,11 +909,11 @@ def test_garantir_pet_pula_o_bloco_inteiro_quando_tem_pet():
 
 def test_garantir_cidade_so_usa_o_charm_fora_da_cidade():
     passos = bc_steps.garantir_cidade(DEFAULT_CONFIG)
-    condicao = passos[0].args[0]
+    condition = passos[0].args[0]
 
     assert salta_o_bloco_inteiro(passos)
-    assert condicao(CharFalso(location="Stone City")) is True
-    assert condicao(CharFalso(location="Ghost Din Woods")) is False
+    assert condition(CharFalso(location="Stone City")) is True
+    assert condition(CharFalso(location="Ghost Din Woods")) is False
     assert passos[1].args == (DEFAULT_CONFIG["stone_charm_key"],)
 
 
@@ -924,31 +924,31 @@ def test_qualquer_sub_area_da_cidade_conta_como_estar_la():
     personagem no mapa certo, em outro canto, queimar um Return Charm.
     """
     cfg = {**DEFAULT_CONFIG, "areas_da_cidade": ["Stone City", "Praca Leste"]}
-    condicao = bc_steps.garantir_cidade(cfg)[0].args[0]
+    condition = bc_steps.garantir_cidade(cfg)[0].args[0]
 
-    assert condicao(CharFalso(location="Stone City")) is True
-    assert condicao(CharFalso(location="Praca Leste")) is True
-    assert condicao(CharFalso(location="Ghost Din Woods")) is False
+    assert condition(CharFalso(location="Stone City")) is True
+    assert condition(CharFalso(location="Praca Leste")) is True
+    assert condition(CharFalso(location="Ghost Din Woods")) is False
 
 
 def test_montar_se_preciso_nao_desmonta_quem_ja_esta_montado():
     """A tecla é toggle: apertar montado desmontaria."""
     passos = bc_steps.montar_se_preciso(DEFAULT_CONFIG)
-    condicao = passos[0].args[0]
+    condition = passos[0].args[0]
 
     assert salta_o_bloco_inteiro(passos)
-    assert condicao(CharFalso(mounted=True)) is True
-    assert condicao(CharFalso(mounted=False)) is False
+    assert condition(CharFalso(mounted=True)) is True
+    assert condition(CharFalso(mounted=False)) is False
 
 
 def test_espera_de_regeneracao_usa_os_limiares_configurados():
     cfg = {**DEFAULT_CONFIG, "hp_min_para_seguir": 100.0,
            "mana_min_para_seguir": 90.0}
-    condicao = bc_steps.esperar_hp_e_mana(cfg)[0].args[0]
+    condition = bc_steps.esperar_hp_e_mana(cfg)[0].args[0]
 
-    assert condicao(CharFalso(hp_pct=100.0, resource_pct=90.0)) is True
-    assert condicao(CharFalso(hp_pct=100.0, resource_pct=89.9)) is False
-    assert condicao(CharFalso(hp_pct=99.0, resource_pct=100.0)) is False
+    assert condition(CharFalso(hp_pct=100.0, resource_pct=90.0)) is True
+    assert condition(CharFalso(hp_pct=100.0, resource_pct=89.9)) is False
+    assert condition(CharFalso(hp_pct=99.0, resource_pct=100.0)) is False
 
 
 def test_sem_sit_key_espera_em_pe():
@@ -1207,9 +1207,9 @@ def test_entrada_confirma_por_memoria_e_nao_por_pixel():
 
     assert not [p for p in passos if p.kind == "skip_if_color"]
 
-    condicao = [p for p in passos if p.kind == "skip_if"][0].args[0]
+    condition = [p for p in passos if p.kind == "skip_if"][0].args[0]
     dentro = SimpleNamespace(location="Bewitcher Cave")
     fora = SimpleNamespace(location="Ghost Din Woods")
 
-    assert condicao(dentro) is True
-    assert condicao(fora) is False
+    assert condition(dentro) is True
+    assert condition(fora) is False

@@ -28,9 +28,9 @@ from src.services.bot.step_runner import (
     click_template,
     click_until_target,
     skip_if_color,
-    pular_se,
-    esperar_ate,
-    esperar_parado,
+    skip_if,
+    wait_until,
+    wait_stopped,
     walk_to,
     use_all_items,
     wait_position,
@@ -419,7 +419,7 @@ def test_retry_until_color_para_na_primeira_tentativa_que_da_certo(entrada):
     Substitui o 'while_not' do macro de entrar na cave: deu certo na
     primeira, não repete as outras duas.
     """
-    runner = StepRunner(retry_until_color([left(5, 5)], 945, 148, 65280, vezes=3))
+    runner = StepRunner(retry_until_color([left(5, 5)], 945, 148, 65280, times=3))
     ctx = contexto(entrada, vision=FakeVision(combina=True))
     rodar_ate_terminar(runner, ctx)
 
@@ -428,7 +428,7 @@ def test_retry_until_color_para_na_primeira_tentativa_que_da_certo(entrada):
 
 def test_retry_until_color_esgota_as_tentativas_se_nunca_der_certo(entrada):
     """Com limite -- o macro original ficava preso pra sempre."""
-    runner = StepRunner(retry_until_color([left(5, 5)], 945, 148, 65280, vezes=3))
+    runner = StepRunner(retry_until_color([left(5, 5)], 945, 148, 65280, times=3))
     ctx = contexto(entrada, vision=FakeVision(combina=False))
     rodar_ate_terminar(runner, ctx)
 
@@ -456,7 +456,7 @@ def contexto_char(entrada, char):
 
 def test_chegou_no_alvo_nao_clica(entrada):
     char = FakeChar(100, 100)
-    runner = StepRunner([walk_to(103, 98, tolerancia=8)])
+    runner = StepRunner([walk_to(103, 98, tolerance=8)])
 
     rodar_ate_terminar(runner, contexto_char(entrada, char))
 
@@ -466,8 +466,8 @@ def test_chegou_no_alvo_nao_clica(entrada):
 def test_projeta_o_alvo_no_minimapa_com_y_invertido(entrada):
     """Alvo 20 ao norte e 10 a leste: clique acima e à direita do centro."""
     char = FakeChar(1000, -500)
-    runner = StepRunner([walk_to(1010, -480, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0)])
+    runner = StepRunner([walk_to(1010, -480, center=(915, 112), radius=55,
+                                 scale=1.0, tolerance=2, intervalo=0.0)])
 
     runner.tick(contexto_char(entrada, char))
 
@@ -477,8 +477,8 @@ def test_projeta_o_alvo_no_minimapa_com_y_invertido(entrada):
 def test_alvo_fora_do_raio_clica_na_borda(entrada):
     """Longe demais pro minimapa: anda o que der na direção certa."""
     char = FakeChar(0, 0)
-    runner = StepRunner([walk_to(1000, 0, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0)])
+    runner = StepRunner([walk_to(1000, 0, center=(915, 112), radius=55,
+                                 scale=1.0, tolerance=2, intervalo=0.0)])
 
     runner.tick(contexto_char(entrada, char))
 
@@ -492,8 +492,8 @@ def test_parede_no_caminho_faz_o_clique_desviar(entrada):
     Repetir o mesmo clique daria no mesmo, então o seguinte sai torto.
     """
     char = FakeChar(1000, -500)
-    runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0,
+    runner = StepRunner([walk_to(1000, -400, center=(915, 112), radius=55,
+                                 scale=1.0, tolerance=2, intervalo=0.0,
                                  paradas=1)])
     ctx = contexto_char(entrada, char)
 
@@ -506,7 +506,7 @@ def test_parede_no_caminho_faz_o_clique_desviar(entrada):
 
 def test_desiste_no_timeout(entrada):
     char = FakeChar(0, 0)
-    runner = StepRunner([walk_to(999, 999, tolerancia=2, intervalo=0.0,
+    runner = StepRunner([walk_to(999, 999, tolerance=2, intervalo=0.0,
                                  timeout=0.05)])
     ctx = contexto_char(entrada, char)
 
@@ -720,7 +720,7 @@ def test_wait_position_libera_ao_chegar(entrada):
     class Char:
         x, y = 82, -396
 
-    runner = StepRunner([wait_position(82, -396, tolerancia=5), left(1, 1)])
+    runner = StepRunner([wait_position(82, -396, tolerance=5), left(1, 1)])
     ctx = StepContext(hwnd=1, input_service=entrada, char_info=Char())
     rodar_ate_terminar(runner, ctx)
 
@@ -733,7 +733,7 @@ def test_wait_position_aceita_tolerancia():
         x, y = 85, -399
 
     entrada = FakeInput()
-    runner = StepRunner([wait_position(82, -396, tolerancia=5), left(1, 1)])
+    runner = StepRunner([wait_position(82, -396, tolerance=5), left(1, 1)])
     ctx = StepContext(hwnd=1, input_service=entrada, char_info=Char())
     rodar_ate_terminar(runner, ctx)
 
@@ -794,7 +794,7 @@ class CharMemoria:
 def test_pular_se_pula_quando_a_condicao_e_verdadeira():
     entrada = FakeInput()
     runner = StepRunner([
-        pular_se(lambda ci: ci.pet_alive, 1),
+        skip_if(lambda ci: ci.pet_alive, 1),
         key("7", note="invoca o pet"),
         key("0", note="monta"),
     ])
@@ -809,7 +809,7 @@ def test_pular_se_pula_quando_a_condicao_e_verdadeira():
 def test_pular_se_executa_quando_a_condicao_e_falsa():
     entrada = FakeInput()
     runner = StepRunner([
-        pular_se(lambda ci: ci.pet_alive, 1),
+        skip_if(lambda ci: ci.pet_alive, 1),
         key("7", note="invoca o pet"),
     ])
     ctx = contexto_char(entrada, CharMemoria(pet_alive=False))
@@ -827,7 +827,7 @@ def test_pular_se_sem_char_info_nao_pula():
     """
     entrada = FakeInput()
     runner = StepRunner([
-        pular_se(lambda ci: ci.pet_alive, 1),
+        skip_if(lambda ci: ci.pet_alive, 1),
         key("7"),
     ])
     ctx = contexto_char(entrada, None)
@@ -842,7 +842,7 @@ def test_esperar_ate_segura_o_roteiro_ate_a_condicao():
     entrada = FakeInput()
     char = CharMemoria(hp_pct=100.0, resource_pct=50.0)
     runner = StepRunner([
-        esperar_ate(lambda ci: ci.resource_pct >= 90),
+        wait_until(lambda ci: ci.resource_pct >= 90),
         key("0", note="monta"),
     ])
     ctx = contexto_char(entrada, char)
@@ -865,7 +865,7 @@ def test_esperar_ate_segue_no_timeout():
     """
     entrada = FakeInput()
     runner = StepRunner([
-        esperar_ate(lambda ci: False, timeout=0.01),
+        wait_until(lambda ci: False, timeout=0.01),
         key("0"),
     ])
     ctx = contexto_char(entrada, CharMemoria())
@@ -933,8 +933,8 @@ def test_nao_reclica_enquanto_o_personagem_esta_andando(entrada):
     destino. O gatilho tem que ser a coordenada parar de mudar.
     """
     char = FakeChar(0, 0)
-    runner = StepRunner([walk_to(500, 0, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0,
+    runner = StepRunner([walk_to(500, 0, center=(915, 112), radius=55,
+                                 scale=1.0, tolerance=2, intervalo=0.0,
                                  paradas=2)])
     ctx = contexto_char(entrada, char)
 
@@ -954,7 +954,7 @@ def test_nao_reclica_enquanto_o_personagem_esta_andando(entrada):
 
 def test_esperar_parado_termina_quando_a_posicao_repete(entrada):
     char = FakeChar(10, 10)
-    runner = StepRunner([esperar_parado(paradas=2, timeout=5.0)])
+    runner = StepRunner([wait_stopped(paradas=2, timeout=5.0)])
     ctx = contexto_char(entrada, char)
 
     runner.tick(ctx)          # primeira leitura
@@ -971,7 +971,7 @@ def test_esperar_parado_termina_quando_a_posicao_repete(entrada):
 def test_esperar_parado_segue_no_timeout(entrada):
     """Caminhada que demora mais que o esperado não pode travar o ciclo."""
     char = FakeChar(0, 0)
-    runner = StepRunner([esperar_parado(paradas=99, timeout=0.05)])
+    runner = StepRunner([wait_stopped(paradas=99, timeout=0.05)])
     ctx = contexto_char(entrada, char)
 
     runner.tick(ctx)
@@ -1022,8 +1022,8 @@ def test_preso_em_canto_escala_para_varredura_circular(entrada):
     oposto ao destino.
     """
     char = FakeChar(1000, -500)
-    runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0,
+    runner = StepRunner([walk_to(1000, -400, center=(915, 112), radius=55,
+                                 scale=1.0, tolerance=2, intervalo=0.0,
                                  paradas=1, varredura_apos=2)])
     ctx = contexto_char(entrada, char)
 
@@ -1045,8 +1045,8 @@ def test_preso_em_canto_escala_para_varredura_circular(entrada):
 def test_varredura_cresce_o_raio_a_cada_volta_presa(entrada):
     """Perto do centro o clique anda pouco, e pouco pode não bastar."""
     char = FakeChar(1000, -500)
-    runner = StepRunner([walk_to(1000, -400, centro=(915, 112), raio=55,
-                                 escala=1.0, tolerancia=2, intervalo=0.0,
+    runner = StepRunner([walk_to(1000, -400, center=(915, 112), radius=55,
+                                 scale=1.0, tolerance=2, intervalo=0.0,
                                  paradas=1, varredura_apos=1)])
     ctx = contexto_char(entrada, char)
 
@@ -1056,7 +1056,7 @@ def test_varredura_cresce_o_raio_a_cada_volta_presa(entrada):
     runner.tick(ctx)   # segunda volta
     segunda = entrada.acoes[9:17]
 
-    def raio(acoes):
+    def radius(acoes):
         return max(abs(x - 915) for _, x, _ in acoes)
 
-    assert raio(segunda) > raio(primeira)
+    assert radius(segunda) > radius(primeira)

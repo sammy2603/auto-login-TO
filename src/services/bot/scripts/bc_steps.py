@@ -24,13 +24,13 @@ from src.services.bot.step_runner import (
     camera,
     click_template,
     double_right,
-    esperar_parado,
+    wait_stopped,
     key,
     key_down,
-    pular_se,
-    pular_se_template,
-    esperar_template,
-    esperar_ate,
+    skip_if,
+    skip_if_template,
+    wait_template,
+    wait_until,
     left,
     repeat,
     retry_until,
@@ -141,7 +141,7 @@ def garantir_pet(cfg) -> list[Step]:
         wait(cfg.get("espera_pet", 2.0)),
     ]
     return [
-        pular_se(lambda ci: bool(ci.pet_alive), len(invocar),
+        skip_if(lambda ci: bool(ci.pet_alive), len(invocar),
                  note="pet ja esta ativo"),
         *invocar,
     ]
@@ -163,7 +163,7 @@ def garantir_cidade(cfg) -> list[Step]:
     areas = cfg["areas_da_cidade"]
     volta = voltar_para_stone(cfg)
     return [
-        pular_se(lambda ci: ci.location in areas, len(volta),
+        skip_if(lambda ci: ci.location in areas, len(volta),
                  note=f"ja esta em {'/'.join(areas)}"),
         *volta,
     ]
@@ -173,7 +173,7 @@ def montar_se_preciso(cfg) -> list[Step]:
     """Monta so se estiver desmontado -- a tecla e toggle."""
     passos = montar(cfg)
     return [
-        pular_se(lambda ci: ci.mounted, len(passos), note="ja esta montado"),
+        skip_if(lambda ci: ci.mounted, len(passos), note="ja esta montado"),
         *passos,
     ]
 
@@ -202,7 +202,7 @@ def esperar_hp_e_mana(cfg) -> list[Step]:
     def pronto(ci):
         return ci.hp_pct >= hp_min and ci.resource_pct >= mana_min
 
-    espera = esperar_ate(
+    espera = wait_until(
         pronto,
         timeout=cfg.get("timeout_regen", 300.0),
         note=f"espera HP >= {hp_min}% e mana >= {mana_min}%",
@@ -213,20 +213,20 @@ def esperar_hp_e_mana(cfg) -> list[Step]:
         descanso = [espera]
     else:
         descanso = [
-            pular_se(lambda ci: not ci.mounted, 2, note="ja esta desmontado"),
+            skip_if(lambda ci: not ci.mounted, 2, note="ja esta desmontado"),
             key(cfg["mount_key"], note="desmonta para sentar"),
             wait(1.0),
             key(sit_key, note="senta para regenerar"),
             espera,
             key(sit_key, note="levanta"),
             wait(0.5),
-            pular_se(lambda ci: ci.mounted, 2, note="ja esta montado"),
+            skip_if(lambda ci: ci.mounted, 2, note="ja esta montado"),
             key(cfg["mount_key"], note="monta de novo"),
             wait(cfg.get("espera_mount", 2.0)),
         ]
 
     return [
-        pular_se(pronto, len(descanso), note="HP e mana ja estao no minimo"),
+        skip_if(pronto, len(descanso), note="HP e mana ja estao no minimo"),
         *descanso,
     ]
 
@@ -370,7 +370,7 @@ def abrir_dialogo_npc(cfg, prova: str, pontos=None) -> list[Step]:
         ]
         if restantes:
             passos.append(
-                pular_se_template(prova, restantes, note="dialogo ja abriu")
+                skip_if_template(prova, restantes, note="dialogo ja abriu")
             )
     return passos
 
@@ -395,7 +395,7 @@ def comprar_return_charm(cfg) -> list[Step]:
     return [
         *abrir_dialogo_npc(cfg, cfg["template_opcao_comprar"]),
         click_template(cfg["template_opcao_comprar"], note="abre a loja"),
-        esperar_template(cfg["template_janela_compra"],
+        wait_template(cfg["template_janela_compra"],
                          timeout=cfg.get("timeout_janela_compra", 10.0),
                          note="espera a loja abrir"),
         wait(cfg.get("espera_grade", 1.5), note="deixa a grade preencher"),
@@ -458,7 +458,7 @@ def vender(cfg) -> list[Step]:
         # Espera a JANELA, e nao um tempo fixo. A primeira versao dormia
         # 1,5s aqui; quando a janela demorava mais, o duplo-clique do
         # slot caia no dialogo atras e nada era vendido -- sem erro.
-        esperar_template(cfg["template_janela_venda"],
+        wait_template(cfg["template_janela_venda"],
                          timeout=cfg.get("timeout_janela_venda", 10.0),
                          note="espera a janela de venda abrir"),
         # A moldura aparece ANTES da grade preencher. Sem esta folga o
@@ -615,7 +615,7 @@ def walk_by_world_map(cfg, pontos) -> list[Step]:
         passos += [
             right(x, y, note=f"clique no mapa ({x},{y})"),
             wait(0.5, note="deixa a caminhada comecar"),
-            esperar_parado(timeout=cfg.get("map_leg_timeout", 90.0),
+            wait_stopped(timeout=cfg.get("map_leg_timeout", 90.0),
                            note="espera chegar no ponto"),
         ]
     passos += [
@@ -625,7 +625,7 @@ def walk_by_world_map(cfg, pontos) -> list[Step]:
     return passos
 
 
-def andar_ate(cfg, destino, tolerancia=None, varredura_apos=None,
+def andar_ate(cfg, destino, tolerance=None, varredura_apos=None,
               timeout=None) -> list[Step]:
     """
     Caminhada por coordenada do MUNDO, cortando reto pelo minimapa.
@@ -641,10 +641,10 @@ def andar_ate(cfg, destino, tolerancia=None, varredura_apos=None,
     return [
         walk_to(
             *destino,
-            centro=cfg["minimapa_centro"],
-            raio=cfg["minimapa_raio"],
-            escala=cfg["minimapa_escala"],
-            tolerancia=(tolerancia if tolerancia is not None
+            center=cfg["minimapa_centro"],
+            radius=cfg["minimapa_raio"],
+            scale=cfg["minimapa_escala"],
+            tolerance=(tolerance if tolerance is not None
                         else cfg.get("tolerancia_posicao", 5)),
             varredura_apos=(varredura_apos if varredura_apos is not None
                             else cfg.get("varredura_apos", 3)),
@@ -674,7 +674,7 @@ def arrive_exactly(cfg, destino) -> list[Step]:
     segunda passada chegou, o aviso no log diz onde o personagem parou,
     que e a informacao que faltava pra entender a falha.
     """
-    tolerancia = cfg.get("tolerancia_chegada", 5)
+    tolerance = cfg.get("tolerancia_chegada", 5)
     # Varredura DESLIGADA e prazo curto neste passo. A varredura serve
     # pra contornar obstaculo no meio da rota; no ponto de chegada ela
     # so espalha o personagem -- medido em 2026-08-06: dois timeouts de
@@ -684,11 +684,11 @@ def arrive_exactly(cfg, destino) -> list[Step]:
     sem_varredura = 10 ** 6
     prazo = cfg.get("timeout_chegada_final", 20.0)
     return [
-        *andar_ate(cfg, destino, tolerancia, sem_varredura, prazo),
-        *andar_ate(cfg, destino, tolerancia, sem_varredura, prazo),
+        *andar_ate(cfg, destino, tolerance, sem_varredura, prazo),
+        *andar_ate(cfg, destino, tolerance, sem_varredura, prazo),
         wait_position(
             *destino,
-            tolerancia=tolerancia,
+            tolerance=tolerance,
             timeout=cfg.get("timeout_conferencia", 10.0),
             note=f"confere que esta em {destino} antes de clicar",
         ),
@@ -797,7 +797,7 @@ def entrar_na_cave(cfg) -> list[Step]:
     areas = cfg.get("areas_da_cave", ["Bewitcher Cave"])
     entrou = lambda ci: ci.location in areas   # noqa: E731
 
-    tentativa = [
+    attempt = [
         *dialogo_do_npc(cfg, cfg.get("npc_entrada_tela"),
                         cfg["template_enter_bc"]),
         # Espera a MUDANCA DE AREA, nao um tempo fixo. O wait(10.0) que
@@ -805,14 +805,14 @@ def entrar_na_cave(cfg) -> list[Step]:
         # nas que nao entravam -- era o grosso do tempo perdido com
         # instancia cheia. Entrou: segue na hora. Nao entrou: gasta o
         # timeout e tenta de novo.
-        esperar_ate(entrou, timeout=cfg.get("timeout_carrega_cave", 8.0),
+        wait_until(entrou, timeout=cfg.get("timeout_carrega_cave", 8.0),
                     note="espera a cave carregar"),
     ]
 
     return [
         *arrive_exactly(cfg, pos_npc(cfg, "npc_entrada")),
         *fixar_camera(cfg),
-        *retry_until(tentativa, entrou, vezes=cfg["cave_entry_attempts"]),
+        *retry_until(attempt, entrou, times=cfg["cave_entry_attempts"]),
     ]
 
 

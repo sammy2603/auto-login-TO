@@ -150,18 +150,18 @@ class Calibrador:
         b, g, r = self.base[y, x][:3]
         return int(r), int(g), int(b)
 
-    def _desenhar_lupa(self, quadro, x, y, raio=20, escala=4):
+    def _desenhar_lupa(self, quadro, x, y, radius=20, scale=4):
         """Amplia a vizinhanca do cursor, pra acertar o pixel exato."""
         altura, largura = self.base.shape[:2]
-        x1, y1 = max(0, x - raio), max(0, y - raio)
-        x2, y2 = min(largura, x + raio), min(altura, y + raio)
+        x1, y1 = max(0, x - radius), max(0, y - radius)
+        x2, y2 = min(largura, x + radius), min(altura, y + radius)
 
         if x2 - x1 < 2 or y2 - y1 < 2:
             return
 
         recorte = self.base[y1:y2, x1:x2]
         ampliado = cv2.resize(
-            recorte, ((x2 - x1) * escala, (y2 - y1) * escala),
+            recorte, ((x2 - x1) * scale, (y2 - y1) * scale),
             interpolation=cv2.INTER_NEAREST,
         )
 

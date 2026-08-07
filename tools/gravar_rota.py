@@ -55,10 +55,10 @@ from src.services.game.memory_reader import MemoryReader
 VK_RBUTTON = 0x02
 
 
-def dentro_do_minimapa(x: int, y: int, centro, raio: int) -> bool:
+def dentro_do_minimapa(x: int, y: int, center, radius: int) -> bool:
     """O minimapa e circular; canto do retangulo nao conta."""
-    dx, dy = x - centro[0], y - centro[1]
-    return (dx * dx + dy * dy) <= raio * raio
+    dx, dy = x - center[0], y - center[1]
+    return (dx * dx + dy * dy) <= radius * radius
 
 
 # Removida a antiga esperar_parar: ela BLOQUEAVA o laco por ate 20 s
@@ -77,8 +77,12 @@ def main():
         description="Grava rota de minimapa ou de mapa-mundi")
     ap.add_argument("--janela", required=True,
                     help="pedaco do titulo da janela do cliente")
-    ap.add_argument("--centro", type=int, nargs=2, default=(915, 112))
-    ap.add_argument("--raio", type=int, default=60)
+    # A flag continua em portugues -- e o que esta documentado e no dedo
+    # de quem usa; o atributo vai pra ingles junto com o resto do codigo.
+    # 'dest' e o que separa a interface do identificador.
+    ap.add_argument("--centro", dest="center", type=int, nargs=2,
+                    default=(915, 112))
+    ap.add_argument("--raio", dest="radius", type=int, default=60)
     ap.add_argument(
         "--mapa", action="store_true",
         help="grava cliques no MAPA-MUNDI aberto (tecla M) em vez do "
@@ -112,7 +116,7 @@ def main():
                 # No mapa-mundi nao ha area a filtrar: a janela ocupa
                 # boa parte da tela e o clique util pode cair em
                 # qualquer canto dela.
-                if args.mapa or dentro_do_minimapa(x, y, args.centro, args.raio):
+                if args.mapa or dentro_do_minimapa(x, y, args.center, args.radius):
                     origem = (mr.x, mr.y)
                     instante = time.time()
                     # O clique anterior so agora sabe onde terminou: e
@@ -130,7 +134,7 @@ def main():
                     # a rota saia curta e ninguem sabia por que.
                     descartados += 1
                     print(f"  -- clique ({x}, {y}) FORA do minimapa "
-                          f"(centro {tuple(args.centro)}, raio {args.raio})")
+                          f"(centro {tuple(args.center)}, raio {args.radius})")
             pressionado = agora
             time.sleep(0.02)
     except KeyboardInterrupt:

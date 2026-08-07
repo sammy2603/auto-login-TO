@@ -129,24 +129,24 @@ def skip_if_color(x: int, y: int, color, steps_ahead: int,
     return Step(SKIP_IF_COLOR, (x, y, color, tolerance, steps_ahead), note=note)
 
 
-def retry_until_color(tentativa: list[Step], x: int, y: int, color,
-                      vezes: int = 3, tolerance: int = 10) -> list[Step]:
+def retry_until_color(attempt: list[Step], x: int, y: int, color,
+                      times: int = 3, tolerance: int = 10) -> list[Step]:
     """
     Repete um bloco ate o pixel (x, y) ficar da cor indicada, no maximo
     'vezes'. Substitui o 'while_not' dos macros -- com limite, pra nao
     ficar preso pra sempre como o original ficava.
     """
     saida: list[Step] = []
-    for n in range(vezes):
-        restantes = (vezes - n - 1) * (len(tentativa) + 1)
-        saida.extend(tentativa)
+    for n in range(times):
+        restantes = (times - n - 1) * (len(attempt) + 1)
+        saida.extend(attempt)
         if restantes > 0:
             saida.append(skip_if_color(x, y, color, restantes, tolerance))
     return saida
 
 
-def retry_until(tentativa: list[Step], condicao: Callable,
-                vezes: int = 3) -> list[Step]:
+def retry_until(attempt: list[Step], condition: Callable,
+                times: int = 3) -> list[Step]:
     """
     Repete um bloco ate a MEMORIA dizer que deu certo, no maximo
     'vezes'.
@@ -157,11 +157,11 @@ def retry_until(tentativa: list[Step], condicao: Callable,
     naquele quadro; um booleano ou um nome de area, nao.
     """
     saida: list[Step] = []
-    for n in range(vezes):
-        restantes = (vezes - n - 1) * (len(tentativa) + 1)
-        saida.extend(tentativa)
+    for n in range(times):
+        restantes = (times - n - 1) * (len(attempt) + 1)
+        saida.extend(attempt)
         if restantes > 0:
-            saida.append(pular_se(condicao, restantes,
+            saida.append(skip_if(condition, restantes,
                                   note="condicao ja satisfeita"))
     return saida
 
@@ -195,7 +195,7 @@ def click_template(template: str, region=None, timeout: float = 20.0,
     )
 
 
-def wait_position(x: int, y: int, tolerancia: int = 5, timeout: float = 60.0,
+def wait_position(x: int, y: int, tolerance: int = 5, timeout: float = 60.0,
                   note: str = "") -> Step:
     """
     Espera o personagem chegar perto de uma coordenada DO MUNDO (a
@@ -205,7 +205,7 @@ def wait_position(x: int, y: int, tolerancia: int = 5, timeout: float = 60.0,
     segue antes, se foi lenta espera mais. Os macros antigos nao tinham
     como fazer isso.
     """
-    return Step(WAIT_POSITION, (x, y, tolerancia), timeout=timeout, note=note)
+    return Step(WAIT_POSITION, (x, y, tolerance), timeout=timeout, note=note)
 
 
 def use_all_items(template: str, region=None, maximo: int = 20,
@@ -255,8 +255,8 @@ def attack_until_dead(skills, timeout: float = 300.0,
     )
 
 
-def walk_to(x: int, y: int, centro=(915, 112), raio: int = 55,
-            escala: float = 1.0, tolerancia: int = 2, intervalo: float = 0.5,
+def walk_to(x: int, y: int, center=(915, 112), radius: int = 55,
+            scale: float = 1.0, tolerance: int = 2, intervalo: float = 0.5,
             paradas: int = 2, varredura_apos: int = 3,
             timeout: float = 120.0, note: str = "") -> Step:
     """
@@ -296,14 +296,14 @@ def walk_to(x: int, y: int, centro=(915, 112), raio: int = 55,
     """
     return Step(
         WALK_TO,
-        (x, y, centro[0], centro[1], raio, escala, tolerancia, intervalo,
+        (x, y, center[0], center[1], radius, scale, tolerance, intervalo,
          paradas, varredura_apos),
         timeout=timeout,
         note=note,
     )
 
 
-def esperar_parado(paradas: int = 3, timeout: float = 30.0,
+def wait_stopped(paradas: int = 3, timeout: float = 30.0,
                    note: str = "") -> Step:
     """
     Segura o roteiro ate o personagem parar de andar.
@@ -365,7 +365,7 @@ def click_until_target(x: int, y: int, nome: str, timeout: float = 20.0,
     )
 
 
-def pular_se(condicao: Callable, steps_ahead: int, note: str = "") -> Step:
+def skip_if(condition: Callable, steps_ahead: int, note: str = "") -> Step:
     """
     Pula 'steps_ahead' passos quando a condicao diz que sim.
 
@@ -378,10 +378,10 @@ def pular_se(condicao: Callable, steps_ahead: int, note: str = "") -> Step:
     falta de leitura executaria o roteiro achando que a condicao estava
     satisfeita, que e o jeito errado de errar.
     """
-    return Step(SKIP_IF, (condicao, steps_ahead), note=note)
+    return Step(SKIP_IF, (condition, steps_ahead), note=note)
 
 
-def esperar_ate(condicao: Callable, timeout: float = 120.0,
+def wait_until(condition: Callable, timeout: float = 120.0,
                 note: str = "") -> Step:
     """
     Segura o roteiro ate a condicao ficar verdadeira, ou ate o timeout.
@@ -393,10 +393,10 @@ def esperar_ate(condicao: Callable, timeout: float = 120.0,
     causa de regeneracao lenta custa mais que entrar na cave com mana
     faltando.
     """
-    return Step(WAIT_UNTIL, (condicao,), timeout=timeout, note=note)
+    return Step(WAIT_UNTIL, (condition,), timeout=timeout, note=note)
 
 
-def pular_se_template(template: str, steps_ahead: int, threshold: float = 0.85,
+def skip_if_template(template: str, steps_ahead: int, threshold: float = 0.85,
                       region=None, note: str = "") -> Step:
     """
     Pula 'steps_ahead' passos se o elemento ja esta na tela.
@@ -414,7 +414,7 @@ def pular_se_template(template: str, steps_ahead: int, threshold: float = 0.85,
                 note=note)
 
 
-def esperar_template(template: str, timeout: float = 15.0,
+def wait_template(template: str, timeout: float = 15.0,
                      threshold: float = 0.85, region=None,
                      note: str = "") -> Step:
     """
@@ -633,8 +633,8 @@ class StepRunner:
             return True
 
         if kind == SKIP_IF:
-            condicao, adiante = step.args
-            if ctx.char_info is not None and condicao(ctx.char_info):
+            condition, adiante = step.args
+            if ctx.char_info is not None and condition(ctx.char_info):
                 logger.info("Condicao de memoria satisfeita; pulando %s passos",
                             adiante)
                 self._index += adiante
@@ -762,7 +762,7 @@ class StepRunner:
         return False
 
     def _do_wait_position(self, step: Step, ctx: StepContext) -> bool:
-        alvo_x, alvo_y, tolerancia = step.args
+        alvo_x, alvo_y, tolerance = step.args
 
         if ctx.char_info is None:
             logger.warning("wait_position sem char_info; pulando")
@@ -774,7 +774,7 @@ class StepRunner:
         if x is None or y is None:
             return True
 
-        if abs(x - alvo_x) <= tolerancia and abs(y - alvo_y) <= tolerancia:
+        if abs(x - alvo_x) <= tolerance and abs(y - alvo_y) <= tolerance:
             logger.info("Chegou em (%s, %s)", alvo_x, alvo_y)
             return True
 
@@ -824,7 +824,7 @@ class StepRunner:
         return False
 
     def _do_walk_to(self, step: Step, ctx: StepContext) -> bool:
-        (alvo_x, alvo_y, cx, cy, raio, escala, tolerancia, intervalo,
+        (alvo_x, alvo_y, cx, cy, radius, scale, tolerance, intervalo,
          paradas, varredura_apos) = step.args
 
         if ctx.char_info is None:
@@ -836,7 +836,7 @@ class StepRunner:
         dx = alvo_x - atual[0]
         dy = alvo_y - atual[1]
 
-        if math.hypot(dx, dy) <= tolerancia:
+        if math.hypot(dx, dy) <= tolerance:
             return True
 
         # O timeout e conferido ANTES dos returns de espera: senao um
@@ -876,12 +876,12 @@ class StepRunner:
 
         # Preso demais pro desvio angular resolver: sacode.
         if self._sem_progresso >= varredura_apos:
-            self._varrer_em_circulo(ctx, cx, cy, raio, atual, agora)
+            self._varrer_em_circulo(ctx, cx, cy, radius, atual, agora)
             return False
 
         # Mundo -> pixel. O y inverte: subir no minimapa aumenta o y.
-        px = dx / escala
-        py = -dy / escala
+        px = dx / scale
+        py = -dy / scale
 
         if self._sem_progresso:
             # Desvia alternando pros dois lados, abrindo o angulo a cada
@@ -893,8 +893,8 @@ class StepRunner:
 
         # Alvo longe demais pro minimapa: clica na borda, naquela direcao.
         distancia = math.hypot(px, py)
-        if distancia > raio:
-            px, py = px * raio / distancia, py * raio / distancia
+        if distancia > radius:
+            px, py = px * radius / distancia, py * radius / distancia
 
         ctx.input_service.right_click(ctx.hwnd, int(cx + px), int(cy + py))
         self._last_action = agora
@@ -907,7 +907,7 @@ class StepRunner:
         return False
 
     def _varrer_em_circulo(self, ctx: StepContext, cx: int, cy: int,
-                           raio: int, atual: tuple, agora: float):
+                           radius: int, atual: tuple, agora: float):
         """
         Ultimo recurso do destravamento: uma volta de cliques em torno do
         centro do minimapa.
@@ -932,7 +932,7 @@ class StepRunner:
         posicao de novo.
         """
         voltas = self._sem_progresso - 1
-        r = min(raio, 10 + 2 * voltas)
+        r = min(radius, 10 + 2 * voltas)
 
         diagonal = int(r * 0.7)
         pontos = [
