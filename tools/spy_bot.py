@@ -25,7 +25,10 @@ nosso proprio leitor ja usa.
 
 Como usar:
 
-    python tools/spy_bot.py --pid 39392 --out stone_city.csv
+    python tools/spy_bot.py --janela Tomyris --out stone_city.csv
+
+O nome e um PEDACO do titulo da janela do CLIENT, e nao o PID: o PID
+muda toda vez que o cliente reabre. O PID sai do proprio hwnd.
 
 Deixe rodando, mande o outro bot fazer o trecho de Stone City, e pare
 com Ctrl+C. O console mostra so os EVENTOS (salto de posicao, painel
@@ -47,8 +50,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import win32api
 import win32con
+import win32gui
 import win32process
 
+from src.infrastructure.window.service import WindowService
 from src.services.game.memory_reader import MemoryReader
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -114,8 +119,9 @@ def debugger_attached(pid: int) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Observa as acoes de outro bot sobre o client")
-    parser.add_argument("--pid", type=int, required=True,
-                        help="PID do CLIENT do jogo, nao o do bot")
+    parser.add_argument("--janela", required=True,
+                        help="pedaco do titulo da janela do CLIENT do jogo, "
+                             "nao a do bot")
     parser.add_argument("--out", default="spy_bot.csv")
     parser.add_argument("--route-step", type=float, default=ROUTE_STEP,
                         help="unidades de mundo entre dois pontos da rota "
@@ -130,11 +136,22 @@ def main() -> int:
                              "reconstruir o trajeto")
     args = parser.parse_args()
 
-    reader = MemoryReader(args.pid)
+    hwnd = WindowService().find(args.janela)
+    if not hwnd:
+        print(f"Nenhuma janela com '{args.janela}' no titulo")
+        return 1
 
-    baseline_modules = loaded_modules(args.pid)
+    # Tudo aqui embaixo abre o PROCESSO (memoria, modulos, depurador),
+    # entao o PID continua sendo o que vale -- so nao precisa vir
+    # digitado: o hwnd ja o carrega.
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    print(f"Janela '{win32gui.GetWindowText(hwnd)}' (PID {pid})")
+
+    reader = MemoryReader(pid)
+
+    baseline_modules = loaded_modules(pid)
     print(f"Modulos na largada: {len(baseline_modules)}")
-    if debugger_attached(args.pid):
+    if debugger_attached(pid):
         print("!! DEPURADOR ANEXADO ao client -- ja e prova de injecao")
 
     # Foto inicial do painel: a lista que estiver la agora vem do ultimo
@@ -194,7 +211,7 @@ def main() -> int:
 
             if agora >= next_module_check:
                 next_module_check = agora + MODULE_INTERVAL
-                novos = loaded_modules(args.pid) - baseline_modules
+                novos = loaded_modules(pid) - baseline_modules
                 if novos:
                     baseline_modules |= novos
                     for caminho in novos:
@@ -210,7 +227,7 @@ def main() -> int:
                         f"PAINEL reescrito ({len(anterior)} -> {len(panel_npcs)})"
                 next_panel_scan = agora + args.panel_interval
 
-                novos = loaded_modules(args.pid) - baseline_modules
+                novos = loaded_modules(pid) - baseline_modules
                 if novos:
                     baseline_modules |= novos
                     for caminho in novos:

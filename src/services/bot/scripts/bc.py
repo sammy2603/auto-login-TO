@@ -170,7 +170,19 @@ DEFAULT_CONFIG = {
     # nao entrou. Com 3 tentativas o roteiro desistia em segundos e
     # seguia como se tivesse entrado -- e o resto da run acontecia do
     # lado de fora da cave.
-    "cave_entry_attempts": 20,
+    # 60 e nao 20: cada tentativa hoje custa so a conversa (a caminhada
+    # e a camera ficaram fora do laco), e com 8 s de espera por tentativa
+    # isso da ~10 min insistindo. Instancia cheia enche por minutos, e
+    # desistir antes joga fora a run inteira -- o resto do roteiro
+    # aconteceria do lado de fora da cave.
+    #
+    # Ainda e LIMITE e nao laco infinito: o macro original repetia pra
+    # sempre, e cliente travado nunca satisfaz condicao nenhuma.
+    "cave_entry_attempts": 60,
+    # Quanto esperar a area mudar depois de escolher 'enter_bc'. Era um
+    # wait fixo de 10 s, cobrado inteiro mesmo quando nao entrava. Agora
+    # e teto: entrou antes, segue antes.
+    "timeout_carrega_cave": 8.0,
     # Como o roteiro sabe que entrou. Por memoria: dentro da cave o
     # campo 'location' le 'Bewitcher Cave'.
     "areas_da_cave": ["Bewitcher Cave"],
@@ -220,77 +232,58 @@ DEFAULT_CONFIG = {
     # escolha do caminho ao pathfinding do jogo, que anda por estrada.
     # Alguns cliques no mapa-mundi cortam reto.
     #
-    # cave_map_clicks: pixels da JANELA DO MAPA ABERTO. Continua aqui
-    # como alternativa, mas hoje esta vazio -- a rota em coordenada de
-    # MUNDO abaixo cobre o mesmo trecho sem depender de pixel de tela.
-    "cave_map_clicks": [],
+    # cave_map_clicks: pixels da JANELA DO MAPA ABERTO, gravados com
+    # tools/gravar_rota.py --mapa. Quando tem conteudo, VENCE a rota de
+    # minimapa: pixel do mapa aberto e destino ABSOLUTO, e nao
+    # deslocamento relativo -- nao depende de onde o personagem esta,
+    # nem do zoom do minimapa, nem da velocidade, e erro de um clique
+    # nao se soma ao seguinte. E o que o RaaskiBot faz neste trecho.
+    # Gravada em 2026-08-06 partindo de (1372,-418) -- onde o Transport
+    # Fay entrega -- ate (1393,-634), o pe do Skull Herald. Seis cliques,
+    # 0 descartes. O ultimo foi mirado com calma: o proprio mapa do jogo
+    # mostra a posicao do cursor, entao da pra encostar no NPC em vez de
+    # estimar.
+    #
+    # O tempo anotado em cada linha e ignorado pelo roteiro: aqui o pixel
+    # e destino absoluto, e esperar chegar e sempre correto.
+    "cave_map_clicks": [
+        (806, 351, 3.16),    # (1372, -418) -> (1391, -441)
+        (814, 375, 3.77),    # (1391, -441) -> (1402, -478)
+        (818, 402, 3.45),    # (1402, -478) -> (1408, -516)
+        (812, 426, 3.55),    # (1408, -516) -> (1400, -551)
+        (796, 453, 12.79),   # (1400, -551) -> (1378, -590)
+        (807, 483, 15.13),   # (1378, -590) -> (1393, -634)
+    ],
     "map_key": "M",
     "map_open_delay": 1.0,
     "map_leg_timeout": 90.0,
 
-    # --- Rota Ghost Din Woods -> Skull Herald ---
-    # Capturada em 2026-08-06 com tools/spy_bot.py, gravando o trajeto do
-    # bot de referencia: 217 unidades em 14,9 s, coordenada de mundo lida
-    # da memoria a 20 Hz e decimada a um ponto a cada 10 unidades.
+    # --- Zoom do minimapa ---
+    # Clique de minimapa e deslocamento relativo, e quanto mundo cabe em
+    # cada pixel e o zoom. A ida ate a cave nao usa mais minimapa, mas o
+    # preparo continua normalizando: e o que mantem previsivel qualquer
+    # passo que dependa dele.
     #
-    # NAO e linha reta de proposito: a barriga pro leste ate x=1415 e a
-    # volta pro oeste contornam um obstaculo. Cortar reto daqui trava o
-    # personagem nele -- que era o sintoma de "anda e da voltas".
+    # Medido no jogo: do minimo ao maximo sao 4 cliques (5 niveis). Por
+    # isso satura com 4 -- com 3, quem comecasse no extremo oposto
+    # pararia um nivel antes. Clique a mais no extremo nao faz nada;
+    # clique a menos desalinha a rota inteira.
     #
-    # Sao breadcrumbs, nao destinos: a tolerancia deles e folgada
-    # (waypoint_tolerance), e so o ultimo passo, o do NPC, fecha com
-    # tolerancia apertada.
-    # Os cinco ultimos vieram de outra gravacao: o personagem levado
-    # pelo link do Surrounding, que encosta no NPC de verdade. A emenda
-    # cai em (1388, -585) -- o waypoint da rota antiga mais proximo do
-    # inicio do trecho novo (4,1 unidades).
+    # Depois volta 2 no sentido contrario: nivel do MEIO, que e o
+    # escolhido pra gravar.
     #
-    # O trecho novo foi RALEADO de 3 para >=9 unidades de espacamento.
-    # Nao e perda de precisao, e o que faz o waypoint existir: com
-    # tolerancia 5, um alvo a 3 unidades ja nasce alcancado e o passo
-    # termina sem o personagem sair do lugar.
-    "cave_waypoints": [
-        (1378, -426), (1384, -434), (1391, -442), (1398, -451),
-        (1405, -460), (1407, -471), (1409, -481), (1410, -492),
-        (1412, -502), (1413, -513), (1415, -523), (1411, -533),
-        (1407, -544), (1403, -555), (1398, -566), (1393, -575),
-        (1388, -585),
-        (1385, -591), (1387, -600), (1389, -609), (1391, -619),
-        # Origem do clique fixo, e por isso um waypoint explicito: o
-        # pixel gravado foi medido a partir DAQUI. Deixar a entrega ao
-        # acaso (o passo anterior para em ~(1388,-620)) transferiria a
-        # diferenca inteira para o destino, unidade por unidade.
-        (1391, -625),
-    ],
-    # A rota calculada TERMINA em (1391,-619) -- na pratica o
-    # personagem para em (1388,-620), e foi esse o ponto escolhido no
-    # jogo como entrega: consistente entre corridas e longe de parede.
-    #
-    # Daqui ate o NPC sao CLIQUES FIXOS no minimapa, e nao mais conta.
-    # O minimapa e centrado no personagem, entao um pixel fixo e um
-    # deslocamento relativo fixo: partindo sempre do mesmo lugar, chega
-    # sempre no mesmo lugar. Isso dispensa escala, centro e tolerancia
-    # -- as tres coisas que erraram nesta parte do trajeto.
-    #
-    # O preco: depende do ponto de partida ser repetivel. Variacao na
-    # entrega vira variacao igual no destino, unidade por unidade.
-    #
-    # VAZIO ate serem gravados: com o personagem em (1388,-620), rodar
-    # 'python tools/gravar_rota.py --pid N --centro 914 114 --raio 72'
-    # e clicar no minimapa ate o NPC. Enquanto estiver vazio, o roteiro
-    # cai no walk_to de sempre.
-    # Tolerancia do waypoint que serve de ORIGEM do clique fixo. Aperta
-    # de proposito contra os 10 dos demais: erro na origem vira erro
-    # igual no destino, porque o clique e relativo.
-    "click_origin_tolerance": 3,
-    "cave_final_clicks": [
-        # Gravado em 2026-08-06 partindo de (1391,-625): chega em
-        # (1395,-636), o pe do Skull Herald. Um clique so.
-        (929, 145),
-    ],
-    "espera_clique_final": 0.5,
-    "waypoint_tolerance": 10,
-    "waypoint_timeout": 45.0,
+    # 'satura' e 'volta' em vez de 'zoom in'/'zoom out' porque pro passo
+    # tanto faz qual e qual: so precisam ser opostos. O (997,97) que
+    # estava aqui como "zoom out" era o botao de ZOOM IN -- medido no
+    # jogo em 2026-08-06, quando os seis cliques sairam todos pro mesmo
+    # lado. Nome errado nao avisa; so aparece no comportamento.
+    "minimapa_zoom_satura_pos": (998, 101),   # zoom in, com tools/calibrar.py
+    # Zoom out, medido em 2026-08-06. Fica 26 px ABAIXO do zoom in --
+    # e nao 4, como o palpite anterior supos. Era essa a distancia que
+    # faltava: (998,101) e (997,97) caem os dois no mesmo botao.
+    "minimapa_zoom_volta_pos": (998, 127),
+    "minimapa_zoom_satura_clicks": 4,
+    "minimapa_zoom_volta_clicks": 2,
 
     # --- Minimapa ---
     # O minimapa e o mundo em escala, centrado no personagem: e o que
@@ -426,22 +419,27 @@ DEFAULT_CONFIG = {
     # clique disparado nesse instante sai antes do NPC estar no lugar
     # final da tela.
     "espera_pos_chegada": 0.5,
-    # MEDIDO na captura de 2026-08-06, com o personagem em (1393,-635) e
-    # camera 380/0/40: o corpo do Skull Herald ocupa x 560..630,
-    # y 372..467, e o nome verde flutua em ~(597,363). Os pontos abaixo
-    # ficam todos dentro da silhueta.
+    # MEDIDO com tools/calibrar.py em 2026-08-06, com o personagem
+    # entregue pela rota de mapa em (1393,-635) e a camera ja fixada em
+    # 380/0/40 -- fixar antes de medir importa: o pixel do NPC depende
+    # dos tres valores.
     #
-    # O valor anterior era (479,410): o y estava quase certo e o x
-    # errava por 115 px. Era isso que fazia os cliques acertarem o PET,
-    # que costuma parar aproximadamente ali.
+    # Ponto (594,508), dentro da regiao (564,482)-(626,539): a BASE do
+    # NPC, e nao o meio do corpo. Escolha do jogador, e boa: mob que vem
+    # atras do personagem cobre a parte de cima da silhueta, e clicar
+    # num mob no lugar do NPC nao abre dialogo nenhum. A base fica livre.
+    #
+    # O valor anterior era (594,412) -- x certo, y 96 px acima, no tronco.
+    # E antes dele (479,410), que errava o x por 115 px e acertava o PET.
     #
     # LISTA e nao ponto unico porque a caminhada para dentro de uma
     # tolerancia, nao num pixel, e cada unidade de mundo de sobra
     # desloca o NPC na tela. Tenta um, confere se o dialogo abriu, so
     # entao tenta o proximo -- clique direito nao move o personagem,
-    # entao tentativa que erra custa so a espera.
-    "npc_entrada_tela": [(594, 412), (594, 390), (594, 435),
-                         (578, 412), (610, 412)],
+    # entao tentativa que erra custa so a espera. Os quatro vizinhos
+    # cabem todos dentro da regiao medida.
+    "npc_entrada_tela": [(594, 508), (594, 494), (594, 525),
+                         (576, 508), (612, 508)],
     "template_enter_bc": "enter_bc",
 
     # --- Saida da cave (NPC "Skull Herald") ---
